@@ -10,7 +10,7 @@
 -define(W, 1).
 
 %% API
--export([start_link/5, start_link/6, mk_reqid/0, write/3, write/4]).
+-export([start_link/5, start_link/6, mk_reqid/0, write/3, write/4, async_write/4]).
 
 %% Callbacks
 -export([init/1, code_change/4, handle_event/3, handle_info/3,
@@ -31,6 +31,7 @@
               terminate/3,
               waiting/2,
               write/3,
+              write/4,
               start/3
              ]).
 
@@ -77,6 +78,10 @@ start_link({VNode, System}, ReqID, From, Entity, Op, Val) ->
 write({VNode, System}, Op, User) ->
     write({VNode, System}, User, Op, undefined).
 
+async_write({VNode, System}, Op, User, Val) ->
+    ReqID = mk_reqid(),
+    metric_write_fsm_sup:start_write_fsm([{VNode, System}, ReqID, self(), User, Op, Val]),
+    ok.
 write({VNode, System}, Op, User, Val) ->
     ReqID = mk_reqid(),
     metric_write_fsm_sup:start_write_fsm([{VNode, System}, ReqID, self(), User, Op, Val]),

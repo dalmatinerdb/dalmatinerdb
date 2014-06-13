@@ -35,5 +35,8 @@ init([]) ->
     ReadFSMs = {metric_read_fsm_sup,
                 {metric_read_fsm_sup, start_link, []},
                 permanent, infinity, supervisor, [metric_read_fsm_sup]},
-    {ok, {{one_for_one, 5, 10}, [WriteFSMs, ReadFSMs, CoverageFSMs]}}.
+    UDPListener = {metric_db_udp_sup,
+                   {metric_db_udp_sup, start_link, []},
+                   permanent, infinity, supervisor, [metric_db_udp_sup]},
+    {ok, {{one_for_one, 5, 10}, [WriteFSMs, ReadFSMs, CoverageFSMs, UDPListener]}}.
 

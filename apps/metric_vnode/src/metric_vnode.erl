@@ -69,19 +69,19 @@ init([Partition]) ->
                   node = node(),
                   mstore = MSet}}.
 
-repair(IdxNode, {Metric, Time}, Obj) ->
+repair(IdxNode, Metric, {Time, Obj}) ->
     riak_core_vnode_master:command(IdxNode,
                                    {repair, Metric, Time, Obj},
                                    ignore,
                                    ?MASTER).
 
-put(Preflist, ReqID, {Metric, Time}, Value) ->
+put(Preflist, ReqID, Metric, {Time, Value}) ->
     riak_core_vnode_master:command(Preflist,
                                    {put, ReqID, Metric, {Time, Value}},
                                    {fsm, undefined, self()},
                                    ?MASTER).
 
-get(Preflist, ReqID, {Metric, Time}, Count) ->
+get(Preflist, ReqID, Metric, {Time, Count}) ->
     riak_core_vnode_master:command(Preflist,
                                    {get, ReqID, Metric, {Time, Count}},
                                    {fsm, undefined, self()},

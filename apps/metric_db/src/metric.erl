@@ -18,7 +18,7 @@ ping() ->
     riak_core_vnode_master:sync_spawn_command(IndexNode, ping, metric_vnode_master).
 
 put(Metric, Time, Value) ->
-    metric_write_fsm:write({metric_vnode, metric}, put, {Metric, Time}, Value).
+    metric_write_fsm:async_write({metric_vnode, metric}, put, Metric, {Time, Value}).
 
 get(Metric, Time, Count) ->
-    metric_read_fsm:start({metric_vnode, metric}, get, {Metric, Time}, Count).
+    metric_read_fsm:start({metric_vnode, metric}, get, Metric, {Time, Count}).

@@ -260,7 +260,7 @@ needs_repair(MObj, Replies) ->
     lists:any(different(MObj), Objs).
 
 %% @pure
-different(A) -> fun(B) -> not A == B end.
+different(A) -> fun(B) -> A =/= B end.
 
 %% @impure
 %%
