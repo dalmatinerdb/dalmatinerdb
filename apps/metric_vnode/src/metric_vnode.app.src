@@ -1,0 +1,13 @@
+{application, metric_vnode,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  riak_core
+                 ]},
+  {mod, { metric_vnode_app, []}},
+  {env, []}
+ ]}.

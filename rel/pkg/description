@@ -1,0 +1,4 @@
+Project FiFo's Howl is an asyncronouse channel based messaging server. TCP 
+Sockets build the one endpoint and a websocket server the other.
+
+http://project-fifo.net/display/PF/Howl

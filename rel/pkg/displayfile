@@ -1,0 +1,13 @@
+     Congratulations the Howl API server is now installed on the system.
+.------------------------------------------------------------------------------.
+| By default the service is disabled since it's common that you will need to   |
+| do some additional configurations.                                           |
+|                                                                              |
+| Please have a look at the configuraiton files:                               |
+|                                                                              |
+|  * /opt/local/fifo-howl/etc/howl.conf                                        |
+|                                                                              |
+| Note: To enable Howl you first need to enable the epmd service.              |
+|                                                                              |
+`------------------------------------------------------------------------------'
+

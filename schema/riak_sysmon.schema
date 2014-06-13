@@ -1,0 +1,43 @@
+%% -*- erlang -*-
+%% riak_sysmon config
+%% @doc To disable forwarding events of a particular type, use a
+%% limit of 0.
+{mapping, "riak_sysmon.process_limit", "riak_sysmon.process_limit", [
+  {default, 30},
+  {datatype, integer},
+  {level, advanced}
+]}.
+
+{mapping, "riak_sysmon.port_limit", "riak_sysmon.port_limit", [
+  {default, 2},
+  {datatype, integer},
+  {level, advanced}
+]}.
+
+%% Finding reasonable limits for a given workload is a matter
+%% of experimentation.
+%% NOTE: Enabling the 'gc_ms_limit' monitor (by setting non-zero)
+%%       can cause performance problems on multi-CPU systems.
+{mapping, "riak_sysmon.gc_ms_limit", "riak_sysmon.gc_ms_limit", [
+  {default, 0},
+  {datatype, integer},
+  {level, advanced}
+]}.
+{mapping, "riak_sysmon.heap_word_limit", "riak_sysmon.heap_word_limit", [
+  {default, 40111000},
+  {datatype, integer},
+  {level, advanced}
+]}.
+
+%% @doc Configure the following items to 'false' to disable logging
+%% of that event type.
+{mapping, "riak_sysmon.busy_port", "riak_sysmon.busy_port", [
+  {default, true},
+  {datatype, {enum, [true, false]}},
+  {level, advanced}
+]}.
+{mapping, "riak_sysmon.busy_dist_port", "riak_sysmon.busy_dist_port", [
+  {default, true},
+  {datatype, {enum, [true, false]}},
+  {level, advanced}
+]}.

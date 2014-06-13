@@ -1,0 +1,11 @@
+%% -*- erlang -*-
+%% @doc The place the SNMP agent looks for it's configuration.
+{mapping, "snmp.config_dir", "snmp.agent.config.dir",
+[{default, "snmp/conf/"},
+ {datatype, string}]}.
+
+%% @doc This is where the SNMP related databases and data gets
+%% stored, it must be writable for the process.
+{mapping, "snmp.data_dir", "snmp.agent.db_dir",
+[{default, "{{db_path}}"},
+ {datatype, string}]}.

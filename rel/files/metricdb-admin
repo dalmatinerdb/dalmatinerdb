@@ -1,0 +1,188 @@
+#!/bin/bash
+
+RUNNER_SCRIPT_DIR=$(cd ${0%/*} && pwd)
+RUNNER_SCRIPT=${0##*/}
+
+RUNNER_BASE_DIR=${RUNNER_SCRIPT_DIR%/*}
+RUNNER_ETC_DIR=$RUNNER_BASE_DIR/etc
+RUNNER_LOG_DIR={{log_path}}
+RUNNER_USER={{run_user}}
+
+# Make sure this script is running as the appropriate user
+if [ ! -z "$RUNNER_USER" ] && [ `whoami` != "$RUNNER_USER" ]; then
+    exec sudo -u $RUNNER_USER $0 $@
+fi
+
+# Make sure CWD is set to runner base dir
+cd $RUNNER_BASE_DIR
+
+# Extract the target node name and cookie from vm.args
+if [ ! -f "$RUNNER_ETC_DIR/vm.args" ]; then
+    NODENAME=`egrep '^[ \t]*nodename[ \t]*=[ \t]*' $RUNNER_ETC_DIR/{{cuttlefish_conf}} 2> /dev/null | tail -n 1 | cut -d = -f 2`
+    if [ -z "$NODENAME" ]; then
+        echo "vm.args needs to have a -name parameter."
+        echo "  -sname is not supported."
+        exit 1
+    else
+        NAME_ARG="-name ${NODENAME# *}"
+    fi
+    COOKIE=`egrep '^[ \t]*distributed_cookie[ \t]*=[ \t]*' $RUNNER_ETC_DIR/{{cuttlefish_conf}} 2> /dev/null | cut -d = -f 2`
+    if [ -z "$COOKIE" ]; then
+        echo "vm.args needs to have a -setcookie parameter."
+        exit 1
+    else
+        COOKIE_ARG="-setcookie $COOKIE"
+    fi
+else
+    NAME_ARG=`egrep '^\-name' $RUNNER_ETC_DIR/vm.args 2> /dev/null`
+    if [ -z "$NAME_ARG" ]; then
+        echo "vm.args needs to have a -name parameter."
+        echo "  -sname is not supported."
+        exit 1
+    fi
+    COOKIE_ARG=`grep -e '-setcookie' $RUNNER_ETC_DIR/vm.args 2> /dev/null`
+    if [ -z "$COOKIE" ]; then
+        echo "vm.args needs to have a -setcookie parameter."
+        exit 1
+    fi
+fi
+
+# Learn how to specify node name for connection from remote nodes
+echo "$NAME_ARG" | grep '^-sname' > /dev/null 2>&1
+if [ "X$?" = "X0" ]; then
+    NAME_PARAM="-sname"
+    NAME_HOST=""
+else
+    NAME_PARAM="-name"
+    echo "$NAME_ARG" | grep '@.*' > /dev/null 2>&1
+    if [ "X$?" = "X0" ]; then
+        NAME_HOST=`echo "${NAME_ARG}" | sed -e 's/.*\(@.*\)$/\1/'`
+    else
+        NAME_HOST=""
+    fi
+fi
+
+# Identify the script name
+SCRIPT=`basename $0`
+
+# Parse out release and erts info
+START_ERL=`cat $RUNNER_BASE_DIR/releases/start_erl.data`
+ERTS_VSN=${START_ERL% *}
+APP_VSN=${START_ERL#* }
+
+# Add ERTS bin dir to our path
+ERTS_PATH=$RUNNER_BASE_DIR/erts-$ERTS_VSN/bin
+
+# Setup command to control the node
+NODETOOL="$ERTS_PATH/escript $ERTS_PATH/nodetool $NAME_ARG $COOKIE_ARG"
+
+run()
+{
+    mod=$1
+    shift
+    cmd=$1
+    shift
+
+    # Make sure the local node IS running
+    RES=`$NODETOOL ping`
+    if [ "$RES" != "pong" ]; then
+        echo "Node is not running!"
+        exit 1
+    fi
+
+    $NODETOOL rpc $mod $cmd $@
+}
+
+# Check the first argument for instructions
+case "$1" in
+    join)
+        shift
+        run howl_console join $@
+        ;;
+
+    leave)
+        shift
+        run howl_console leave $@
+        ;;
+
+    remove)
+        if [ $# -ne 2 ]; then
+            echo "Usage: $SCRIPT remove <node>"
+            exit 1
+        fi
+
+        shift
+        run howl_console remove $@
+        ;;
+
+    reip)
+        shift
+        run howl_console reip $@
+        ;;
+
+    member-status|member_status)
+        if [ $# -ne 1 ]; then
+            echo "Usage: $SCRIPT member_status"
+            exit 1
+        fi
+
+        shift
+        run riak_core_console member_status $@
+        ;;
+
+    ring-status|ring_status)
+        if [ $# -ne 1 ]; then
+            echo "Usage: $SCRIPT ring_status"
+            exit 1
+        fi
+
+        shift
+        run riak_core_console ring_status $@
+        ;;
+
+    services)
+        $NODETOOL rpcterms riak_core_node_watcher services ''
+        ;;
+
+    wait-for-service)
+        SVC=$2
+        TARGETNODE=$3
+        if [ $# -lt 3 ]; then
+            echo "Usage: $SCRIPT wait-for-service <service_name> <target_node>"
+            exit 1
+        fi
+
+        while (true); do
+            # Make sure riak_core_node_watcher is up and running locally before trying to query it
+            # to avoid ugly (but harmless) error messages
+            NODEWATCHER=`$NODETOOL rpcterms erlang whereis "'riak_core_node_watcher'."`
+            if [ "$NODEWATCHER" = "undefined" ]; then
+                echo "$SVC is not up: node watcher is not running"
+                continue
+            fi
+
+            # Get the list of services that are available on the requested node
+            SERVICES=`$NODETOOL rpcterms riak_core_node_watcher services "'${TARGETNODE}'."`
+            echo "$SERVICES" | grep "[[,]$SVC[],]" > /dev/null 2>&1
+            if [ "X$?" = "X0" ]; then
+                echo "$SVC is up"
+                exit 0
+            else
+                echo "$SVC is not up: $SERVICES"
+            fi
+            sleep 3
+        done
+        ;;
+
+    ringready)
+        shift
+        run howl_console ringready $@
+        ;;
+
+    *)
+        echo "Usage: $SCRIPT { join | leave | reip | ringready | remove |"
+        echo "                 services | wait-for-service | member-status |"
+        echo "                 ring-status }"
+        exit 1
+        ;;
+esac
