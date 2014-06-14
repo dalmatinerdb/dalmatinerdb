@@ -35,6 +35,12 @@ distclean: clean devclean relclean
 test: all xref
 	$(REBAR) skip_deps=true eunit
 
+qc:
+	$(REBAR) -C rebar_eqc.config compile skip_deps=true eunit --verbose
+
+eqc-ci: clean all
+	$(REBAR) -D EQC_CI -C rebar_eqc_ci.config compile eunit skip_deps=true --verbose
+
 rel: all 
 	-rm -r rel/metricdb
 	$(REBAR) generate

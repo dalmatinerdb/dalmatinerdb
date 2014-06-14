@@ -35,7 +35,8 @@
 
 -record(state, {partition,
                 node,
-                mstore}).
+                mstore
+               }).
 
 -define(MASTER, metric_vnode_master).
 
@@ -44,30 +45,9 @@ start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
 init([Partition]) ->
-    %% We want to cleanup listeners every 10s
-    DataDir = case application:get_env(metric_vnode, data_dir) of
-                  {ok, DD} ->
-                      DD;
-                  _ ->
-                      "data"
-              end,
-    PartitionDir = [DataDir | [$/ | integer_to_list(Partition)]],
-    CHashSize = case application:get_env(metric_vnode, chash_size) of
-                    {ok, CHS} ->
-                        CHS;
-                    _ ->
-                        8
-                end,
-    PointsPerFile = case application:get_env(metric_vnode, points_per_file) of
-                        {ok, PPF} ->
-                            PPF;
-                        _ ->
-                            ?WEEK
-                    end,
-    {ok, MSet} = mstore:new(CHashSize, PointsPerFile, PartitionDir),
     {ok, #state { partition=Partition,
-                  node = node(),
-                  mstore = MSet}}.
+                  node=node(),
+                  mstore=new_store(Partition)}}.
 
 repair(IdxNode, Metric, {Time, Obj}) ->
     riak_core_vnode_master:command(IdxNode,
@@ -93,12 +73,8 @@ handle_command(ping, _Sender, State) ->
 
 handle_command({repair, Metric, Time, Value}, _Sender,
                #state{mstore=MSet}=State) ->
-    case mstore:put(MSet, Metric, Time, Value) of
-        {ok, MSet1} ->
-            {noreply, State#state{mstore=MSet1}};
-        _ ->
-            {noreply, State}
-    end;
+    MSet1 = mstore:put(MSet, Metric, Time, Value),
+    {noreply, State#state{mstore=MSet1}};
 
 handle_command({put, {ReqID, _}, Metric, {Time, Value}}, _Sender,
                #state{mstore=MSet} = State) ->
@@ -107,12 +83,8 @@ handle_command({put, {ReqID, _}, Metric, {Time, Value}}, _Sender,
 
 handle_command({get, ReqID, Metric, {Time, Count}}, _Sender,
                #state{mstore=MSet, partition=Partition, node=Node} = State) ->
-    case mstore:get(MSet, Metric, Time, Count) of
-        {ok, Data} ->
-            {reply, {ok, ReqID, {Partition, Node}, Data}, State};
-        E ->
-            {reply, {ok, ReqID, {Partition, Node}, E}, State}
-    end;
+    {ok, Data} = mstore:get(MSet, Metric, Time, Count),
+    {reply, {ok, ReqID, {Partition, Node}, Data}, State};
 
 
 handle_command(_Message, _Sender, State) ->
@@ -157,9 +129,9 @@ is_empty(State) ->
             {false, State}
     end.
 
-delete(State) ->
+delete(State = #state{partition=Partition}) ->
     mstore:delete(State#state.mstore),
-    {ok, {ok, State}}.
+    {ok, State#state{mstore=new_store(Partition)}}.
 
 handle_coverage(_Req, _KeySpaces, _Sender, State) ->
     {stop, not_implemented, State}.
@@ -172,3 +144,27 @@ handle_exit(_PID, _Reason, State) ->
 
 terminate(_Reason, _State) ->
     ok.
+
+
+new_store(Partition) ->
+    DataDir = case application:get_env(metric_vnode, data_dir) of
+                  {ok, DD} ->
+                      DD;
+                  _ ->
+                      "data"
+              end,
+    PartitionDir = [DataDir | [$/ | integer_to_list(Partition)]],
+    CHashSize = case application:get_env(metric_vnode, chash_size) of
+                    {ok, CHS} ->
+                        CHS;
+                    _ ->
+                        8
+                end,
+    PointsPerFile = case application:get_env(metric_vnode, points_per_file) of
+                        {ok, PPF} ->
+                            PPF;
+                        _ ->
+                            ?WEEK
+                    end,
+    {ok, MSet} = mstore:new(CHashSize, PointsPerFile, PartitionDir),
+    MSet.
