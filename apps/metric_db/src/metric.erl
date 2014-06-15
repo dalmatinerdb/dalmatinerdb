@@ -3,13 +3,15 @@
 -export([
          ping/0,
          put/3,
-         get/3
+         get/3,
+         list/0
         ]).
 -ignore_xref([
-         ping/0,
-         put/3,
-         get/3
-        ]).
+              ping/0,
+              put/3,
+              get/3,
+              list/0
+             ]).
 %% @doc Pings a random vnode to make sure communication is functional
 ping() ->
     DocIdx = riak_core_util:chash_key({<<"ping">>, term_to_binary(now())}),
@@ -22,3 +24,6 @@ put(Metric, Time, Value) ->
 
 get(Metric, Time, Count) ->
     metric_read_fsm:start({metric_vnode, metric}, get, Metric, {Time, Count}).
+
+list() ->
+    metric_coverage:start(metrics).

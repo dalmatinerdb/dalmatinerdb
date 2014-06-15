@@ -125,16 +125,22 @@ prop_handoff() ->
                               [?V:encode_handoff_item(K, V) | A]
                       end,
                 FR = ?FOLD_REQ{foldfun=Fun, acc0=[]},
-                {reply, L, _S1} = ?V:handle_handoff_command(FR, self(), S),
+                {reply, L, S1} = ?V:handle_handoff_command(FR, self(), S),
                 L1 = lists:sort(L),
                 {ok, C} = ?V:init([1]),
                 C1 = lists:foldl(fun(Data, SAcc) ->
                                         {reply, ok, SAcc1} = ?V:handle_handoff_data(Data, SAcc),
                                         SAcc1
                                 end, C, L1),
-                {reply, Lc, _C2} = ?V:handle_handoff_command(FR, self(), C1),
+                {reply, Lc, C2} = ?V:handle_handoff_command(FR, self(), C1),
                 Lc1 = lists:sort(Lc),
-                Lc1 == L1
+                {reply, {ok, _, _, Ms}, _} =
+                    ?V:handle_coverage(metrics, all, self(), S1),
+                {reply, {ok, _, _, MsC}, _} =
+                    ?V:handle_coverage(metrics, all, self(), C2),
+                Lc1 == L1 andalso
+                    gb_sets:to_list(MsC) == gb_sets:to_list(Ms)
+
             end).
 
 %%%-------------------------------------------------------------------

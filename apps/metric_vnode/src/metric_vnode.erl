@@ -118,16 +118,17 @@ encode_handoff_item(Key, Value) ->
     term_to_binary({Key, Value}).
 
 is_empty(State) ->
-    case mstore:metrics(State#state.mstore) of
-        [] ->
-            {true, State};
-        _ ->
-            {false, State}
-    end.
+    {gb_sets:size(mstore:metrics(State#state.mstore)) == 0, State}.
 
 delete(State = #state{partition=Partition}) ->
     mstore:delete(State#state.mstore),
     {ok, State#state{mstore=new_store(Partition)}}.
+
+handle_coverage(metrics, _KeySpaces, _Sender,
+                State = #state{mstore=M, partition=Partition, node=Node}) ->
+    Ms =  mstore:metrics(M),
+    Reply = {ok, undefined, {Partition, Node}, Ms},
+    {reply, Reply, State};
 
 handle_coverage(_Req, _KeySpaces, _Sender, State) ->
     {stop, not_implemented, State}.

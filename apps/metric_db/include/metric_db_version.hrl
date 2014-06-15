@@ -1,1 +1,0 @@
--define(VERSION, <<"master-63528d2, Sat Jun 14 19:01:05 2014 +0200">>).
