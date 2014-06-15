@@ -90,11 +90,12 @@ handle_command({get, ReqID, Metric, {Time, Count}}, _Sender,
 handle_command(_Message, _Sender, State) ->
     {noreply, State}.
 
-%%handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender, State) ->
-%%    Acc = lists:foldl(fun ({C, Ls}, AccIn) ->
-%%                              Fun(C, Ls, AccIn)
-%%                      end, Acc0, State#state.channels),
-%%    {reply, Acc, State};
+handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender, State=#state{mstore=M}) ->
+    F = fun(Metric, T, V, AccIn) ->
+                Fun(Metric, {T, V}, AccIn)
+        end,
+    Acc = mstore:fold(M, F, Acc0),
+    {reply, Acc, State};
 
 handle_handoff_command(_Message, _Sender, State) ->
     {noreply, State}.
@@ -108,15 +109,10 @@ handoff_cancelled(State) ->
 handoff_finished(_TargetNode, State) ->
     {ok, State}.
 
-handle_handoff_data(_Data, State) ->
-    {reply, ok, State}.
-
-%% handle_handoff_data(Data, State) ->
-%%     {Channel, #metric_obj{val=Val0} = O} = binary_to_term(Data),
-%%     Listeners = [{L, Channel} || L <- Val0],
-%%     Channels = lists:keystore(Channel, 1, State#state.channels, {Channel, O}),
-%%     {reply, ok, State#state{channels = Channels,
-%%                             listeners = Listeners ++ State#state.listeners}}.
+handle_handoff_data(Data, State=#state{mstore=M}) ->
+    {Metric, {T, V}} = binary_to_term(Data),
+    M1 = mstore:put(M, Metric, T, V),
+    {reply, ok, State#state{mstore = M1}}.
 
 encode_handoff_item(Key, Value) ->
     term_to_binary({Key, Value}).

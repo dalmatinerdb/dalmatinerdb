@@ -6,6 +6,7 @@
 -include_lib("eqc/include/eqc.hrl").
 -include_lib("eqc/include/eqc_fsm.hrl").
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("riak_core/include/riak_core_vnode.hrl").
 -compile(export_all).
 -define(DIR, ".qcdata").
 -define(T, gb_trees).
@@ -108,10 +109,32 @@ prop_empty_after_delete() ->
             begin
                 os:cmd("rm -r data"),
                 os:cmd("mkdir data"),
-                {S, T_} = eval(D),
+                {S, _T} = eval(D),
                 {ok, S1} = ?V:delete(S),
                 {Empty, _S3} = ?V:is_empty(S1),
                 Empty == true
+            end).
+
+prop_handoff() ->
+    ?FORALL(D, vnode(),
+            begin
+                os:cmd("rm -r data"),
+                os:cmd("mkdir data"),
+                {S, _T} = eval(D),
+                Fun = fun(K, V, A) ->
+                              [?V:encode_handoff_item(K, V) | A]
+                      end,
+                FR = ?FOLD_REQ{foldfun=Fun, acc0=[]},
+                {reply, L, _S1} = ?V:handle_handoff_command(FR, self(), S),
+                L1 = lists:sort(L),
+                {ok, C} = ?V:init([1]),
+                C1 = lists:foldl(fun(Data, SAcc) ->
+                                        {reply, ok, SAcc1} = ?V:handle_handoff_data(Data, SAcc),
+                                        SAcc1
+                                end, C, L1),
+                {reply, Lc, _C2} = ?V:handle_handoff_command(FR, self(), C1),
+                Lc1 = lists:sort(Lc),
+                Lc1 == L1
             end).
 
 %%%-------------------------------------------------------------------
