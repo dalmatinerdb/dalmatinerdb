@@ -62,10 +62,23 @@ init([]) ->
     Restart = permanent,
     Shutdown = 2000,
     Type = worker,
-    AChild = {metric_db_udp, {metric_db_udp, start_link, [?PORT]},
-              Restart, Shutdown, Type, [metric_db_udp]},
+    Port = case application:get_env(metric_db, udp_port) of
+               {ok, P} ->
+                   P;
+               _ ->
+                   4444
+           end,
+    Listeners = case application:get_env(metric_db, udp_listeners) of
+                    {ok, L} ->
+                        L;
+                    _ ->
+                        1
+                end,
+    Children = [{metric_db_udp, {metric_db_udp, start_link, [Prt]},
+                 Restart, Shutdown, Type, [metric_db_udp]} ||
+                   Prt <- lists:seq(Port, Port + Listeners - 1)],
+        {ok, {SupFlags, [Children]}}.
 
-    {ok, {SupFlags, [AChild]}}.
 
 %%%===================================================================
 %%% Internal functions

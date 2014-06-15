@@ -7,7 +7,8 @@
                   kernel,
                   stdlib,
                   metric_vnode,
-                  riak_core
+                  riak_core,
+                  ranch
                  ]},
   {mod, { metric_db_app, []}},
   {env, []}
