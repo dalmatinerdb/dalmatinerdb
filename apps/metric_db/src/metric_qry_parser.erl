@@ -1,7 +1,7 @@
 -module(metric_qry_parser).
 
--export([parse/1, unparse/1, execute/1]).
--ignore_xref([parse/1, unparse/1, execute/1]).
+-export([parse/1, unparse/1, execute/1, glob_match/2]).
+-ignore_xref([parse/1, unparse/1, execute/1, glob_match/2]).
 
 date(L) ->
     i(L).
@@ -112,3 +112,46 @@ i2b(I) ->
 
 f2b(I) ->
     list_to_binary(float_to_list(I)).
+
+prepare_glob(G, Acc) ->
+    case lists:splitwith(fun(X) -> X =/= <<"*">> end, G) of
+        {[], []} ->
+            lists:reverse(Acc);
+        {E, []} ->
+            lists:reverse([E | Acc]);
+        {E, [<<"*">>]} ->
+            lists:reverse([ [], E | Acc]);
+        {H, [_ | T]} ->
+            prepare_glob(T, [H | Acc])
+    end.
+
+
+glob_match(G, Ms) ->
+    GE = re:split(G, "\\."),
+    GL = length(GE),
+    GM = prepare_glob(GE, []),
+    F = fun(M) ->
+                ME = re:split(M, "\\."),
+                ML = length(ME),
+                ML == GL andalso
+                    rmatch(GM, ME)
+        end,
+    lists:filter(F, Ms).
+
+rmatch([[] | R], [_ | RM]) ->
+    rmatch(R, RM);
+rmatch([], []) ->
+    false;
+rmatch([M], M) ->
+    true;
+rmatch([H | T], M) ->
+    case lists:prefix(H, M) of
+        true ->
+            MT = lists:nthtail(length(H)+1, M),
+            rmatch(T, MT);
+        _ ->
+            false
+    end;
+
+rmatch(_, _) ->
+    false.
