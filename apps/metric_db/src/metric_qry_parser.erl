@@ -34,6 +34,8 @@ metric(["FROM", M | L], Acc) ->
 
 aggregate([], Acc) ->
     Acc;
+aggregate(["AS", "LIST"], Acc) ->
+    {to_list, Acc};
 aggregate(["DERIVATE" | L], Acc) ->
     aggregate(L, {derivate, Acc});
 aggregate(["SCALE", "BY", S | L], Acc) ->
@@ -48,6 +50,9 @@ aggregate(["AVG", "OVER", N | L], Acc) ->
     aggregate(L, {avg, i(N), Acc});
 aggregate(["SUM", "OVER", N | L], Acc) ->
     aggregate(L, {sum, i(N), Acc}).
+
+unparse({to_list, T}) ->
+    unparse(T, "AS LIST");
 
 unparse(T) ->
     unparse(T, []).
@@ -89,4 +94,21 @@ execute({max, N, C}) ->
 execute({avg, N, C}) ->
     mstore_aggr:avg(execute(C), N);
 execute({sum, N, C}) ->
-    mstore_aggr:sum(execute(C), N).
+    mstore_aggr:sum(execute(C), N);
+
+execute({to_list, C}) ->
+    D = execute(C),
+    L = mstore_bin:to_list(D),
+    case mstore_bin:find_type(D) of
+        float ->
+            << <<(f2b(V))/binary, " ">> || V <- L >>;
+        _ ->
+            << <<(i2b(V))/binary, " ">> || V <- L >>
+    end.
+
+
+i2b(I) ->
+    list_to_binary(integer_to_list(I)).
+
+f2b(I) ->
+    list_to_binary(float_to_list(I)).

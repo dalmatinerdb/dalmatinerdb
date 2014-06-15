@@ -16,7 +16,10 @@ non_empty_binary() ->
 
 
 qry_tree() ->
-    ?SIZED(Size, qry_tree(Size)).
+    ?SIZED(Size, oneof([
+                        qry_tree(Size),
+                        {to_list, qry_tree(Size)}
+                       ])).
 
 qry_tree(Size) ->
     ?LAZY(oneof([{get, non_empty_binary(), {range, int(), int()}} || Size == 0] ++

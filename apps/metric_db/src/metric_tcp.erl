@@ -5,6 +5,7 @@
 -define(KEEPALIVE, 0).
 -define(LIST, 1).
 -define(GET, 2).
+-define(QRY, 3).
 
 
 -export([start_link/4]).
@@ -34,6 +35,13 @@ loop(Socket, Transport) ->
             {M, T, C} = metric_tcp_proto:decode_get(G),
             io:format(">~s@~p: ~p~n", [M, T, C]),
             {ok, Data} = metric:get(M, T, C),
+            Transport:send(Socket, Data),
+            loop(Socket, Transport);
+        {ok, <<?QRY, Q/binary>>} ->
+            io:format("query~n"),
+            QB = metric_tcp_proto:decode_qry(Q),
+            io:format(">~s~n", [QB]),
+            Data = metric_qry_parser:execute(metric_qry_parser:parse(QB)),
             Transport:send(Socket, Data),
             loop(Socket, Transport);
         {error,timeout} ->
