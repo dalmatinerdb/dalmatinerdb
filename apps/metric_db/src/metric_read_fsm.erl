@@ -240,7 +240,7 @@ merge([], D) ->
 merge([D | R], D) ->
     merge(R, D);
 merge([D0 | R], D1) ->
-    merge(R, mstore_bin:combine(D1, D0)).
+    merge(R, mmath_bin:combine(D1, D0)).
 
 
 %% @pure

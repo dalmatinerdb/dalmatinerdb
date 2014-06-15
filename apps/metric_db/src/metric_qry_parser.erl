@@ -84,22 +84,22 @@ execute({get, M, {range, A, B}}) ->
     {ok, V} = metric:get(M, A, B),
     V;
 execute({derivate, C}) ->
-    mstore_aggr:derivate(execute(C));
+    mmath_aggr:derivate(execute(C));
 execute({scale, S, C}) ->
-    mstore_aggr:scale(execute(C), S);
+    mmath_aggr:scale(execute(C), S);
 execute({min, N, C}) ->
-    mstore_aggr:min(execute(C), N);
+    mmath_aggr:min(execute(C), N);
 execute({max, N, C}) ->
-    mstore_aggr:max(execute(C), N);
+    mmath_aggr:max(execute(C), N);
 execute({avg, N, C}) ->
-    mstore_aggr:avg(execute(C), N);
+    mmath_aggr:avg(execute(C), N);
 execute({sum, N, C}) ->
-    mstore_aggr:sum(execute(C), N);
+    mmath_aggr:sum(execute(C), N);
 
 execute({to_list, C}) ->
     D = execute(C),
-    L = mstore_bin:to_list(D),
-    case mstore_bin:find_type(D) of
+    L = mmath_bin:to_list(D),
+    case mmath_bin:find_type(D) of
         float ->
             << <<(f2b(V))/binary, " ">> || V <- L >>;
         _ ->
