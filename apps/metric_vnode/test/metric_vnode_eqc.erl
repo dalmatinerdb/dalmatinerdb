@@ -150,7 +150,9 @@ prop_handoff() ->
 unlist([E]) ->
     E.
 
+-ifndef(EQC_NUM_TESTS).
 -define(EQC_NUM_TESTS, 100).
+-endif.
 -include("eqc_helper.hrl").
 -endif.
 -endif.

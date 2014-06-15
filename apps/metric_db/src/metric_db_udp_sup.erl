@@ -74,10 +74,11 @@ init([]) ->
                     _ ->
                         1
                 end,
-    Children = [{metric_db_udp, {metric_db_udp, start_link, [Prt]},
+    Children = [{list_to_atom("metric_db_udp_" ++ integer_to_list(Prt)),
+                 {metric_db_udp, start_link, [Prt]},
                  Restart, Shutdown, Type, [metric_db_udp]} ||
                    Prt <- lists:seq(Port, Port + Listeners - 1)],
-        {ok, {SupFlags, [Children]}}.
+    {ok, {SupFlags, Children}}.
 
 
 %%%===================================================================

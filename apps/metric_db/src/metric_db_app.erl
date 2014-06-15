@@ -24,8 +24,7 @@ start(_StartType, _StartArgs) ->
                 end,
     {ok, _} = ranch:start_listener(metric_tcp, Listeners,
                                    ranch_tcp, [{port, Port}],
-                                   echo_protocol, []
-                                  ),
+                                   metric_tcp, []),
     metric_db_sup:start_link().
 
 stop(_State) ->
