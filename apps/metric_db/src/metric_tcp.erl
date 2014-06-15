@@ -5,7 +5,7 @@
 -define(KEEPALIVE, 0).
 -define(LIST, 1).
 -define(GET, 2).
--define(QRY, 3).
+-define(QRY, $q).
 
 
 -export([start_link/4]).

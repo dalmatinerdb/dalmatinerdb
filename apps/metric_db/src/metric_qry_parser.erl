@@ -29,11 +29,21 @@ range(["BETWEEN", A, "AND", B | L]) ->
     Ad = date(A),
     metric(L, {range, Ad, date(B) - Ad}).
 
+metric(["FROM", "SUM", "OF", M | L], Acc) ->
+    aggregate(L, {mget, sum, b(M), Acc});
+
+metric(["FROM", "AVG", "OF", M | L], Acc) ->
+    aggregate(L, {mget, avg, b(M), Acc});
+
 metric(["FROM", M | L], Acc) ->
     aggregate(L, {get, b(M), Acc}).
 
+aggregate(["\r\n"], Acc) ->
+    Acc;
 aggregate([], Acc) ->
     Acc;
+aggregate(["AS", "LIST\r\n"], Acc) ->
+    {to_list, Acc};
 aggregate(["AS", "LIST"], Acc) ->
     {to_list, Acc};
 aggregate(["DERIVATE" | L], Acc) ->
@@ -61,11 +71,18 @@ unparse({range, A, B}, Acc) ->
     lists:flatten(["SELECT BETWEEN ", integer_to_list(A), " AND ",
                    integer_to_list(A+B), " " | Acc]);
 
+unparse({mget, sum, M, C}, Acc) ->
+    unparse(C, ["FROM SUM OF ", binary_to_list(M), " " | Acc]);
+
+unparse({mget, avg, M, C}, Acc) ->
+    unparse(C, ["FROM AVG OF ", binary_to_list(M), " " | Acc]);
+
 unparse({get, M, C}, Acc) ->
     unparse(C, ["FROM ", binary_to_list(M), " " | Acc]);
 
 unparse({derivate, C}, Acc) ->
     unparse(C, ["DERIVATE " | Acc]);
+
 unparse({scale, S, C}, Acc) ->
     unparse(C, ["SCALE BY ", float_to_list(S), " " | Acc]);
 
@@ -79,6 +96,15 @@ unparse({avg, N, C}, Acc) ->
 unparse({sum, N, C}, Acc) ->
     unparse(C, ["SUM OVER ", integer_to_list(N), " " | Acc]).
 
+execute({mget, sum, G, {range, A, B}}) ->
+    {ok, Ms} = metric:list(),
+    Ms1 = glob_match(G, Ms),
+    mmath_comb:sum([begin {ok, V} = metric:get(M, A, B), V end || M <- Ms]);
+
+execute({mget, avg, G, {range, A, B}}) ->
+    {ok, Ms} = metric:list(),
+    Ms1 = glob_match(G, Ms),
+    mmath_comb:avg([begin {ok, V} = metric:get(M, A, B), V end || M <- Ms]);
 
 execute({get, M, {range, A, B}}) ->
     {ok, V} = metric:get(M, A, B),

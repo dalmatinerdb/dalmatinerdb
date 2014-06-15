@@ -28,7 +28,12 @@ qry_tree() ->
                        ])).
 
 qry_tree(Size) ->
-    ?LAZY(oneof([{get, non_empty_binary(), {range, int(), int()}} || Size == 0] ++
+    ?LAZY(oneof([
+                 oneof([
+                        {get, non_empty_binary(), {range, int(), int()}},
+                        {mget, sum, non_empty_binary(), {range, int(), int()}},
+                        {mget, avg, non_empty_binary(), {range, int(), int()}}
+                       ]) || Size == 0] ++
               [{derivate, qry_tree(Size -1)} || Size > 0] ++
               [{scale, real(), qry_tree(Size -1)} || Size > 0] ++
               [{min, int(), qry_tree(Size -1)} || Size > 0] ++
