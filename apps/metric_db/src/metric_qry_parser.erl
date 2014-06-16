@@ -38,12 +38,8 @@ metric(["FROM", "AVG", "OF", M | L], Acc) ->
 metric(["FROM", M | L], Acc) ->
     aggregate(L, {get, b(M), Acc}).
 
-aggregate(["\r\n"], Acc) ->
-    Acc;
 aggregate([], Acc) ->
     Acc;
-aggregate(["AS", "LIST\r\n"], Acc) ->
-    {to_list, Acc};
 aggregate(["AS", "LIST"], Acc) ->
     {to_list, Acc};
 aggregate(["DERIVATE" | L], Acc) ->
