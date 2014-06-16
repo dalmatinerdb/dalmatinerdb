@@ -33,12 +33,12 @@ loop(Socket, Transport) ->
             Transport:send(Socket, <<Ms2/binary, "\r\n">>),
             loop(Socket, Transport);
         {ok, <<"e ", D/binary>>} ->
-            QT = do_query_prep,
+            QT = do_query_prep(D),
             R = io_lib:format("~p\n\r", [QT]),
             Transport:send(Socket, list_to_binary(R)),
             loop(Socket, Transport);
         {ok, <<"explain ", D/binary>>} ->
-            QT = do_query_prep,
+            QT = do_query_prep(D),
             R = io_lib:format("~p\n\r", [QT]),
             Transport:send(Socket, list_to_binary(R)),
             loop(Socket, Transport);

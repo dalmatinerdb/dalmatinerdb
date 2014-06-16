@@ -95,12 +95,12 @@ unparse({sum, N, C}, Acc) ->
 execute({mget, sum, G, {range, A, B}}) ->
     {ok, Ms} = metric:list(),
     Ms1 = glob_match(G, Ms),
-    mmath_comb:sum([begin {ok, V} = metric:get(M, A, B), V end || M <- Ms]);
+    mmath_comb:sum([begin {ok, V} = metric:get(M, A, B), V end || M <- Ms1]);
 
 execute({mget, avg, G, {range, A, B}}) ->
     {ok, Ms} = metric:list(),
     Ms1 = glob_match(G, Ms),
-    mmath_comb:avg([begin {ok, V} = metric:get(M, A, B), V end || M <- Ms]);
+    mmath_comb:avg([begin {ok, V} = metric:get(M, A, B), V end || M <- Ms1]);
 
 execute({get, M, {range, A, B}}) ->
     {ok, V} = metric:get(M, A, B),
