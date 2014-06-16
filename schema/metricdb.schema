@@ -1,88 +1,56 @@
 %% -*- erlang -*-
 
-%% @doc Number of acceptor processes to keep around for websocket connections.
-{mapping, "accpetors", "metricdb.accpetors",
+%% @doc The udp port metricdb listens to
+{mapping, "udp_port", "metric_db.udp_port",
+ [{default, {{udp_port}} },
+  {datatype, integer}]}.
+
+%% @doc The number of udp listeners, each one gets a own port startting from
+%% udp_port.
+{mapping, "udp_listeners", "metric_db.udp_listeners",
+ [{default, 1},
+  {datatype, integer}]}.
+
+%% @doc The tcp port metricdb listens on for the tcp API
+{mapping, "tcp_port", "metric_db.tcp_port",
+ [{default, {{tcp_port}} },
+  {datatype, integer}]}.
+
+%% @doc Number of acceptor processes to keep around for tcp connections.
+{mapping, "tcp_listeners", "metric_db.tcp_listeners",
  [{default, 100},
   {datatype, integer}]}.
 
-%% @doc The port metricdb listens on for websockets
-{mapping, "http_port", "metricdb.http_port",
- [{default, {{http_port}} },
+%% @doc The port metricdb listens on for telnet connections
+{mapping, "telnet_port", "metric_db.telnet_port",
+ [{default, {{telnet_port}} },
   {datatype, integer}]}.
 
-%% @doc The TCP endpoint that will be broadcasted.
-{mapping, "ip", "mdns_server_lib.listener",
- [{default, {"{{metricdb_ip}}", {{tcp_port}} }},
-  {datatype, ip}]}.
+%% @doc Number of acceptor processes to keep around for telnet connections.
+{mapping, "telnet_listeners", "metric_db.telnet_listeners",
+ [{default, 100},
+  {datatype, integer}]}.
 
-{translation,
- "mdns_client_lib.interface",
- fun(Conf) ->
-         {IP, _Port} = cuttlefish:conf_get("ip", Conf),
-         [A, B, C, D] = [list_to_integer(O) ||
-                            O <- re:split(IP, "\\.", [{return, list}])],
-         {A, B, C, D}
- end
-}.
 
-{translation,
- "mdns_server_lib.interface",
- fun(Conf) ->
-         {IP, _Port} = cuttlefish:conf_get("ip", Conf),
-         [A, B, C, D] = [list_to_integer(O) ||
-                            O <- re:split(IP, "\\.", [{return, list}])],
-         {A, B, C, D}
- end
-}.
+%% @doc the number of chash buckets used for each vnode's mstore backend
+{mapping, "chash_size", "metric_vnode.chash_size",
+ [{datatype, integer},
+  {default, 8},
+  {commented, 32},
+  {validators, ["ring_size"]}
+ ]}.
 
-{translation,
- "metricdb.tcp_port",
- fun(Conf) ->
-         {_IP, Port} = cuttlefish:conf_get("ip", Conf),
-         Port
- end
-}.
-
-%% @doc The mDNS domain this installation is part of
-{mapping, "domain", "mdns_server_lib.domain",
- [{default, ".local"},
-  {commented, ".local"},
-  {datatype, string}]}.
-
-%% @doc The livetime of a broadcast, alsot he rebroadcast frequency
-{mapping, "broadcast_interval", "mdns_server_lib.ttl",
- [{default, 120},
-  {commented, 120},
-  {datatype, {duration, s}}]}.
+%% @doc The datapoints stored per file, default equals 1 week of data
+%% in a 1 second resolution.
+{mapping, "points_per_file", "metric_vnode.points_per_file",
+ [{datatype, integer},
+  {default, 604800}]}.
 
 %% @doc The path data gets stored into.
 {mapping, "data_dir", "riak_core.platform_data_dir",
  [{default, "{{platform_data_dir}}"},
   {datatype, string}]}.
 
-
-
-%% @doc The default TCP handler, there is very very very
-%% rarely any reason to change this.
-{mapping, "tcp_callback", "mdns_server_lib.handler",
- [{datatype, string},
-  {level, advanced},
-  {default, "metricdb_tcp_protocol"}]}.
-
-{translation,
- "mdns_server_lib.handler",
- fun(Conf) ->
-         Setting = cuttlefish:conf_get("tcp_callback", Conf),
-         list_to_atom(Setting)
- end
-}.
-
-
-%% @doc The default Service that is announced, ther eis very very
-%% rarely any reason to change this.
-{mapping, "service", "mdns_server_lib.service",
- [{datatype, string},
-  {default, "metricdb"}]}.
 
 %% @doc Default ring creation size.  Make sure it is a power of 2,
 %% e.g. 16, 32, 64, 128, 256, 512 etc
@@ -123,4 +91,3 @@
  [{datatype, integer},
   {default, 3},
   {commented, 3}]}.
-

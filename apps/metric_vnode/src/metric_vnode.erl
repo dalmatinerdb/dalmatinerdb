@@ -144,7 +144,7 @@ terminate(_Reason, _State) ->
 
 
 new_store(Partition) ->
-    DataDir = case application:get_env(metric_vnode, data_dir) of
+    DataDir = case application:get_env(riak_core, platform_data_dir) of
                   {ok, DD} ->
                       DD;
                   _ ->
