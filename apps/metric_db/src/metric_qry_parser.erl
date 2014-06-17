@@ -23,11 +23,15 @@ parse(L) when is_list(L) ->
     initial(Tokens).
 
 initial(["SELECT" | L]) ->
-    range(L).
+    range(L);
+initial(L) ->
+    {error, undefeind, L}.
 
 range(["BETWEEN", A, "AND", B | L]) ->
     Ad = date(A),
-    metric(L, {range, Ad, date(B) - Ad}).
+    metric(L, {range, Ad, date(B) - Ad});
+range(L) ->
+    {error, undefeind, L}.
 
 metric(["FROM", "SUM", "OF", M | L], Acc) ->
     aggregate(L, {mget, sum, b(M), Acc});
@@ -36,7 +40,9 @@ metric(["FROM", "AVG", "OF", M | L], Acc) ->
     aggregate(L, {mget, avg, b(M), Acc});
 
 metric(["FROM", M | L], Acc) ->
-    aggregate(L, {get, b(M), Acc}).
+    aggregate(L, {get, b(M), Acc});
+metric(L, Acc) ->
+    {error, Acc, L}.
 
 aggregate([], Acc) ->
     Acc;
@@ -55,7 +61,10 @@ aggregate(["MAX", "OF", N | L], Acc) ->
 aggregate(["AVG", "OVER", N | L], Acc) ->
     aggregate(L, {avg, i(N), Acc});
 aggregate(["SUM", "OVER", N | L], Acc) ->
-    aggregate(L, {sum, i(N), Acc}).
+    aggregate(L, {sum, i(N), Acc});
+aggregate(L, Acc) ->
+    {error, Acc, L}.
+
 
 unparse({to_list, T}) ->
     unparse(T, "AS LIST");

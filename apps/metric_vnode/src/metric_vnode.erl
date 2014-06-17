@@ -1,7 +1,6 @@
 -module(metric_vnode).
 -behaviour(riak_core_vnode).
 
-
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 
 -export([start_vnode/1,
@@ -141,7 +140,6 @@ handle_exit(_PID, _Reason, State) ->
 
 terminate(_Reason, _State) ->
     ok.
-
 
 new_store(Partition) ->
     DataDir = case application:get_env(riak_core, platform_data_dir) of
