@@ -63,8 +63,10 @@ non_empty_list(T) ->
 
 vnode(Size) ->
     ?LAZY(oneof([{call, ?MODULE, new, []} || Size == 0]
-                ++ [{call, ?MODULE, put, [vnode(Size-1), offset(), non_empty_list(non_z_int())]}  || Size > 0]
-                ++ [{call, ?MODULE, repair, [vnode(Size-1), offset(), non_empty_list(non_z_int())]}  || Size > 0]
+                ++ [?LETSHRINK([V], [vnode(Size-1)],
+                               {call, ?MODULE, put, [V, offset(), non_empty_list(non_z_int())]})  || Size > 0]
+                ++ [?LETSHRINK([V], [vnode(Size-1)],
+                               {call, ?MODULE, repair, [V, offset(), non_empty_list(non_z_int())]})  || Size > 0]
                )).
 %%%-------------------------------------------------------------------
 %%% Properties
