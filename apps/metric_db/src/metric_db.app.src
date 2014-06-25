@@ -8,6 +8,7 @@
                   stdlib,
                   metric_vnode,
                   riak_core,
+                  eflame,
                   ranch
                  ]},
   {mod, { metric_db_app, []}},

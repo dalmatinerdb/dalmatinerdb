@@ -46,7 +46,7 @@ rel: all
 	$(REBAR) generate
 
 relclean:
-	rm -rf rel/metric_db
+	rm -rf rel/metricdb
 
 devrel: dev1 dev2 dev3 dev4
 
@@ -64,7 +64,7 @@ docs:
 ##
 
 stage : rel
-	$(foreach dep,$(wildcard deps/* wildcard apps/*), rm -rf rel/metric_db/lib/$(shell basename $(dep))-* && ln -sf $(abspath $(dep)) rel/metric_db/lib;)
+	$(foreach dep,$(wildcard deps/* wildcard apps/*), rm -rf rel/metricdb/lib/$(shell basename $(dep))-* && ln -sf $(abspath $(dep)) rel/metricdb/lib;)
 
 
 stagedevrel: dev1 dev2 dev3 dev4

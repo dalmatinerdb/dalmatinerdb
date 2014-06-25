@@ -2,9 +2,8 @@
 
 -define(METRIC_SIZE, 16).
 
--export([encode_metrics/1, decode_metrics/1, encode_get/3, decode_get/1,
-         encode_qry/1, decode_qry/1]).
--ignore_xref([encode_metrics/1, decode_metrics/1, encode_get/3, decode_get/1, encode_qry/1]).
+-export([encode_metrics/1, decode_metrics/1, encode_get/3, decode_get/1]).
+-ignore_xref([encode_metrics/1, decode_metrics/1, encode_get/3, decode_get/1]).
 
 encode_metrics(Ms) ->
     Data = << <<(byte_size(M)):?METRIC_SIZE/integer, M/binary>> ||  M <- Ms >>,
@@ -23,9 +22,3 @@ decode_get(<<_L:?METRIC_SIZE/integer, M:_L/binary, T:64/integer, C:32/integer>>)
 
 encode_get(M, T, C) ->
     <<(byte_size(M)):?METRIC_SIZE/integer, M/binary, T:64/integer, C:32/integer>>.
-
-encode_qry(Q) ->
-    <<(byte_size(Q)):?METRIC_SIZE/integer, Q/binary>>.
-
-decode_qry(<<_L:?METRIC_SIZE/integer, Q:_L/binary>>) ->
-    Q.

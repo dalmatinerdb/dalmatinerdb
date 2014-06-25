@@ -21,17 +21,6 @@
  [{default, 100},
   {datatype, integer}]}.
 
-%% @doc The port metricdb listens on for telnet connections
-{mapping, "telnet_port", "metric_db.telnet_port",
- [{default, {{telnet_port}} },
-  {datatype, integer}]}.
-
-%% @doc Number of acceptor processes to keep around for telnet connections.
-{mapping, "telnet_listeners", "metric_db.telnet_listeners",
- [{default, 100},
-  {datatype, integer}]}.
-
-
 %% @doc the number of chash buckets used for each vnode's mstore backend
 {mapping, "chash_size", "metric_vnode.chash_size",
  [{datatype, integer},

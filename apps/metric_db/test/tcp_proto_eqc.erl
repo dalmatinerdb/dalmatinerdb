@@ -29,10 +29,6 @@ prop_encode_decode_get() ->
     ?FORALL({M, T, C}, {non_empty_binary(), choose(0, 5000), choose(1, 5000)},
             {M, T, C} == metric_tcp_proto:decode_get(metric_tcp_proto:encode_get(M, T, C))).
 
-prop_encode_decode_qry() ->
-    ?FORALL(Q, non_empty_binary(),
-            Q == metric_tcp_proto:decode_qry(metric_tcp_proto:encode_qry(Q))).
-
 -include("eqc_helper.hrl").
 -endif.
 -endif.

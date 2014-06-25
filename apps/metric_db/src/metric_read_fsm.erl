@@ -231,17 +231,9 @@ merge(Replies) ->
     case [Data || {_, Data} <- Replies, is_binary(Data)] of
         [] ->
             not_found;
-        [D0 | Ds] ->
-            merge(Ds, D0)
+        Ds ->
+            mmath_comb:merge(Ds)
     end.
-
-merge([], D) ->
-    D;
-merge([D | R], D) ->
-    merge(R, D);
-merge([D0 | R], D1) ->
-    merge(R, mmath_bin:combine(D1, D0)).
-
 
 %% @pure
 %%
