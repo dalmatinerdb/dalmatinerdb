@@ -10,8 +10,6 @@
 
 -behaviour(gen_server).
 
--include_lib("mstore/include/mstore.hrl").
-
 %% API
 -export([start_link/1]).
 
@@ -105,7 +103,7 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_data(<<0, T:64/integer, L:16/integer, Metric:L/binary, S:16/integer,
-              Data:S/binary, R/binary>>) when (S rem ?DATA_SIZE) == 0 ->
+              Data:S/binary, R/binary>>) ->
     metric:put(Metric, T, Data),
     handle_data(R);
 handle_data(_) ->
