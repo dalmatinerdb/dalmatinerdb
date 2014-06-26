@@ -92,8 +92,10 @@ handle_call(_Request, _From, State) ->
 handle_cast(loop, State = #state{sock=S}) ->
     case gen_udp:recv(S, 8192, 1000) of
         {ok, {_Address, _Port,
-              <<0, T:64/integer, L:16/integer, Metric:L/binary, Data/binary>>}} ->
-            metric:put(Metric, T, Data);
+              <<0, T:64/integer, L:16/integer, Metric:L/binary, S:16/integer,
+                Data:S/binary, R:binary>>}} ->
+            metric:put(Metric, T, Data),
+            handle_data(R);
         {ok, {Address, Port,
               <<1, T:64/integer, Count:64/integer, Metric/binary>>}} ->
             {ok, Data} = metric:get(Metric, T, Count),
@@ -106,6 +108,13 @@ handle_cast(loop, State = #state{sock=S}) ->
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
+
+handle_data(<<0, T:64/integer, L:16/integer, Metric:L/binary, S:16/integer,
+              Data:S/binary, R/binary>>) ->
+    metric:put(Metric, T, Data),
+    handle_data(R);
+handle_data(_) ->
+    ok.
 
 %%--------------------------------------------------------------------
 %% @private

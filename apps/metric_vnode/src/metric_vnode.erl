@@ -32,10 +32,12 @@
               repair/3
              ]).
 
--record(state, {partition,
-                node,
-                mstore
-               }).
+-record(state, {
+          partition,
+          node,
+          mstore,
+          tab
+         }).
 
 -define(MASTER, metric_vnode_master).
 
