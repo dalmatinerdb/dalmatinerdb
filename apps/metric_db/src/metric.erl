@@ -14,9 +14,12 @@
 
 
 mput(Nodes, Acc) ->
-    dict:map(fun(DocIdx, Data) ->
-                     do_mput(orddict:fetch(DocIdx, Nodes), Data, 1)
-             end, Acc).
+    dict:fold(fun(DocIdx, Data, ok) ->
+                      do_mput(orddict:fetch(DocIdx, Nodes), Data, 1);
+                 (DocIdx, Data, R) ->
+                      do_mput(orddict:fetch(DocIdx, Nodes), Data, 1),
+                      R
+              end, ok, Acc).
 
 put(Metric, Time, Value) ->
     do_put(Metric, Time, Value, 1, 1).
