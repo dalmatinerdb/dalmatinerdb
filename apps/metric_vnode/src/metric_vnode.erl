@@ -21,7 +21,6 @@
          handle_exit/3]).
 
 -define(WEEK, 604800). %% Seconds in a week.
--define(CACHE_TIME, 10).
 -export([put/4, get/4]).
 
 -ignore_xref([
@@ -37,7 +36,9 @@
           partition,
           node,
           mstore,
-          tbl
+          tbl,
+          cnt_tbl,
+          ct = 10
          }).
 
 -define(MASTER, metric_vnode_master).
@@ -48,10 +49,18 @@ start_vnode(I) ->
 
 init([Partition]) ->
     P = list_to_atom(integer_to_list(Partition)),
+    CT = case application:get_env(metric_vnode, cache_points) of
+             {ok, V} ->
+                 V;
+             _ ->
+                 10
+         end,
     {ok, #state { partition = Partition,
                   node = node(),
                   mstore = new_store(Partition),
-                  tbl = ets:new(P, [public, ordered_set])
+                  tbl = ets:new(P, [public, bag]),
+                  cnt_tbl = ets:new(P, [public, set]),
+                  ct = CT
                 }}.
 
 repair(IdxNode, Metric, {Time, Obj}) ->
@@ -84,60 +93,60 @@ handle_command(ping, _Sender, State) ->
     {reply, {pong, State#state.partition}, State};
 
 handle_command({repair, Metric, Time, Value}, _Sender,
-               #state{mstore=MSet, tbl=T}=State) ->
-    MSet1 = case ets:lookup(T, Metric) of
-                [{Metric, Start, _Time, V}] ->
-                    ets:delete(T, Metric),
-                    mstore:put(MSet, Metric, Start, V);
-                _ ->
-                    MSet
-            end,
+               State) ->
+    MSet1 = flush_metric(State, Metric),
     MSet2 = mstore:put(MSet1, Metric, Time, Value),
     {noreply, State#state{mstore=MSet2}};
 
 handle_command({put, {ReqID, _}, Metric, {Time, Value}}, _Sender,
-               #state{mstore=MSet, tbl=T} = State) ->
-    case ets:lookup(T, Metric) of
-        [{Metric, Start, Time, V}]
-          when (Time - Start) < ?CACHE_TIME ->
-            ets:update_element(T, Metric,
-                               [{3, Time + mmath_bin:length(Value)},
-                                {4, <<V/binary, Value/binary>>}]),
-            {reply, {ok, ReqID}, State};
-        [{Metric, Start, Time, V}] ->
-            MSet1 = mstore:put(MSet, Metric, Start, <<V/binary, Value/binary>>),
-            ets:delete(T, Metric),
-            {reply, {ok, ReqID}, State#state{mstore=MSet1}};
-        [{Metric, Start, _, V}] ->
-            ets:update_element(T, Metric,
-                               [{2,Time},
-                                {3, Time + mmath_bin:length(Value)},
-                                {4, Value}]),
-            MSet1 = mstore:put(MSet, Metric, Start, V),
+               #state{tbl=T, cnt_tbl=C} = State) ->
+    ets:insert(T, {Metric, Time, Value}),
+    case ets:lookup(C, Metric) of
+        [{Metric, Cnt}] when Cnt == State#state.ct ->
+            MSet1 = flush_metric(State, Metric),
             {reply, {ok, ReqID}, State#state{mstore=MSet1}};
         [] ->
-            ets:insert(T, {Metric, Time, Time + mmath_bin:length(Value), Value}),
+            ets:insert(C, {Metric, 0}),
+            {reply, {ok, ReqID}, State};
+        _ ->
+            ets:update_counter(C, Metric, 1),
             {reply, {ok, ReqID}, State}
     end;
 
 handle_command({get, ReqID, Metric, {Time, Count}}, _Sender,
-               #state{mstore=MSet, partition=Partition, node=Node, tbl=T} = State) ->
-    MSet1 = case ets:lookup(T, Metric) of
-                [{Metric, Start, _Time, V}] ->
-                    ets:delete(T, Metric),
-                    mstore:put(MSet, Metric, Start, V);
-                _ ->
-                    MSet
-            end,
+               #state{partition=Partition, node=Node} = State) ->
+    MSet1 = flush_metric(State, Metric),
     {ok, Data} = mstore:get(MSet1, Metric, Time, Count),
     {reply, {ok, ReqID, {Partition, Node}, Data}, State#state{mstore=MSet1}};
 
 handle_command(_Message, _Sender, State) ->
     {noreply, State}.
 
+flush_metric(#state{mstore=MSet, tbl=Tbl, cnt_tbl=C}, Metric) ->
+    case lists:sort(ets:lookup(Tbl, Metric)) of
+        [] ->
+            MSet;
+        [{_, T, V} | R] ->
+            ets:insert(C, {Metric, 0}),
+            ets:delete(Tbl, Metric),
+            push_metric(MSet, Metric, T, V, T + mmath_bin:length(V), R)
+    end.
+
+push_metric(MSet, Metric, T, V, _, []) ->
+    mstore:put(MSet, Metric, T, V);
+
+push_metric(MSet, Metric, T, V, N, [{_, N, V1} | R]) ->
+    push_metric(MSet, Metric, T, <<V/binary, V1/binary>>,
+                N + mmath_bin:length(V1), R);
+
+push_metric(MSet, Metric, T, V, _, [{_, T1, V1} | R]) ->
+    MSet1 = mstore:put(MSet, Metric, T, V),
+    push_metric(MSet1, Metric, T1, V1,
+                T + mmath_bin:length(V1), R).
+
 handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender,
                        State=#state{mstore=M, tbl=T}) ->
-    M1 = ets:foldl(fun({Metric, Start, _, V}, MAcc) ->
+    M1 = ets:foldl(fun({Metric, Start, V}, MAcc) ->
                            mstore:put(MAcc, Metric, Start, V)
                    end, M, T),
     ets:delete_all_objects(T),
