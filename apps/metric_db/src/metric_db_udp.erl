@@ -126,7 +126,7 @@ handle_cast(_Msg, State) ->
 handle_data(<<0, T:64/integer, L:16/integer, Metric:L/binary, S:16/integer,
               Data:S/binary, R/binary>>, CBin, Nodes, Acc) when (S rem ?DATA_SIZE) == 0 ->
     DocIdx = riak_core_util:chash_key({<<"metric">>, Metric}),
-    Idx = chashbin:responsible_index(DocIdx, CBin),
+    {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
     Acc1 = dict:append(Idx, {Metric, T, Data}, Acc),
     handle_data(R, CBin, Nodes, Acc1);
 handle_data(_, _, Nodes, Acc) ->
