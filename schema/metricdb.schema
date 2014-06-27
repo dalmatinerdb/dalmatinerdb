@@ -1,6 +1,5 @@
 %% -*- erlang -*-
 
-%%
 %% @doc The udp port metricdb listens to
 {mapping, "udp_port", "metric_db.udp_port",
  [{default, {{udp_port}} },
@@ -35,13 +34,6 @@
 {mapping, "points_per_file", "metric_vnode.points_per_file",
  [{datatype, integer},
   {default, 604800}]}.
-
-%% @doc How many datapoints are cached before being written to disk. This
-%% is a maximum value, writes also occour before a specific metric is read,
-%% this effects lost data on crashes.
-{mapping, "cache_points", "metric_vnode.cache_points",
- [{datatype, integer},
-  {default, 10}]}.
 
 %% @doc The path data gets stored into.
 {mapping, "data_dir", "riak_core.platform_data_dir",
