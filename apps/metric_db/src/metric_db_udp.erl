@@ -59,7 +59,13 @@ loop(Pid) ->
 %% @end
 %%--------------------------------------------------------------------
 init([Port]) ->
-    {ok, Sock} = gen_udp:open(Port, [binary, {active, false}]),
+    RB = case application:get_env(metric_db, udp_buffer) of
+             {ok, V} ->
+                 V;
+             _ ->
+                 32768
+         end,
+    {ok, Sock} = gen_udp:open(Port, [binary, {active, false}, {recbuf, RB}]),
     loop(self()),
     {ok, #state{sock=Sock, port=Port}}.
 

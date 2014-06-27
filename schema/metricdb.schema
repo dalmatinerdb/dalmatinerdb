@@ -1,9 +1,15 @@
 %% -*- erlang -*-
 
+%%
 %% @doc The udp port metricdb listens to
 {mapping, "udp_port", "metric_db.udp_port",
  [{default, {{udp_port}} },
   {datatype, integer}]}.
+
+%% @doc The buffer size for UDP
+{mapping, "udp_buffer", "metric_db.udp_buffer",
+ [{default, 32768},
+  {datatype, bytesize}]}.
 
 %% @doc The number of udp listeners, each one gets a own port startting from
 %% udp_port.
@@ -35,11 +41,17 @@
  [{datatype, integer},
   {default, 604800}]}.
 
+%% @doc How many datapoints are cached before being written to disk. This
+%% is a maximum value, writes also occour before a specific metric is read,
+%% this effects lost data on crashes.
+{mapping, "cache_points", "metric_vnode.cache_points",
+ [{datatype, integer},
+  {default, 10}]}.
+
 %% @doc The path data gets stored into.
 {mapping, "data_dir", "riak_core.platform_data_dir",
  [{default, "{{platform_data_dir}}"},
   {datatype, string}]}.
-
 
 %% @doc Default ring creation size.  Make sure it is a power of 2,
 %% e.g. 16, 32, 64, 128, 256, 512 etc
