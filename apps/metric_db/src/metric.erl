@@ -20,10 +20,32 @@ ping() ->
     riak_core_vnode_master:sync_spawn_command(IndexNode, ping, metric_vnode_master).
 
 put(Metric, Time, Value) ->
-    metric_write_fsm:async_write({metric_vnode, metric}, put, Metric, {Time, Value}).
+    do_put(Metric, Time, Value, 1, 1).
 
 get(Metric, Time, Count) ->
     metric_read_fsm:start({metric_vnode, metric}, get, Metric, {Time, Count}).
 
 list() ->
     metric_coverage:start(metrics).
+
+do_put(Metric, Time, Value, N, W) ->
+    DocIdx = riak_core_util:chash_key({<<"metric">>, Metric}),
+    Preflist = riak_core_apl:get_apl(DocIdx, N, metric),
+    ReqID = mk_reqid(),
+    metric_vnode:put(Preflist, {ReqID, node()}, Metric, {Time, Value}),
+    do_wait(W, ReqID).
+
+do_wait(0, _ReqID) ->
+    ok;
+
+do_wait(W, ReqID) ->
+    receive
+        {ok, ReqID} ->
+            do_wait(W - 1, ReqID)
+    after
+        1000 ->
+            {error, timeout}
+    end.
+
+mk_reqid() ->
+    erlang:phash2(erlang:now()).

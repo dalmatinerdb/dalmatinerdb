@@ -11,6 +11,7 @@
 
 %% API
 -export([start_link/5, start_link/6, mk_reqid/0, write/3, write/4, async_write/4]).
+-ignore_xref([start_link/5, start_link/6, mk_reqid/0, write/3, write/4, async_write/4]).
 
 %% Callbacks
 -export([init/1, code_change/4, handle_event/3, handle_info/3,

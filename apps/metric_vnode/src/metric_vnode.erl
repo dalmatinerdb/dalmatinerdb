@@ -77,7 +77,7 @@ put(Preflist, ReqID, Metric, {Time, Value}) when is_integer(Value) ->
 put(Preflist, ReqID, Metric, {Time, Value}) ->
     riak_core_vnode_master:command(Preflist,
                                    {put, ReqID, Metric, {Time, Value}},
-                                   {fsm, undefined, self()},
+                                   {raw, undefined, self()},
                                    ?MASTER).
 
 get(Preflist, ReqID, Metric, {Time, Count}) ->
