@@ -123,8 +123,7 @@ prepare(timeout, SD0=#state{entity=Entity,
                             system=System,
                             n=N}) ->
 
-    Bucket = list_to_binary(atom_to_list(System)),
-    DocIdx = riak_core_util:chash_key({Bucket, term_to_binary(Entity)}),
+    DocIdx = riak_core_util:chash_key({<<"metric">>, Entity}),
     Prelist = riak_core_apl:get_apl(DocIdx, N, System),
     SD = SD0#state{preflist=Prelist},
     {next_state, execute, SD, 0}.
