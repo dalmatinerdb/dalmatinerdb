@@ -3,6 +3,7 @@
 -export([
          ping/0,
          put/3,
+         mput/1,
          get/3,
          list/0
         ]).
@@ -19,6 +20,12 @@ ping() ->
     [{IndexNode, _Type}] = PrefList,
     riak_core_vnode_master:sync_spawn_command(IndexNode, ping, metric_vnode_master).
 
+
+mput(Acc) ->
+    dict:map(fun(DocIdx, Data) ->
+                     do_mput(DocIdx, Data, 1, 1)
+             end, Acc).
+
 put(Metric, Time, Value) ->
     do_put(Metric, Time, Value, 1, 1).
 
@@ -31,8 +38,15 @@ list() ->
 do_put(Metric, Time, Value, N, W) ->
     DocIdx = riak_core_util:chash_key({<<"metric">>, Metric}),
     Preflist = riak_core_apl:get_apl(DocIdx, N, metric),
-    ReqID = mk_reqid(),
+    ReqID = make_ref(),
     metric_vnode:put(Preflist, {ReqID, node()}, Metric, {Time, Value}),
+    do_wait(W, ReqID).
+
+
+do_mput(DocIdx, Data, N, W) ->
+    Preflist = riak_core_apl:get_apl(DocIdx, N, metric),
+    ReqID = make_ref(),
+    metric_vnode:mput(Preflist, {ReqID, node()}, Data),
     do_wait(W, ReqID).
 
 do_wait(0, _ReqID) ->
@@ -46,6 +60,3 @@ do_wait(W, ReqID) ->
         1000 ->
             {error, timeout}
     end.
-
-mk_reqid() ->
-    erlang:phash2(erlang:now()).

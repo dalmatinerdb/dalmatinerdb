@@ -24,7 +24,7 @@
 -define(SERVER, ?MODULE).
 -define(FAST_LOOP_CNT, 10000).
 
--record(state, {sock, port, recbuf}).
+-record(state, {sock, port, recbuf, cbin}).
 
 %%%===================================================================
 %%% API
@@ -69,7 +69,8 @@ init([Port]) ->
          end,
     {ok, Sock} = gen_udp:open(Port, [binary, {active, false}, {recbuf, RB}]),
     loop(?FAST_LOOP_CNT),
-    {ok, #state{sock=Sock, port=Port, recbuf=RB}}.
+    {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
+    {ok, #state{sock=Sock, port=Port, recbuf=RB, cbin=CBin}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -101,12 +102,13 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast({loop, 0}, State) ->
     loop(?FAST_LOOP_CNT),
-    {noreply, State};
+    {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
+    {noreply, State#state{cbin=CBin}};
 
-handle_cast({loop, N}, State = #state{sock=S}) ->
+handle_cast({loop, N}, State = #state{sock=S, cbin=CBin}) ->
     case gen_udp:recv(S, State#state.recbuf, 100) of
         {ok, {_Address, _Port, D}} ->
-            handle_data(D),
+            handle_data(D, CBin, dict:new()),
             handle_cast({loop, N-1}, State);
         _ ->
             loop(?FAST_LOOP_CNT),
@@ -117,10 +119,13 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_data(<<0, T:64/integer, L:16/integer, Metric:L/binary, S:16/integer,
-              Data:S/binary, R/binary>>) when (S rem ?DATA_SIZE) == 0 ->
-    metric:put(Metric, T, Data),
-    handle_data(R);
-handle_data(_) ->
+              Data:S/binary, R/binary>>, CBin, Acc) when (S rem ?DATA_SIZE) == 0 ->
+    DocIdx = riak_core_util:chash_key({<<"metric">>, Metric}),
+    Idx = chashbin:responsible_index(DocIdx, CBin),
+    Acc1 = dict:append_list(Idx, [{Metric, T, Data}], Acc),
+    handle_data(R, CBin, Acc1);
+handle_data(_, _, Acc) ->
+    metric:mput(Acc),
     ok.
 
 %%--------------------------------------------------------------------

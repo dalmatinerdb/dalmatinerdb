@@ -21,11 +21,12 @@
          handle_exit/3]).
 
 -define(WEEK, 604800). %% Seconds in a week.
--export([put/4, get/4]).
+-export([mput/3, put/4, get/4]).
 
 -ignore_xref([
               start_vnode/1,
               put/4,
+              mput/3,
               get/4,
               repair/4,
               handle_info/2,
@@ -80,6 +81,12 @@ put(Preflist, ReqID, Metric, {Time, Value}) ->
                                    {raw, undefined, self()},
                                    ?MASTER).
 
+mput(Preflist, ReqID, Data) ->
+    riak_core_vnode_master:command(Preflist,
+                                   {mput, ReqID, Data},
+                                   {raw, undefined, self()},
+                                   ?MASTER).
+
 get(Preflist, ReqID, Metric, {Time, Count}) ->
     riak_core_vnode_master:command(Preflist,
                                    {get, ReqID, Metric, {Time, Count}},
@@ -102,37 +109,17 @@ handle_command({repair, Metric, Time, Value}, _Sender,
     MSet2 = mstore:put(MSet1, Metric, Time, Value),
     {noreply, State#state{mstore=MSet2}};
 
+handle_command({mput, {ReqID, _}, Data}, _Sender,
+               #state{mstore=MSet, tbl=T} = State) ->
+    MSet1 = lists:foldl(fun({Metric, Time, Value}, MAcc) ->
+                                do_put(T, MAcc, State#state.ct,Metric, Time, Value)
+                        end, MSet, Data),
+    {reply, {ok, ReqID}, State#state{mstore=MSet1}};
+
 handle_command({put, {ReqID, _}, Metric, {Time, Value}}, _Sender,
                #state{mstore=MSet, tbl=T} = State) ->
-    Len = mmath_bin:length(Value),
-    case ets:lookup(T, Metric) of
-        [{Metric, Start, Time, V}]
-          when (Time - Start) < State#state.ct ->
-            ets:update_element(T, Metric,
-                               [{3, Time + Len},
-                                {4, <<V/binary, Value/binary>>}]),
-            {reply, {ok, ReqID}, State};
-        [{Metric, Start, _Time, V}]
-          when Start == (Time + Len) ->
-            ets:update_element(T, Metric,
-                               [{2, Time},
-                                {4, <<Value/binary, V/binary>>}]),
-            {reply, {ok, ReqID}, State};
-        [{Metric, Start, Time, V}] ->
-            MSet1 = mstore:put(MSet, Metric, Start, <<V/binary, Value/binary>>),
-            ets:delete(T, Metric),
-            {reply, {ok, ReqID}, State#state{mstore=MSet1}};
-        [{Metric, Start, _, V}] ->
-            ets:update_element(T, Metric,
-                               [{2,Time},
-                                {3, Time + Len},
-                                {4, Value}]),
-            MSet1 = mstore:put(MSet, Metric, Start, V),
-            {reply, {ok, ReqID}, State#state{mstore=MSet1}};
-        [] ->
-            ets:insert(T, {Metric, Time, Time + Len, Value}),
-            {reply, {ok, ReqID}, State}
-    end;
+    MSet1 = do_put(T, MSet, State#state.ct, Metric, Time, Value),
+    {reply, {ok, ReqID}, State#state{mstore=MSet1}};
 
 handle_command({get, ReqID, Metric, {Time, Count}}, _Sender,
                #state{mstore=MSet, partition=Partition, node=Node, tbl=T} = State) ->
@@ -240,3 +227,32 @@ new_store(Partition) ->
                     end,
     {ok, MSet} = mstore:new(CHashSize, PointsPerFile, PartitionDir),
     MSet.
+
+do_put(T, MSet, CT, Metric, Time, Value) ->
+    Len = mmath_bin:length(Value),
+    case ets:lookup(T, Metric) of
+        [{Metric, Start, Time, V}]
+          when (Time - Start) < CT ->
+            ets:update_element(T, Metric,
+                               [{3, Time + Len},
+                                {4, <<V/binary, Value/binary>>}]),
+            MSet;
+        [{Metric, Start, _Time, V}]
+          when Start == (Time + Len) ->
+            ets:update_element(T, Metric,
+                               [{2, Time},
+                                {4, <<Value/binary, V/binary>>}]),
+            MSet;
+        [{Metric, Start, Time, V}] ->
+            ets:delete(T, Metric),
+            mstore:put(MSet, Metric, Start, <<V/binary, Value/binary>>);
+        [{Metric, Start, _, V}] ->
+            ets:update_element(T, Metric,
+                               [{2,Time},
+                                {3, Time + Len},
+                                {4, Value}]),
+            mstore:put(MSet, Metric, Start, V);
+        [] ->
+            ets:insert(T, {Metric, Time, Time + Len, Value}),
+            MSet
+    end.
