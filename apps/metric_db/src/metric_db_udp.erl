@@ -24,7 +24,7 @@
 -define(SERVER, ?MODULE).
 -define(FAST_LOOP_CNT, 10000).
 
--record(state, {sock, port}).
+-record(state, {sock, port, recbuf}).
 
 %%%===================================================================
 %%% API
@@ -69,7 +69,7 @@ init([Port]) ->
          end,
     {ok, Sock} = gen_udp:open(Port, [binary, {active, false}, {recbuf, RB}]),
     loop(?FAST_LOOP_CNT),
-    {ok, #state{sock=Sock, port=Port}}.
+    {ok, #state{sock=Sock, port=Port, recbuf=RB}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -104,7 +104,7 @@ handle_cast({loop, 0}, State) ->
     {noreply, State};
 
 handle_cast({loop, N}, State = #state{sock=S}) ->
-    case gen_udp:recv(S, 8192, 100) of
+    case gen_udp:recv(S, State#state.recbuf, 100) of
         {ok, {_Address, _Port, D}} ->
             handle_data(D),
             handle_cast({loop, N-1}, State);
