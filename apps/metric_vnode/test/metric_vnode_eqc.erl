@@ -42,10 +42,14 @@ repair({S, Tr}, T, V) ->
     {S1, Tr1}.
 
 put({S, Tr}, T, Vs) ->
-    ReqID = T,
-    Req = {ReqID, something},
-    Command = {put, Req, ?M, {T, << <<1, V:64/signed-integer>> || V <- Vs >>}},
-    {reply, {ok, ReqID}, S1} = ?V:handle_command(Command, sender, S),
+    Command = {put, ?M, {T, << <<1, V:64/signed-integer>> || V <- Vs >>}},
+    {reply, ok, S1} = ?V:handle_command(Command, sender, S),
+    Tr1 = tree_set(Tr, T, Vs),
+    {S1, Tr1}.
+
+mput({S, Tr}, T, Vs) ->
+    Command = {mput, [{?M, T, << <<1, V:64/signed-integer>> || V <- Vs >>}]},
+    {reply, ok, S1} = ?V:handle_command(Command, sender, S),
     Tr1 = tree_set(Tr, T, Vs),
     {S1, Tr1}.
 
@@ -62,12 +66,15 @@ non_empty_list(T) ->
     ?SUCHTHAT(L, list(T), L =/= []).
 
 vnode(Size) ->
-    ?LAZY(oneof([{call, ?MODULE, new, []} || Size == 0]
-                ++ [?LETSHRINK([V], [vnode(Size-1)],
-                               {call, ?MODULE, put, [V, offset(), non_empty_list(non_z_int())]})  || Size > 0]
-                ++ [?LETSHRINK([V], [vnode(Size-1)],
-                               {call, ?MODULE, repair, [V, offset(), non_empty_list(non_z_int())]})  || Size > 0]
-               )).
+    ?LAZY(oneof(
+            [{call, ?MODULE, new, []} || Size == 0]
+            ++ [?LETSHRINK(
+                   [V], [vnode(Size-1)],
+                   oneof(
+                     [{call, ?MODULE, put, [V, offset(), non_empty_list(non_z_int())]},
+                      {call, ?MODULE, mput, [V, offset(), non_empty_list(non_z_int())]},
+                      {call, ?MODULE, repair, [V, offset(), non_empty_list(non_z_int())]}]))  || Size > 0]
+           )).
 %%%-------------------------------------------------------------------
 %%% Properties
 %%%-------------------------------------------------------------------

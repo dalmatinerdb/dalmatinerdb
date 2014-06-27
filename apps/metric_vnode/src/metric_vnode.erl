@@ -77,14 +77,14 @@ put(Preflist, ReqID, Metric, {Time, Value}) when is_integer(Value) ->
 
 put(Preflist, ReqID, Metric, {Time, Value}) ->
     riak_core_vnode_master:command(Preflist,
-                                   {put, ReqID, Metric, {Time, Value}},
-                                   {raw, undefined, self()},
+                                   {put, Metric, {Time, Value}},
+                                   {raw, ReqID, self()},
                                    ?MASTER).
 
 mput(Preflist, ReqID, Data) ->
     riak_core_vnode_master:command(Preflist,
-                                   {mput, ReqID, Data},
-                                   {raw, undefined, self()},
+                                   {mput, Data},
+                                   {raw, ReqID, self()},
                                    ?MASTER).
 
 get(Preflist, ReqID, Metric, {Time, Count}) ->
@@ -109,17 +109,17 @@ handle_command({repair, Metric, Time, Value}, _Sender,
     MSet2 = mstore:put(MSet1, Metric, Time, Value),
     {noreply, State#state{mstore=MSet2}};
 
-handle_command({mput, {ReqID, _}, Data}, _Sender,
+handle_command({mput, Data}, _Sender,
                #state{mstore=MSet, tbl=T} = State) ->
     MSet1 = lists:foldl(fun({Metric, Time, Value}, MAcc) ->
                                 do_put(T, MAcc, State#state.ct,Metric, Time, Value)
                         end, MSet, Data),
-    {reply, {ok, ReqID}, State#state{mstore=MSet1}};
+    {reply, ok, State#state{mstore=MSet1}};
 
-handle_command({put, {ReqID, _}, Metric, {Time, Value}}, _Sender,
+handle_command({put, Metric, {Time, Value}}, _Sender,
                #state{mstore=MSet, tbl=T} = State) ->
     MSet1 = do_put(T, MSet, State#state.ct, Metric, Time, Value),
-    {reply, {ok, ReqID}, State#state{mstore=MSet1}};
+    {reply, ok, State#state{mstore=MSet1}};
 
 handle_command({get, ReqID, Metric, {Time, Count}}, _Sender,
                #state{mstore=MSet, partition=Partition, node=Node, tbl=T} = State) ->

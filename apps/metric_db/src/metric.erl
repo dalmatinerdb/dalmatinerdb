@@ -39,14 +39,14 @@ do_put(Metric, Time, Value, N, W) ->
     DocIdx = riak_core_util:chash_key({<<"metric">>, Metric}),
     Preflist = riak_core_apl:get_apl(DocIdx, N, metric),
     ReqID = make_ref(),
-    metric_vnode:put(Preflist, {ReqID, node()}, Metric, {Time, Value}),
+    metric_vnode:put(Preflist, ReqID, Metric, {Time, Value}),
     do_wait(W, ReqID).
 
 
 do_mput(DocIdx, Data, N, W) ->
     Preflist = riak_core_apl:get_apl(DocIdx, N, metric),
     ReqID = make_ref(),
-    metric_vnode:mput(Preflist, {ReqID, node()}, Data),
+    metric_vnode:mput(Preflist, ReqID, Data),
     do_wait(W, ReqID).
 
 do_wait(0, _ReqID) ->
@@ -54,7 +54,7 @@ do_wait(0, _ReqID) ->
 
 do_wait(W, ReqID) ->
     receive
-        {ok, ReqID} ->
+        {ReqID, ok} ->
             do_wait(W - 1, ReqID)
     after
         1000 ->
