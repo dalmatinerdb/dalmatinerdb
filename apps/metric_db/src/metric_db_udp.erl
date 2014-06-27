@@ -112,8 +112,11 @@ handle_cast({loop, N}, State = #state{sock=S, cbin=CBin, nodes=Nodes}) ->
             case handle_data(D, CBin, Nodes, dict:new()) of
                 ok ->
                     handle_cast({loop, N-1}, State);
-                _ ->
-                    loop(?FAST_LOOP_CNT)
+                E ->
+                    lager:error("[udp] Fast loop cancled because of: ~p.", [E]),
+                    loop(?FAST_LOOP_CNT),
+                    {noreply, State}
+
             end;
         _ ->
             loop(?FAST_LOOP_CNT),
