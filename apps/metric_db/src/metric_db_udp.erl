@@ -22,6 +22,7 @@
          terminate/2, code_change/3]).
 
 -define(SERVER, ?MODULE).
+-define(FAST_LOOP_CNT, 10000).
 
 -record(state, {sock, port}).
 
@@ -38,11 +39,12 @@
 %%--------------------------------------------------------------------
 start_link(Port) ->
     gen_server:start_link(?MODULE, [Port], []).
-loop() ->
-    loop(self()).
 
-loop(Pid) ->
-    gen_server:cast(Pid, loop).
+loop(N) ->
+    loop(self(), N).
+
+loop(Pid, N) ->
+    gen_server:cast(Pid, {loop, N}).
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -66,7 +68,7 @@ init([Port]) ->
                  32768
          end,
     {ok, Sock} = gen_udp:open(Port, [binary, {active, false}, {recbuf, RB}]),
-    loop(self()),
+    loop(?FAST_LOOP_CNT),
     {ok, #state{sock=Sock, port=Port}}.
 
 %%--------------------------------------------------------------------
@@ -97,15 +99,19 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast(loop, State = #state{sock=S}) ->
-    case gen_udp:recv(S, 8192, 1000) of
-        {ok, {_Address, _Port, D}} ->
-            handle_data(D);
-        _ ->
-            ok
-    end,
-    loop(),
+handle_cast({loop, 0}, State) ->
+    loop(?FAST_LOOP_CNT),
     {noreply, State};
+
+handle_cast({loop, N}, State = #state{sock=S}) ->
+    case gen_udp:recv(S, 8192, 100) of
+        {ok, {_Address, _Port, D}} ->
+            handle_data(D),
+            handle_cast({loop, N-1}, State);
+        _ ->
+            loop(?FAST_LOOP_CNT),
+            {noreply, State}
+    end;
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
