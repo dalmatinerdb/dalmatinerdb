@@ -41,12 +41,12 @@ repair({S, Tr}, T, V) ->
     Tr1 = tree_set(Tr, T, V),
     {S1, Tr1}.
 
-put({S, Tr}, T, V) ->
+put({S, Tr}, T, Vs) ->
     ReqID = T,
     Req = {ReqID, something},
-    Command = {put, Req, ?M, {T, V}},
+    Command = {put, Req, ?M, {T, << <<1, V:64/signed-integer>> || V <- Vs >>}},
     {reply, {ok, ReqID}, S1} = ?V:handle_command(Command, sender, S),
-    Tr1 = tree_set(Tr, T, V),
+    Tr1 = tree_set(Tr, T, Vs),
     {S1, Tr1}.
 
 get(S, T, C) ->
@@ -83,9 +83,10 @@ prop_gb_comp() ->
                 List2 = [{unlist(mmath_bin:to_list(Vs)), Vt} || {Vs, Vt} <- List1],
                 List3 = [true || {_V, _V} <- List2],
                 Len = length(List),
-                length(List1) == Len andalso
-                    length(List2) == Len andalso
-                    length(List3) == Len
+                ?WHENFAIL(io:format(user, "L: ~p~n", [List2]),
+                          length(List1) == Len andalso
+                          length(List2) == Len andalso
+                          length(List3) == Len)
             end
            ).
 
@@ -103,7 +104,8 @@ prop_is_empty() ->
                     true ->
                         io:format(user, "~p == ~p~n", [S, T])
                 end,
-                Empty == TreeEmpty
+                ?WHENFAIL(io:format(user, "L: ~p /= ~p~n", [Empty, TreeEmpty]),
+                          Empty == TreeEmpty)
             end).
 
 prop_empty_after_delete() ->
@@ -131,17 +133,21 @@ prop_handoff() ->
                 L1 = lists:sort(L),
                 {ok, C} = ?V:init([1]),
                 C1 = lists:foldl(fun(Data, SAcc) ->
-                                        {reply, ok, SAcc1} = ?V:handle_handoff_data(Data, SAcc),
-                                        SAcc1
-                                end, C, L1),
+                                         {reply, ok, SAcc1} = ?V:handle_handoff_data(Data, SAcc),
+                                         SAcc1
+                                 end, C, L1),
                 {reply, Lc, C2} = ?V:handle_handoff_command(FR, self(), C1),
                 Lc1 = lists:sort(Lc),
                 {reply, {ok, _, _, Ms}, _} =
                     ?V:handle_coverage(metrics, all, self(), S1),
                 {reply, {ok, _, _, MsC}, _} =
                     ?V:handle_coverage(metrics, all, self(), C2),
-                Lc1 == L1 andalso
-                    gb_sets:to_list(MsC) == gb_sets:to_list(Ms)
+                ?WHENFAIL(io:format(user, "L: ~p /= ~p~n"
+                                    "M: ~p /= ~p~n",
+                                    [Lc1, L1, gb_sets:to_list(MsC),
+                                     gb_sets:to_list(Ms)]),
+                          Lc1 == L1 andalso
+                          gb_sets:to_list(MsC) == gb_sets:to_list(Ms))
 
             end).
 
