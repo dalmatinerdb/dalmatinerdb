@@ -6,7 +6,7 @@
 %%% @end
 %%% Created : 13 Jun 2014 by Heinz Nikolaus Gies <heinz@licenser.net>
 %%%-------------------------------------------------------------------
--module(metric_db_udp).
+-module(dalmatiner_db_udp).
 
 -behaviour(gen_server).
 
@@ -61,7 +61,7 @@ loop(Pid, N) ->
 %% @end
 %%--------------------------------------------------------------------
 init([Port]) ->
-    RB = case application:get_env(metric_db, udp_buffer) of
+    RB = case application:get_env(dalmatiner_db, udp_buffer) of
              {ok, V} ->
                  V;
              _ ->

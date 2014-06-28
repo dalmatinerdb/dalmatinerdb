@@ -144,7 +144,7 @@ case "$1" in
             exit 1
         fi
         case "$1" in
-            console)        BOOTFILE=$SCRIPT ;;
+            console)        BOOTFILE=dalmatinerdb ;;
             console_clean)  BOOTFILE=start_clean ;;
         esac
         # Setup beam-required vars

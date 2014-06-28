@@ -19,15 +19,15 @@ prop_encode_decode_metrics() ->
     ?FORALL(L, non_empty_binary_list(),
             begin
                 L1 = lists:sort(L),
-                B = metric_tcp_proto:encode_metrics(L),
-                Rev = metric_tcp_proto:decode_metrics(B),
+                B = dalmatiner_tcp_proto:encode_metrics(L),
+                Rev = dalmatiner_tcp_proto:decode_metrics(B),
                 L2 = lists:sort(Rev),
                 L1 == L2
             end).
 
 prop_encode_decode_get() ->
     ?FORALL({M, T, C}, {non_empty_binary(), choose(0, 5000), choose(1, 5000)},
-            {M, T, C} == metric_tcp_proto:decode_get(metric_tcp_proto:encode_get(M, T, C))).
+            {M, T, C} == dalmatiner_tcp_proto:decode_get(dalmatiner_tcp_proto:encode_get(M, T, C))).
 
 -include("eqc_helper.hrl").
 -endif.

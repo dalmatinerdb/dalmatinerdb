@@ -1,7 +1,7 @@
 %% @doc The coordinator for stat get operations.  The key here is to
 %% generate the preflist just like in wrtie_fsm and then query each
 %% replica and wait until a quorum is met.
--module(metric_read_fsm).
+-module(dalmatiner_read_fsm).
 -behavior(gen_fsm).
 
 -define(DEFAULT_TIMEOUT, 5000).
@@ -76,7 +76,7 @@ start(VNodeInfo, Op, User) ->
 
 start(VNodeInfo, Op, User, Val) ->
     ReqID = mk_reqid(),
-    metric_read_fsm_sup:start_read_fsm(
+    dalmatiner_read_fsm_sup:start_read_fsm(
       [ReqID, VNodeInfo, Op, self(), User, Val]
      ),
     receive

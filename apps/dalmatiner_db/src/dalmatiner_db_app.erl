@@ -1,4 +1,4 @@
--module(metric_db_app).
+-module(dalmatiner_db_app).
 
 -behaviour(application).
 
@@ -10,22 +10,22 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    Port = case application:get_env(metric_db, tcp_port) of
+    Port = case application:get_env(dalmatiner_db, tcp_port) of
                {ok, P} ->
                    P;
                _ ->
                    5555
            end,
-    Listeners = case application:get_env(metric_db, tcp_listeners) of
+    Listeners = case application:get_env(dalmatiner_db, tcp_listeners) of
                     {ok, L} ->
                         L;
                     _ ->
                         100
                 end,
-    {ok, _} = ranch:start_listener(metric_tcp, Listeners,
+    {ok, _} = ranch:start_listener(dalmatiner_tcp, Listeners,
                                    ranch_tcp, [{port, Port}],
-                                   metric_tcp, []),
-    metric_db_sup:start_link().
+                                   dalmatiner_tcp, []),
+    dalmatiner_db_sup:start_link().
 
 stop(_State) ->
     ok.

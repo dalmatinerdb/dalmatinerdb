@@ -1,7 +1,7 @@
 %% @doc The coordinator for stat write opeartions.  This example will
 %% show how to properly replicate your data in Riak Core by making use
 %% of the _preflist_.
--module(metric_write_fsm).
+-module(dalmatiner_write_fsm).
 -behavior(gen_fsm).
 
 -define(DEFAULT_TIMEOUT, 5000).
@@ -81,11 +81,11 @@ write({VNode, System}, Op, User) ->
 
 async_write({VNode, System}, Op, User, Val) ->
     ReqID = mk_reqid(),
-    metric_write_fsm_sup:start_write_fsm([{VNode, System}, ReqID, self(), User, Op, Val]),
+    dalmatiner_write_fsm_sup:start_write_fsm([{VNode, System}, ReqID, self(), User, Op, Val]),
     ok.
 write({VNode, System}, Op, User, Val) ->
     ReqID = mk_reqid(),
-    metric_write_fsm_sup:start_write_fsm([{VNode, System}, ReqID, self(), User, Op, Val]),
+    dalmatiner_write_fsm_sup:start_write_fsm([{VNode, System}, ReqID, self(), User, Op, Val]),
     receive
         {ReqID, ok} ->
             ok;

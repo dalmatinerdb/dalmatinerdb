@@ -1,4 +1,4 @@
--module(metric_tcp_proto).
+-module(dalmatiner_tcp_proto).
 
 -define(METRIC_SIZE, 16).
 

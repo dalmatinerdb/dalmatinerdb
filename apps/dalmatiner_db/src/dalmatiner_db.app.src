@@ -1,4 +1,4 @@
-{application, metric_db,
+{application, dalmatiner_db,
  [
   {description, ""},
   {vsn, "1"},
@@ -11,6 +11,6 @@
                   eflame,
                   ranch
                  ]},
-  {mod, { metric_db_app, []}},
+  {mod, { dalmatiner_db_app, []}},
   {env, []}
  ]}.

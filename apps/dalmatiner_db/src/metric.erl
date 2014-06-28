@@ -25,7 +25,7 @@ put(Metric, Time, Value) ->
     do_put(Metric, Time, Value, 1, 1).
 
 get(Metric, Time, Count) ->
-    metric_read_fsm:start({metric_vnode, metric}, get, Metric, {Time, Count}).
+    dalmatiner_read_fsm:start({metric_vnode, metric}, get, Metric, {Time, Count}).
 
 list() ->
     metric_coverage:start(metrics).

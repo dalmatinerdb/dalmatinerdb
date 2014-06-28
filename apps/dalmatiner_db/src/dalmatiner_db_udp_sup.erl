@@ -6,7 +6,7 @@
 %%% @end
 %%% Created : 13 Jun 2014 by Heinz Nikolaus Gies <heinz@licenser.net>
 %%%-------------------------------------------------------------------
--module(metric_db_udp_sup).
+-module(dalmatiner_db_udp_sup).
 
 -behaviour(supervisor).
 
@@ -62,21 +62,21 @@ init([]) ->
     Restart = permanent,
     Shutdown = 2000,
     Type = worker,
-    Port = case application:get_env(metric_db, udp_port) of
+    Port = case application:get_env(dalmatiner_db, udp_port) of
                {ok, P} ->
                    P;
                _ ->
                    4444
            end,
-    Listeners = case application:get_env(metric_db, udp_listeners) of
+    Listeners = case application:get_env(dalmatiner_db, udp_listeners) of
                     {ok, L} ->
                         L;
                     _ ->
                         1
                 end,
-    Children = [{list_to_atom("metric_db_udp_" ++ integer_to_list(Prt)),
-                 {metric_db_udp, start_link, [Prt]},
-                 Restart, Shutdown, Type, [metric_db_udp]} ||
+    Children = [{list_to_atom("dalmatiner_db_udp_" ++ integer_to_list(Prt)),
+                 {dalmatiner_db_udp, start_link, [Prt]},
+                 Restart, Shutdown, Type, [dalmatiner_db_udp]} ||
                    Prt <- lists:seq(Port, Port + Listeners - 1)],
     {ok, {SupFlags, Children}}.
 

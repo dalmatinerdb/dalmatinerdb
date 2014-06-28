@@ -2,28 +2,28 @@
 
 %%
 %% @doc The udp port metricdb listens to
-{mapping, "udp_port", "metric_db.udp_port",
+{mapping, "udp_port", "dalmatiner_db.udp_port",
  [{default, {{udp_port}} },
   {datatype, integer}]}.
 
 %% @doc The buffer size for UDP
-{mapping, "udp_buffer", "metric_db.udp_buffer",
+{mapping, "udp_buffer", "dalmatiner_db.udp_buffer",
  [{default, 32768},
   {datatype, bytesize}]}.
 
 %% @doc The number of udp listeners, each one gets a own port startting from
 %% udp_port.
-{mapping, "udp_listeners", "metric_db.udp_listeners",
+{mapping, "udp_listeners", "dalmatiner_db.udp_listeners",
  [{default, 1},
   {datatype, integer}]}.
 
 %% @doc The tcp port metricdb listens on for the tcp API
-{mapping, "tcp_port", "metric_db.tcp_port",
+{mapping, "tcp_port", "dalmatiner_db.tcp_port",
  [{default, {{tcp_port}} },
   {datatype, integer}]}.
 
 %% @doc Number of acceptor processes to keep around for tcp connections.
-{mapping, "tcp_listeners", "metric_db.tcp_listeners",
+{mapping, "tcp_listeners", "dalmatiner_db.tcp_listeners",
  [{default, 100},
   {datatype, integer}]}.
 

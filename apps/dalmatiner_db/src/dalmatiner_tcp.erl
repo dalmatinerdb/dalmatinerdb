@@ -1,4 +1,4 @@
--module(metric_tcp).
+-module(dalmatiner_tcp).
 
 -behaviour(ranch_protocol).
 
@@ -27,11 +27,11 @@ loop(Socket, Transport) ->
         {ok, <<?LIST>>} ->
             io:format("list~n"),
             {ok, Ms} = metric:list(),
-            Transport:send(Socket, metric_tcp_proto:encode_metrics(Ms)),
+            Transport:send(Socket, dalmatiner_tcp_proto:encode_metrics(Ms)),
             loop(Socket, Transport);
         {ok, <<?GET, G/binary>>} ->
             io:format("get~n"),
-            {M, T, C} = metric_tcp_proto:decode_get(G),
+            {M, T, C} = dalmatiner_tcp_proto:decode_get(G),
             io:format(">~s@~p: ~p~n", [M, T, C]),
             {ok, Data} = metric:get(M, T, C),
             Transport:send(Socket, Data),
