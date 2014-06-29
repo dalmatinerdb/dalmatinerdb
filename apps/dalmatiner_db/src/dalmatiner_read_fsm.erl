@@ -119,11 +119,11 @@ init([ReqId, {VNode, System}, Op, From, Entity, Val]) ->
     {ok, prepare, SD, 0}.
 
 %% @doc Calculate the Preflist.
-prepare(timeout, SD0=#state{entity=Entity,
+prepare(timeout, SD0=#state{entity={B, M},
                             system=System,
                             n=N}) ->
 
-    DocIdx = riak_core_util:chash_key({<<"metric">>, Entity}),
+    DocIdx = riak_core_util:chash_key({B, M}),
     Prelist = riak_core_apl:get_apl(DocIdx, N, System),
     SD = SD0#state{preflist=Prelist},
     {next_state, execute, SD, 0}.
