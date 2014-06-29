@@ -21,13 +21,13 @@
          handle_exit/3]).
 
 -define(WEEK, 604800). %% Seconds in a week.
--export([mput/3, put/5, get/5]).
+-export([mput/3, put/5, get/4]).
 
 -ignore_xref([
               start_vnode/1,
               put/5,
               mput/3,
-              get/5,
+              get/4,
               repair/4,
               handle_info/2,
               repair/3
@@ -86,7 +86,7 @@ mput(Preflist, ReqID, Data) ->
                                    {raw, ReqID, self()},
                                    ?MASTER).
 
-get(Preflist, ReqID, Bucket, Metric, {Time, Count}) ->
+get(Preflist, ReqID, {Bucket, Metric}, {Time, Count}) ->
     riak_core_vnode_master:command(Preflist,
                                    {get, ReqID, Bucket, Metric, {Time, Count}},
                                    {fsm, undefined, self()},

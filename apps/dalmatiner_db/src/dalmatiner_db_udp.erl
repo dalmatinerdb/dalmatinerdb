@@ -126,10 +126,12 @@ handle_cast({loop, N}, State = #state{sock=S, cbin=CBin, nodes=Nodes}) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_data(<<0,T:64/integer,
+handle_data(<<0,
+              T:?TIME_SIZE/integer,
               _BS:?BUCKET_SS/integer, Bucket:_BS/binary,
               _MS:?METRIC_SS/integer, Metric:_MS/binary,
-              _DS:?DATA_SS/integer, Data:_DS/binary, R/binary>>,
+              _DS:?DATA_SS/integer, Data:_DS/binary,
+              R/binary>>,
             CBin, Nodes, Acc) when (_DS rem ?DATA_SIZE) == 0 ->
     DocIdx = riak_core_util:chash_key({Bucket, Metric}),
     {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
