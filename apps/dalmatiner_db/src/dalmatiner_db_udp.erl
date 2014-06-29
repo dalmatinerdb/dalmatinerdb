@@ -135,7 +135,10 @@ handle_data(<<0,T:64/integer,
     {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
     Acc1 = dict:append(Idx, {Bucket, Metric, T, Data}, Acc),
     handle_data(R, CBin, Nodes, Acc1);
-handle_data(_, _, Nodes, Acc) ->
+handle_data(<<>>, _, Nodes, Acc) ->
+    metric:mput(Nodes, Acc);
+handle_data(R, _, Nodes, Acc) ->
+    lager:error("[udp] unknown content: ~p", [R]),
     metric:mput(Nodes, Acc).
 
 %%--------------------------------------------------------------------
