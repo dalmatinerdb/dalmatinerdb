@@ -11,6 +11,7 @@
 -define(DIR, ".qcdata").
 -define(T, gb_trees).
 -define(V, metric_vnode).
+-define(B, <<"bucket">>).
 -define(M, <<"metric">>).
 
 %%%-------------------------------------------------------------------
@@ -35,27 +36,27 @@ new() ->
     T = ?T:empty(),
     {S, T}.
 
-repair({S, Tr}, T, V) ->
-    Command = {repair, ?M, T, V},
+repair({S, Tr}, T, Vs) ->
+    Command = {repair, ?B, ?M, T,  << <<1, V:64/signed-integer>> || V <- Vs >>},
     {noreply, S1} = ?V:handle_command(Command, sender, S),
-    Tr1 = tree_set(Tr, T, V),
+    Tr1 = tree_set(Tr, T, Vs),
     {S1, Tr1}.
 
 put({S, Tr}, T, Vs) ->
-    Command = {put, ?M, {T, << <<1, V:64/signed-integer>> || V <- Vs >>}},
+    Command = {put, ?B, ?M, {T, << <<1, V:64/signed-integer>> || V <- Vs >>}},
     {reply, ok, S1} = ?V:handle_command(Command, sender, S),
     Tr1 = tree_set(Tr, T, Vs),
     {S1, Tr1}.
 
 mput({S, Tr}, T, Vs) ->
-    Command = {mput, [{?M, T, << <<1, V:64/signed-integer>> || V <- Vs >>}]},
+    Command = {mput, [{?B, ?M, T, << <<1, V:64/signed-integer>> || V <- Vs >>}]},
     {reply, ok, S1} = ?V:handle_command(Command, sender, S),
     Tr1 = tree_set(Tr, T, Vs),
     {S1, Tr1}.
 
 get(S, T, C) ->
     ReqID = T,
-    Command = {get, ReqID, ?M, {T, C}},
+    Command = {get, ReqID, ?B, ?M, {T, C}},
     {reply, {ok, ReqID, _, Data}, _S1} = ?V:handle_command(Command, sender, S),
     Data.
 
@@ -146,9 +147,9 @@ prop_handoff() ->
                 {reply, Lc, C2} = ?V:handle_handoff_command(FR, self(), C1),
                 Lc1 = lists:sort(Lc),
                 {reply, {ok, _, _, Ms}, _} =
-                    ?V:handle_coverage(metrics, all, self(), S1),
+                    ?V:handle_coverage({metrics, ?B}, all, self(), S1),
                 {reply, {ok, _, _, MsC}, _} =
-                    ?V:handle_coverage(metrics, all, self(), C2),
+                    ?V:handle_coverage({metrics, ?B}, all, self(), C2),
                 ?WHENFAIL(io:format(user, "L: ~p /= ~p~n"
                                     "M: ~p /= ~p~n",
                                     [Lc1, L1, gb_sets:to_list(MsC),

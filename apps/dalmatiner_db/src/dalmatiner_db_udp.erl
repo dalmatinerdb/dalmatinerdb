@@ -9,7 +9,7 @@
 -module(dalmatiner_db_udp).
 
 -behaviour(gen_server).
-
+-include_lib("dproto/include/dproto.hrl").
 -include_lib("mstore/include/mstore.hrl").
 
 %% API
@@ -126,11 +126,14 @@ handle_cast({loop, N}, State = #state{sock=S, cbin=CBin, nodes=Nodes}) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_data(<<0, T:64/integer, L:16/integer, Metric:L/binary, S:16/integer,
-              Data:S/binary, R/binary>>, CBin, Nodes, Acc) when (S rem ?DATA_SIZE) == 0 ->
-    DocIdx = riak_core_util:chash_key({<<"metric">>, Metric}),
+handle_data(<<0,T:64/integer,
+              _BS:?BUCKET_SS/integer, Bucket:_BS/binary,
+              _MS:?METRIC_SS/integer, Metric:_MS/binary,
+              _DS:?DATA_SS/integer, Data:_DS/binary, R/binary>>,
+            CBin, Nodes, Acc) when (_DS rem ?DATA_SIZE) == 0 ->
+    DocIdx = riak_core_util:chash_key({Bucket, Metric}),
     {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
-    Acc1 = dict:append(Idx, {Metric, T, Data}, Acc),
+    Acc1 = dict:append(Idx, {Bucket, Metric, T, Data}, Acc),
     handle_data(R, CBin, Nodes, Acc1);
 handle_data(_, _, Nodes, Acc) ->
     metric:mput(Nodes, Acc).

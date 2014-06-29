@@ -1,16 +1,13 @@
 -module(metric).
--include_lib("riak_core/include/riak_core_vnode.hrl").
+
 -export([
-         put/3,
+         put/4,
          mput/2,
-         get/3,
-         list/0
+         get/4,
+         list/1
         ]).
--ignore_xref([
-              put/3,
-              get/3,
-              list/0
-             ]).
+
+-ignore_xref([put/4]).
 
 
 mput(Nodes, Acc) ->
@@ -21,20 +18,20 @@ mput(Nodes, Acc) ->
                       R
               end, ok, Acc).
 
-put(Metric, Time, Value) ->
-    do_put(Metric, Time, Value, 1, 1).
+put(Bucket, Metric, Time, Value) ->
+    do_put(Bucket, Metric, Time, Value, 1, 1).
 
-get(Metric, Time, Count) ->
-    dalmatiner_read_fsm:start({metric_vnode, metric}, get, Metric, {Time, Count}).
+get(Bucket, Metric, Time, Count) ->
+    dalmatiner_read_fsm:start({metric_vnode, metric}, get, {Bucket, Metric}, {Time, Count}).
 
-list() ->
-    metric_coverage:start(metrics).
+list(Bucket) ->
+    metric_coverage:start({metrics, Bucket}).
 
-do_put(Metric, Time, Value, N, W) ->
-    DocIdx = riak_core_util:chash_key({<<"metric">>, Metric}),
+do_put(Bucket, Metric, Time, Value, N, W) ->
+    DocIdx = riak_core_util:chash_key({Bucket, Metric}),
     Preflist = riak_core_apl:get_apl(DocIdx, N, metric),
     ReqID = make_ref(),
-    metric_vnode:put(Preflist, ReqID, Metric, {Time, Value}),
+    metric_vnode:put(Preflist, ReqID, Bucket, Metric, {Time, Value}),
     do_wait(W, ReqID).
 
 

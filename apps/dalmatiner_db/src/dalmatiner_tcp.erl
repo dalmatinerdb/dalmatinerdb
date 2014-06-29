@@ -2,10 +2,7 @@
 
 -behaviour(ranch_protocol).
 
--define(KEEPALIVE, 0).
--define(LIST, 1).
--define(GET, 2).
-
+-include_lib("dproto/include/dproto.hrl").
 
 -export([start_link/4]).
 -export([init/4]).
@@ -24,16 +21,17 @@ loop(Socket, Transport) ->
         {ok, <<?KEEPALIVE>>} ->
             io:format("keepalive~n"),
             loop(Socket, Transport);
-        {ok, <<?LIST>>} ->
-            io:format("list~n"),
-            {ok, Ms} = metric:list(),
-            Transport:send(Socket, dalmatiner_tcp_proto:encode_metrics(Ms)),
+        {ok, <<?LIST, L/binary>>} ->
+            Bucket = dproto_tcp:decode_list(L),
+            io:format("list: ~s~n", [Bucket]),
+            {ok, Ms} = metric:list(Bucket),
+            Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
             loop(Socket, Transport);
         {ok, <<?GET, G/binary>>} ->
             io:format("get~n"),
-            {M, T, C} = dalmatiner_tcp_proto:decode_get(G),
-            io:format(">~s@~p: ~p~n", [M, T, C]),
-            {ok, Data} = metric:get(M, T, C),
+            {B, M, T, C} = dproto_tcp:decode_get(G),
+            io:format(">~s/~s@~p: ~p~n", [B, M, T, C]),
+            {ok, Data} = metric:get(B, M, T, C),
             Transport:send(Socket, Data),
             loop(Socket, Transport);
         {error,timeout} ->
