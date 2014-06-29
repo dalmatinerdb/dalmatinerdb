@@ -8,7 +8,6 @@
                   stdlib,
                   metric_vnode,
                   riak_core,
-                  eflame,
                   ranch
                  ]},
   {mod, { dalmatiner_db_app, []}},
