@@ -209,6 +209,16 @@ handle_coverage({metrics, Bucket}, _KeySpaces, _Sender,
     Reply = {ok, undefined, {Partition, Node}, Ms},
     {reply, Reply, State2};
 
+handle_coverage(list, _KeySpaces, _Sender,
+                State = #state{partition=Partition, node=Node, tbl=T}) ->
+    State1 = ets:foldl(fun({{Bkt, Metric}, Start, _, V}, SAcc) ->
+                               do_write(Bkt, Metric, Start, V, SAcc)
+                       end, State, T),
+    ets:delete_all_objects(T),
+    Reply = {ok, undefined, {Partition, Node},
+             gb_sets:from_list(gb_trees:keys(State1#state.mstore))},
+    {reply, Reply, State1};
+
 handle_coverage(_Req, _KeySpaces, _Sender, State) ->
     {stop, not_implemented, State}.
 

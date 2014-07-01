@@ -4,6 +4,7 @@
          put/4,
          mput/2,
          get/4,
+         list/0,
          list/1
         ]).
 
@@ -23,6 +24,9 @@ put(Bucket, Metric, Time, Value) ->
 
 get(Bucket, Metric, Time, Count) ->
     dalmatiner_read_fsm:start({metric_vnode, metric}, get, {Bucket, Metric}, {Time, Count}).
+
+list() ->
+    metric_coverage:start(list).
 
 list(Bucket) ->
     metric_coverage:start({metrics, Bucket}).
