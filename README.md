@@ -1,8 +1,8 @@
-# MetricDB
-MetricDB (hopefully to be renamed) is a metric database written in pure Erlang. It takes advantage of some special propaties of metrics to make some tradeoffs. The goal is to make a store metric data (time, value of a metric) that is fast, has a low overhead, is easy to query and manage.
+# DalmatinerDB
+DalmatinerDB is a metric database written in pure Erlang. It takes advantage of some special propaties of metrics to make some tradeoffs. The goal is to make a store metric data (time, value of a metric) that is fast, has a low overhead, is easy to query and manage.
 
 # Tradeoffs
-I try to be explict about the tradeoffs made, this way people can decide of they are happy with what they 'loose' and what they 'win'. The acceptable tradeoffs differ from case to case but I hope the set choices made fit a metric store quite well. If you are comparing MetricDB with X please don't assume that just because X does not list the tradeoffs made they have none, be inquisitive and make a decision based on facts not marketing.
+I try to be explict about the tradeoffs made, this way people can decide of they are happy with what they 'loose' and what they 'win'. The acceptable tradeoffs differ from case to case but I hope the set choices made fit a metric store quite well. If you are comparing DalmatinerDB with X please don't assume that just because X does not list the tradeoffs made they have none, be inquisitive and make a decision based on facts not marketing.
 
 
 ## Let the Filesystem handle it
@@ -16,9 +16,9 @@ For metrics it is enough to have a 'fixed' precisions, so storing higher then in
 While 64 bit sounds a lot testing with real world data has shown that the ZFS compression ratio of written metrics is > 6x (unwritten metrics compress better). This means the effective size is about 11 bit per metricpoint.
 
 ## No guarantee of storage
-MetricDB offers a 'best effort' on storing the metrics, the ingress transport is UDP there is no log for writes (there is the ZIL if enabled in ZFS) or forced sync after each write. This means that if your netwokr fails packages can get lost, if your server crashes unwritten data can be lost.
+DalmatinerDB offers a 'best effort' on storing the metrics, the ingress transport is UDP there is no log for writes (there is the ZIL if enabled in ZFS) or forced sync after each write. This means that if your netwokr fails packages can get lost, if your server crashes unwritten data can be lost.
 
-The point is that loosing one or two metric points in a huge series is a non-problem, most of the time the look on a metric is over a aggregate and MetricDB fills in the blanks with the last written value. However there is explictly no guarantee that data is written, this can be a issue if every single point of metric is of importance!
+The point is that loosing one or two metric points in a huge series is a non-problem, most of the time the look on a metric is over a aggregate and DalmatinerDB fills in the blanks with the last written value. However there is explictly no guarantee that data is written, this can be a issue if every single point of metric is of importance!
 
 ## Flat files
 Data is stored in a flat binary formate, this means that reads and writes can be calculated to a filename+offset by simple math, there is no need for transversing datastructures. This means however that if a metric stops unwritten points can 'linger' around for a while depending on how the file size was picked.
