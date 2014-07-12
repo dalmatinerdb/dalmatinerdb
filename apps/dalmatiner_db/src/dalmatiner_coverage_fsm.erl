@@ -5,9 +5,6 @@
 -behavior(gen_fsm).
 
 -define(DEFAULT_TIMEOUT, 5000).
--define(N, 1).
--define(R, 1).
--define(W, 1).
 
 %% API
 -export([start_link/6, start/2, start/3, start/4]).
@@ -90,12 +87,8 @@ init([ReqId, {VNode, System}, Op, From, Entity]) ->
     init([ReqId, {VNode, System}, Op, From, Entity, undefined]);
 
 init([ReqId, {VNode, System}, Op, From, Entity, Val]) ->
-    {N, R, _W} = case application:get_key(System) of
-                     {ok, Res} ->
-                         Res;
-                     undefined ->
-                         {?N, ?R, ?W}
-                 end,
+    {ok, N} = application:get_env(dalmatiner_db, n),
+    {ok, R} = application:get_env(dalmatiner_db, r),
     SD = #state{req_id=ReqId,
                 from=From,
                 op=Op,

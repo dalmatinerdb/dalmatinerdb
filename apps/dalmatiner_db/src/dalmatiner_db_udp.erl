@@ -22,9 +22,8 @@
          terminate/2, code_change/3]).
 
 -define(SERVER, ?MODULE).
--define(FAST_LOOP_CNT, 10000).
 
--record(state, {sock, port, recbuf, cbin, nodes}).
+-record(state, {sock, port, recbuf, cbin, nodes, n, w, fast_loop_count}).
 
 %%%===================================================================
 %%% API
@@ -61,15 +60,13 @@ loop(Pid, N) ->
 %% @end
 %%--------------------------------------------------------------------
 init([Port]) ->
-    RB = case application:get_env(dalmatiner_db, udp_buffer) of
-             {ok, V} ->
-                 V;
-             _ ->
-                 32768
-         end,
+    {ok, RB} = application:get_env(dalmatiner_db, udp_buffer),
+    {ok, FLC} = application:get_env(dalmatiner_db, fast_loop_count),
+    {ok, N} = application:get_env(dalmatiner_db, n),
+    {ok, W} = application:get_env(dalmatiner_db, w),
     {ok, Sock} = gen_udp:open(Port, [binary, {active, false}, {recbuf, RB}]),
     loop(0),
-    {ok, #state{sock=Sock, port=Port, recbuf=RB}}.
+    {ok, #state{sock=Sock, port=Port, recbuf=RB, n=N, w=W, fast_loop_count=FLC}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -100,26 +97,26 @@ handle_call(_Request, _From, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_cast({loop, 0}, State) ->
-    loop(?FAST_LOOP_CNT),
+    loop(State#state.fast_loop_count),
     {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
     Nodes = chash:nodes(chashbin:to_chash(CBin)),
-    Nodes1 = [{I, riak_core_apl:get_apl(I, 1, metric)} || {I, _} <- Nodes],
+    Nodes1 = [{I, riak_core_apl:get_apl(I, State#state.n, metric)} || {I, _} <- Nodes],
     {noreply, State#state{cbin=CBin, nodes=orddict:from_list(Nodes1)}};
 
-handle_cast({loop, N}, State = #state{sock=S, cbin=CBin, nodes=Nodes}) ->
-    case gen_udp:recv(S, State#state.recbuf, 100) of
+handle_cast({loop, N}, State = #state{sock=S, cbin=CBin, nodes=Nodes, n=N, w=W}) ->
+    case gen_udp:recv(S, State#state.recbuf, 10) of
         {ok, {_Address, _Port, D}} ->
-            case handle_data(D, CBin, Nodes, dict:new()) of
+            case handle_data(D, W, CBin, Nodes, dict:new()) of
                 ok ->
                     handle_cast({loop, N-1}, State);
                 E ->
                     lager:error("[udp] Fast loop cancled because of: ~p.", [E]),
-                    loop(?FAST_LOOP_CNT),
+                    handle_cast({loop, 0}, State),
                     {noreply, State}
 
             end;
         _ ->
-            loop(?FAST_LOOP_CNT),
+            handle_cast({loop, 0}, State),
             {noreply, State}
     end;
 
@@ -132,16 +129,16 @@ handle_data(<<0,
               _MS:?METRIC_SS/integer, Metric:_MS/binary,
               _DS:?DATA_SS/integer, Data:_DS/binary,
               R/binary>>,
-            CBin, Nodes, Acc) when (_DS rem ?DATA_SIZE) == 0 ->
+            W, CBin, Nodes, Acc) when (_DS rem ?DATA_SIZE) == 0 ->
     DocIdx = riak_core_util:chash_key({Bucket, Metric}),
     {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
     Acc1 = dict:append(Idx, {Bucket, Metric, T, Data}, Acc),
-    handle_data(R, CBin, Nodes, Acc1);
-handle_data(<<>>, _, Nodes, Acc) ->
-    metric:mput(Nodes, Acc);
-handle_data(R, _, Nodes, Acc) ->
+    handle_data(R, W, CBin, Nodes, Acc1);
+handle_data(<<>>, W, _, Nodes, Acc) ->
+    metric:mput(Nodes, Acc, W);
+handle_data(R, W, _, Nodes, Acc) ->
     lager:error("[udp] unknown content: ~p", [R]),
-    metric:mput(Nodes, Acc).
+    metric:mput(Nodes, Acc, W).
 
 %%--------------------------------------------------------------------
 %% @private

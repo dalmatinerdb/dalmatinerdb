@@ -127,9 +127,14 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, _Sender,
                  _ ->
                      State
            end,
-    {MSet, State2} = get_set(Bucket, State1),
-    {ok, Data} = mstore:get(MSet, Metric, Time, Count),
-    {reply, {ok, ReqID, {Partition, Node}, Data}, State2};
+    {D, State2} = case get_set(Bucket, State1) of
+                      {ok, {MSet, S2}} ->
+                          {ok, Data} = mstore:get(MSet, Metric, Time, Count),
+                          {Data, S2};
+                      _ ->
+                          {mmath_bin:empty(Count), State1}
+                  end,
+    {reply, {ok, ReqID, {Partition, Node}, D}, State2};
 
 handle_command(_Message, _Sender, State) ->
     {noreply, State}.
@@ -204,8 +209,12 @@ handle_coverage({metrics, Bucket}, _KeySpaces, _Sender,
                                do_write(Bkt, Metric, Start, V, SAcc)
                        end, State, T),
     ets:delete_all_objects(T),
-    {M, State2} = get_set(Bucket, State1),
-    Ms =  mstore:metrics(M),
+    {Ms, State2} = case get_set(Bucket, State1) of
+                       {ok, {M, S2}} ->
+                           {mstore:metrics(M), S2};
+                       _ ->
+                           {gb_sets:new(), State1}
+                   end,
     Reply = {ok, undefined, {Partition, Node}, Ms},
     {reply, Reply, State2};
 
@@ -295,7 +304,7 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT}) ->
     end.
 
 do_write(Bucket, Metric, Time, Value, State) ->
-    {MSet, State1} = get_set(Bucket, State),
+    {MSet, State1} = get_or_create_set(Bucket, State),
     MSet1 = mstore:put(MSet, Metric, Time, Value),
     Store1 = gb_trees:update(Bucket, MSet1, State1#state.mstore),
     State1#state{mstore=Store1}.
@@ -303,9 +312,35 @@ do_write(Bucket, Metric, Time, Value, State) ->
 get_set(Bucket, State=#state{mstore=Store}) ->
     case gb_trees:lookup(Bucket, Store) of
         {value, MSet} ->
-            {MSet, State};
+            {ok, {MSet, State}};
         none ->
+            case bucket_exists(State#state.partition, Bucket) of
+                true ->
+                    MSet = new_store(State#state.partition, Bucket),
+                    Store1 = gb_trees:insert(Bucket, MSet, Store),
+                    {ok, {MSet, State#state{mstore=Store1}}};
+                _ ->
+                    {error, not_found}
+            end
+    end.
+
+get_or_create_set(Bucket, State=#state{mstore=Store}) ->
+    case get_set(Bucket, State) of
+        {ok, R} ->
+            R;
+        {error, not_found} ->
             MSet = new_store(State#state.partition, Bucket),
             Store1 = gb_trees:insert(Bucket, MSet, Store),
             {MSet, State#state{mstore=Store1}}
     end.
+
+bucket_exists(Partition, Bucket) ->
+    DataDir = case application:get_env(riak_core, platform_data_dir) of
+                  {ok, DD} ->
+                      DD;
+                  _ ->
+                      "data"
+              end,
+    PartitionDir = [DataDir | [$/ |  integer_to_list(Partition)]],
+    BucketDir = [PartitionDir, [$/ | binary_to_list(Bucket)]],
+    filelib:is_dir(BucketDir).

@@ -17,6 +17,22 @@
  [{default, 1},
   {datatype, integer}]}.
 
+%% @doc To improve performance on UDP a number of loops around the recv call
+%% are executed as fast loops, this means w/o ending sending a message for the
+%% next round of loops.
+%%
+%% The higher the number the more fast loops are executed, the downside of a
+%% high fast loop count is that only at the end of a fast loop run other queued
+%% messages are handled, also downed nodes are only detected at the end of a
+%% loop.
+{mapping, "udp_fast_loop", "dalmatiner_db.fast_loop_count",
+ [{default, 1000},
+  {datatype, integer}]}.
+
+{mapping, "udp_loop_wait", "dalmatiner_db.loop_wait",
+ [{default, "10ms"},
+  {datatype, {duration, ms}}]}.
+
 %% @doc The tcp port metricdb listens on for the tcp API
 {mapping, "tcp_port", "dalmatiner_db.tcp_port",
  [{default, {{tcp_port}} },
@@ -74,21 +90,21 @@
 %% For good consistency N  < (R + W) should be true.
 {mapping, "n", "metricdb.n",
  [{datatype, integer},
-  {default, 3},
-  {commented, 3}]}.
+  {default, 1},
+  {commented, 1}]}.
 
 %% @doc The number of replies requried for a read request to succeed
 %% The lower the value the faster the replies but the more likely stale
 %% data is returend.
 {mapping, "r", "metricdb.r",
  [{datatype, integer},
-  {default, 2},
-  {commented, 2}]}.
+  {default, 1},
+  {commented, 1}]}.
 
 %% @doc The number of replies requried for a write request to succeed
 %% The lower the value the faster the write but the more likely to only
 %% write partial data.
 {mapping, "w", "metricdb.w",
  [{datatype, integer},
-  {default, 3},
-  {commented, 3}]}.
+  {default, 1},
+  {commented, 1}]}.

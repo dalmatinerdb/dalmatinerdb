@@ -16,8 +16,6 @@
 
 -record(state, {replies, r, reqid, from}).
 
--define(NRW, {1, 1, 1}).
-
 start(Request) ->
     ReqID = mk_reqid(),
     metric_coverage_sup:start_coverage(
@@ -34,7 +32,8 @@ start(Request) ->
 
 %% The first is the vnode service used
 init({From, ReqID, _}, Request) ->
-    {NVal, R, _W} = ?NRW,
+    {ok, NVal} = application:get_env(dalmatiner_db, n),
+    {ok, R} = application:get_env(dalmatiner_db, r),
     %% all - full coverage; allup - partial coverage
     VNodeSelector = allup,
     %% Same as R value here, TODO: Make this dynamic

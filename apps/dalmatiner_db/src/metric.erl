@@ -2,25 +2,31 @@
 
 -export([
          put/4,
-         mput/2,
+         put/6,
+         mput/3,
          get/4,
          list/0,
          list/1
         ]).
 
--ignore_xref([put/4]).
+-ignore_xref([put/4, put/6]).
 
 
-mput(Nodes, Acc) ->
+mput(Nodes, Acc, W) ->
     dict:fold(fun(DocIdx, Data, ok) ->
-                      do_mput(orddict:fetch(DocIdx, Nodes), Data, 1);
+                      do_mput(orddict:fetch(DocIdx, Nodes), Data, W);
                  (DocIdx, Data, R) ->
-                      do_mput(orddict:fetch(DocIdx, Nodes), Data, 1),
+                      do_mput(orddict:fetch(DocIdx, Nodes), Data, W),
                       R
               end, ok, Acc).
 
 put(Bucket, Metric, Time, Value) ->
-    do_put(Bucket, Metric, Time, Value, 1, 1).
+    {ok, N} = application:get_env(dalmatiner_db, n),
+    {ok, W} = application:get_env(dalmatiner_db, w),
+    put(Bucket, Metric, Time, Value, N, W).
+
+put(Bucket, Metric, Time, Value, N, W) ->
+    do_put(Bucket, Metric, Time, Value, N, W).
 
 get(Bucket, Metric, Time, Count) ->
     dalmatiner_read_fsm:start({metric_vnode, metric}, get, {Bucket, Metric}, {Time, Count}).
