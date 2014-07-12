@@ -224,8 +224,16 @@ handle_coverage(list, _KeySpaces, _Sender,
                                do_write(Bkt, Metric, Start, V, SAcc)
                        end, State, T),
     ets:delete_all_objects(T),
-    Reply = {ok, undefined, {Partition, Node},
-             gb_sets:from_list(gb_trees:keys(State1#state.mstore))},
+    DataDir = case application:get_env(riak_core, platform_data_dir) of
+                  {ok, DD} ->
+                      DD;
+                  _ ->
+                      "data"
+              end,
+    PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
+    {ok, Buckets} = file:list_dir(PartitionDir),
+    Buckets1 = gb_sets:from_list([list_to_binary(B) || B <- Buckets]),
+    Reply = {ok, undefined, {Partition, Node}, Buckets1},
     {reply, Reply, State1};
 
 handle_coverage(_Req, _KeySpaces, _Sender, State) ->
