@@ -62,7 +62,7 @@ loop(Pid, N) ->
 init([Port]) ->
     {ok, RB} = application:get_env(dalmatiner_db, udp_buffer),
     {ok, FLC} = application:get_env(dalmatiner_db, fast_loop_count),
-    {ok, Wait} = application:get_env(dalmatiner_db, udp_loop_wait),
+    {ok, Wait} = application:get_env(dalmatiner_db, loop_wait),
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, W} = application:get_env(dalmatiner_db, w),
     {ok, Sock} = gen_udp:open(Port, [binary, {active, false}, {recbuf, RB}]),
