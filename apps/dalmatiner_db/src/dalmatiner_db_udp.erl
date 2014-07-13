@@ -113,8 +113,8 @@ handle_cast({loop, 0}, State) ->
 handle_cast({loop, N}, State = #state{sock=S, cbin=CBin, nodes=Nodes, w=W,
                                       port=LPort}) ->
     case gen_udp:recv(S, State#state.recbuf, State#state.wait) of
-        {ok, {Address, Port, D}} ->
-            dyntrace:p(?DT_DDB_UDP_SIZE, LPort, Address, Port, byte_size(D)),
+        {ok, {Address, _Port, D}} ->
+            dyntrace:p(?DT_DDB_UDP_SIZE, LPort, byte_size(D), Address),
             case handle_data(D, W, LPort, CBin, Nodes, 0, dict:new()) of
                 ok ->
                     handle_cast({loop, N-1}, State);
