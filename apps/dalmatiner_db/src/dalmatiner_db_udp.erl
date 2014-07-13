@@ -23,7 +23,7 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {sock, port, recbuf, cbin, nodes, n, w, fast_loop_count}).
+-record(state, {sock, port, recbuf, cbin, nodes, n, w, fast_loop_count, wait}).
 
 %%%===================================================================
 %%% API
@@ -62,11 +62,13 @@ loop(Pid, N) ->
 init([Port]) ->
     {ok, RB} = application:get_env(dalmatiner_db, udp_buffer),
     {ok, FLC} = application:get_env(dalmatiner_db, fast_loop_count),
+    {ok, Wait} = application:get_env(dalmatiner_db, udp_loop_wait),
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, W} = application:get_env(dalmatiner_db, w),
     {ok, Sock} = gen_udp:open(Port, [binary, {active, false}, {recbuf, RB}]),
     loop(0),
-    {ok, #state{sock=Sock, port=Port, recbuf=RB, n=N, w=W, fast_loop_count=FLC}}.
+    {ok, #state{sock=Sock, port=Port, recbuf=RB, n=N, w=W, fast_loop_count=FLC,
+                wait=Wait}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -104,7 +106,7 @@ handle_cast({loop, 0}, State) ->
     {noreply, State#state{cbin=CBin, nodes=orddict:from_list(Nodes1)}};
 
 handle_cast({loop, N}, State = #state{sock=S, cbin=CBin, nodes=Nodes, w=W}) ->
-    case gen_udp:recv(S, State#state.recbuf, 10) of
+    case gen_udp:recv(S, State#state.recbuf, State#state.wait) of
         {ok, {_Address, _Port, D}} ->
             case handle_data(D, W, CBin, Nodes, dict:new()) of
                 ok ->

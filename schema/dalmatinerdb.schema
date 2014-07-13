@@ -29,8 +29,11 @@
  [{default, 1000},
   {datatype, integer}]}.
 
+%% @doc The amount of time each udp process waits to receive data, lower numbers
+%% speed up fastloops when no data is there but might cause problems with the
+%% processes spinning idle too fast.
 {mapping, "udp_loop_wait", "dalmatiner_db.loop_wait",
- [{default, "10ms"},
+ [{default, "100ms"},
   {datatype, {duration, ms}}]}.
 
 %% @doc The tcp port dalmatiner_db listens on for the tcp API
@@ -62,7 +65,7 @@
 %% this effects lost data on crashes.
 {mapping, "cache_points", "metric_vnode.cache_points",
  [{datatype, integer},
-  {default, 10}]}.
+  {default, 120}]}.
 
 %% @doc The path data gets stored into.
 {mapping, "data_dir", "riak_core.platform_data_dir",
