@@ -103,7 +103,7 @@ handle_cast({loop, 0}, State) ->
     Nodes1 = [{I, riak_core_apl:get_apl(I, State#state.n, metric)} || {I, _} <- Nodes],
     {noreply, State#state{cbin=CBin, nodes=orddict:from_list(Nodes1)}};
 
-handle_cast({loop, N}, State = #state{sock=S, cbin=CBin, nodes=Nodes, n=N, w=W}) ->
+handle_cast({loop, N}, State = #state{sock=S, cbin=CBin, nodes=Nodes, w=W}) ->
     case gen_udp:recv(S, State#state.recbuf, 10) of
         {ok, {_Address, _Port, D}} ->
             case handle_data(D, W, CBin, Nodes, dict:new()) of
