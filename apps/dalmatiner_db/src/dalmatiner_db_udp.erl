@@ -12,6 +12,10 @@
 -include_lib("dproto/include/dproto.hrl").
 -include_lib("mstore/include/mstore.hrl").
 
+-define(DT_DDB_UDP_SIZE, 4501).
+-define(DT_DDB_UDP_CNT, 4502).
+-define(DT_DDB_UDP_LOOP, 4503).
+
 %% API
 -export([start_link/1]).
 
@@ -99,16 +103,19 @@ handle_call(_Request, _From, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_cast({loop, 0}, State) ->
+    dyntrace:p(?DT_DDB_UDP_LOOP, State#state.port),
     loop(State#state.fast_loop_count),
     {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
     Nodes = chash:nodes(chashbin:to_chash(CBin)),
     Nodes1 = [{I, riak_core_apl:get_apl(I, State#state.n, metric)} || {I, _} <- Nodes],
     {noreply, State#state{cbin=CBin, nodes=orddict:from_list(Nodes1)}};
 
-handle_cast({loop, N}, State = #state{sock=S, cbin=CBin, nodes=Nodes, w=W}) ->
+handle_cast({loop, N}, State = #state{sock=S, cbin=CBin, nodes=Nodes, w=W,
+                                      port=LPort}) ->
     case gen_udp:recv(S, State#state.recbuf, State#state.wait) of
-        {ok, {_Address, _Port, D}} ->
-            case handle_data(D, W, CBin, Nodes, dict:new()) of
+        {ok, {Address, Port, D}} ->
+            dyntrace:p(?DT_DDB_UDP_SIZE, LPort, Address, Port, byte_size(D)),
+            case handle_data(D, W, LPort, CBin, Nodes, 0, dict:new()) of
                 ok ->
                     handle_cast({loop, N-1}, State);
                 E ->
@@ -131,14 +138,16 @@ handle_data(<<0,
               _MS:?METRIC_SS/integer, Metric:_MS/binary,
               _DS:?DATA_SS/integer, Data:_DS/binary,
               R/binary>>,
-            W, CBin, Nodes, Acc) when (_DS rem ?DATA_SIZE) == 0 ->
+            W, LPort, CBin, Nodes, Cnt, Acc) when (_DS rem ?DATA_SIZE) == 0 ->
     DocIdx = riak_core_util:chash_key({Bucket, Metric}),
     {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
     Acc1 = dict:append(Idx, {Bucket, Metric, T, Data}, Acc),
-    handle_data(R, W, CBin, Nodes, Acc1);
-handle_data(<<>>, W, _, Nodes, Acc) ->
+    handle_data(R, W, LPort, CBin, Nodes, Cnt + 1, Acc1);
+handle_data(<<>>, W, LPort, _, Nodes, Cnt, Acc) ->
+    dyntrace:p(?DT_DDB_UDP_CNT, LPort, Cnt),
     metric:mput(Nodes, Acc, W);
-handle_data(R, W, _, Nodes, Acc) ->
+handle_data(R, W, LPort, _, Nodes, Cnt, Acc) ->
+    dyntrace:p(?DT_DDB_UDP_CNT, LPort, Cnt),
     lager:error("[udp] unknown content: ~p", [R]),
     metric:mput(Nodes, Acc, W).
 

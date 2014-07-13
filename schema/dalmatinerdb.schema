@@ -1,7 +1,7 @@
 %% -*- erlang -*-
 
-%%
-%% @doc The udp port dalmatiner_db listens to
+%% @doc The udp port dalmatiner_db listens to, if the number of listeners is
+%% greater then 1 the successive ports will be used as well.
 {mapping, "udp_port", "dalmatiner_db.udp_port",
  [{default, {{udp_port}} },
   {datatype, integer}]}.
