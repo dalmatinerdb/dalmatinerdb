@@ -1,7 +1,7 @@
 %% -*- erlang -*-
 
 %%
-%% @doc The udp port metricdb listens to
+%% @doc The udp port dalmatiner_db listens to
 {mapping, "udp_port", "dalmatiner_db.udp_port",
  [{default, {{udp_port}} },
   {datatype, integer}]}.
@@ -33,7 +33,7 @@
  [{default, "10ms"},
   {datatype, {duration, ms}}]}.
 
-%% @doc The tcp port metricdb listens on for the tcp API
+%% @doc The tcp port dalmatiner_db listens on for the tcp API
 {mapping, "tcp_port", "dalmatiner_db.tcp_port",
  [{default, {{tcp_port}} },
   {datatype, integer}]}.
@@ -88,23 +88,20 @@
 
 %% @doc The number of copies of the data that is keeped.
 %% For good consistency N  < (R + W) should be true.
-{mapping, "n", "metricdb.n",
+{mapping, "n", "dalmatiner_db.n",
  [{datatype, integer},
-  {default, 1},
-  {commented, 1}]}.
+  {default, 1}]}.
 
 %% @doc The number of replies requried for a read request to succeed
 %% The lower the value the faster the replies but the more likely stale
 %% data is returend.
-{mapping, "r", "metricdb.r",
+{mapping, "r", "dalmatiner_db.r",
  [{datatype, integer},
-  {default, 1},
-  {commented, 1}]}.
+  {default, 1}]}.
 
 %% @doc The number of replies requried for a write request to succeed
 %% The lower the value the faster the write but the more likely to only
 %% write partial data.
-{mapping, "w", "metricdb.w",
+{mapping, "w", "dalmatiner_db.w",
  [{datatype, integer},
-  {default, 1},
-  {commented, 1}]}.
+  {default, 1}]}.

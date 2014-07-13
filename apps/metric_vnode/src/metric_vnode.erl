@@ -38,7 +38,8 @@
           node,
           mstore=gb_trees:empty(),
           tbl,
-          ct
+          ct,
+          dir
          }).
 
 -define(MASTER, metric_vnode_master).
@@ -55,10 +56,18 @@ init([Partition]) ->
              _ ->
                  10
          end,
+    DataDir = case application:get_env(riak_core, platform_data_dir) of
+                  {ok, DD} ->
+                      DD;
+                  _ ->
+                      "data"
+              end,
+    PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
     {ok, #state { partition = Partition,
                   node = node(),
                   tbl = ets:new(P, [public, ordered_set]),
-                  ct = CT
+                  ct = CT,
+                  dir = PartitionDir
                 }}.
 
 repair(IdxNode, {Bucket, Metric}, {Time, Obj}) ->
@@ -236,6 +245,24 @@ handle_coverage(list, _KeySpaces, _Sender,
     Reply = {ok, undefined, {Partition, Node}, Buckets1},
     {reply, Reply, State1};
 
+handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
+                State = #state{partition=Partition, node=Node, tbl=T, dir=Dir}) ->
+    State1 = ets:foldl(fun({{Bkt, Metric}, Start, _, V}, SAcc) ->
+                               do_write(Bkt, Metric, Start, V, SAcc)
+                       end, State, T),
+    ets:delete_all_objects(T),
+    {R, State2} = case get_set(Bucket, State1) of
+                      {ok, {MSet, S1}} ->
+                          mstore:delete(MSet),
+                          file:del_dir([Dir, $/, Bucket]),
+                          MStore = gb_trees:delete(Bucket, S1#state.mstore),
+                          {ok, S1#state{mstore = MStore}};
+                      _ ->
+                          {not_found, State}
+                  end,
+    Reply = {ok, undefined, {Partition, Node}, R},
+    {reply, Reply, State2};
+
 handle_coverage(_Req, _KeySpaces, _Sender, State) ->
     {stop, not_implemented, State}.
 
@@ -250,7 +277,7 @@ terminate(_Reason, State=#state{tbl = T}) ->
                       do_write(Bucket, Metric, Start, V, SAcc)
               end, State, T),
     ets:delete_all_objects(T),
-    gb_trees:map(fun({_, MSet}) ->
+    gb_trees:map(fun(_, MSet) ->
                          mstore:close(MSet)
                  end, State1#state.mstore),
     ok.
