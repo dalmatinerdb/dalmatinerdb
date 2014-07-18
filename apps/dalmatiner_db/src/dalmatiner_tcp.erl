@@ -21,16 +21,16 @@ loop(Socket, Transport) ->
         {ok, <<?KEEPALIVE>>} ->
             io:format("keepalive~n"),
             loop(Socket, Transport);
+        {ok, <<?BUCKETS>>} ->
+            io:format("list~n", []),
+            {ok, Bs} = metric:list(),
+            Transport:send(Socket, dproto_tcp:encode_metrics(Bs)),
+            loop(Socket, Transport);
         {ok, <<?LIST, L/binary>>} ->
             Bucket = dproto_tcp:decode_list(L),
             io:format("list: ~s~n", [Bucket]),
             {ok, Ms} = metric:list(Bucket),
             Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
-            loop(Socket, Transport);
-        {ok, <<?BUCKETS>>} ->
-            io:format("list~n", []),
-            {ok, Bs} = metric:list(),
-            Transport:send(Socket, dproto_tcp:encode_metrics(Bs)),
             loop(Socket, Transport);
         {ok, <<?GET, G/binary>>} ->
             io:format("get~n"),
