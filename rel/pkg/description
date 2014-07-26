@@ -1,4 +1,3 @@
-Project FiFo's Howl is an asyncronouse channel based messaging server. TCP 
-Sockets build the one endpoint and a websocket server the other.
+DalmatinerDB is the backend/storage server for DalmatinerDB it is toring data and providing a point of input.
 
-http://project-fifo.net/display/PF/Howl
+https://dalmatiner.io
