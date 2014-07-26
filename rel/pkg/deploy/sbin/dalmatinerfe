@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-
-/opt/local/dalmatinerfe/bin/dalmatinerfe $@
