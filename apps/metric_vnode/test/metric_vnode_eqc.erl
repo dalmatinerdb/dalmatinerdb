@@ -92,7 +92,7 @@ prop_gb_comp() ->
                 {S, T} = eval(D),
                 List = ?T:to_list(T),
                 List1 = [{get(S, Time, 1), V} || {Time, V} <- List],
-                List2 = [{unlist(mmath_bin:to_list(Vs)), Vt} || {Vs, Vt} <- List1],
+                List2 = [{unlist(mmath_bin:to_list(Vs)), Vt} || {{_ ,Vs}, Vt} <- List1],
                 List3 = [true || {_V, _V} <- List2],
                 Len = length(List),
                 ?WHENFAIL(io:format(user, "L: ~p~n", [List2]),

@@ -137,11 +137,14 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, _Sender,
                      State
            end,
     {D, State2} = case get_set(Bucket, State1) of
-                      {ok, {MSet, S2}} ->
+                      {ok, {{Resolution, MSet}, S2}} ->
                           {ok, Data} = mstore:get(MSet, Metric, Time, Count),
-                          {Data, S2};
+                          {{Resolution, Data}, S2};
                       _ ->
-                          {mmath_bin:empty(Count), State1}
+                          Resolution = dalmatiner_opt:get(
+                                         <<"buckets">>, Bucket, <<"resolution">>,
+                                         {metric_vnode, resolution}, 1000),
+                          {{Resolution, mmath_bin:empty(Count)}, State1}
                   end,
     {reply, {ok, ReqID, {Partition, Node}, D}, State2};
 
@@ -155,7 +158,7 @@ handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender,
                    end, State, T),
     ets:delete_all_objects(T),
     Ts = gb_trees:to_list(State1#state.mstore),
-    Acc = lists:foldl(fun({Bucket, MStore}, AccL) ->
+    Acc = lists:foldl(fun({Bucket, {_, MStore}}, AccL) ->
                         F = fun(Metric, Time, V, AccIn) ->
                                     Fun({Bucket, Metric}, {Time, V}, AccIn)
                             end,
@@ -206,7 +209,7 @@ delete(State = #state{partition=Partition, tbl=T}) ->
                       "data"
               end,
     PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
-    gb_trees:map(fun(Bucket, MSet) ->
+    gb_trees:map(fun(Bucket, {_, MSet}) ->
                          mstore:delete(MSet),
                          file:del_dir([PartitionDir, $/, Bucket])
                  end, State#state.mstore),
@@ -219,7 +222,7 @@ handle_coverage({metrics, Bucket}, _KeySpaces, _Sender,
                        end, State, T),
     ets:delete_all_objects(T),
     {Ms, State2} = case get_set(Bucket, State1) of
-                       {ok, {M, S2}} ->
+                       {ok, {{_, M}, S2}} ->
                            {mstore:metrics(M), S2};
                        _ ->
                            {gb_sets:new(), State1}
@@ -252,7 +255,7 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
                        end, State, T),
     ets:delete_all_objects(T),
     {R, State2} = case get_set(Bucket, State1) of
-                      {ok, {MSet, S1}} ->
+                      {ok, {{_, MSet}, S1}} ->
                           mstore:delete(MSet),
                           file:del_dir([Dir, $/, Bucket]),
                           MStore = gb_trees:delete(Bucket, S1#state.mstore),
@@ -294,8 +297,10 @@ new_store(Partition, Bucket) ->
     PointsPerFile = dalmatiner_opt:get(<<"buckets">>, Bucket,
                                        <<"points_per_file">>,
                                        {metric_vnode, points_per_file}, ?WEEK),
+    Resolution = dalmatiner_opt:get(<<"buckets">>, Bucket, <<"resolution">>,
+                                    {metric_vnode, resolution}, 1000),
     {ok, MSet} = mstore:new(CHashSize, PointsPerFile, BucketDir),
-    MSet.
+    {Resolution, MSet}.
 
 do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT}) ->
     Len = mmath_bin:length(Value),
@@ -328,9 +333,9 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT}) ->
     end.
 
 do_write(Bucket, Metric, Time, Value, State) ->
-    {MSet, State1} = get_or_create_set(Bucket, State),
+    {{R, MSet}, State1} = get_or_create_set(Bucket, State),
     MSet1 = mstore:put(MSet, Metric, Time, Value),
-    Store1 = gb_trees:update(Bucket, MSet1, State1#state.mstore),
+    Store1 = gb_trees:update(Bucket, {R, MSet1}, State1#state.mstore),
     State1#state{mstore=Store1}.
 
 get_set(Bucket, State=#state{mstore=Store}) ->
@@ -340,9 +345,13 @@ get_set(Bucket, State=#state{mstore=Store}) ->
         none ->
             case bucket_exists(State#state.partition, Bucket) of
                 true ->
+                    Resolution = dalmatiner_opt:get(
+                                   <<"buckets">>, Bucket, <<"resolution">>,
+                                   {metric_vnode, resolution}, 1000),
                     MSet = new_store(State#state.partition, Bucket),
-                    Store1 = gb_trees:insert(Bucket, MSet, Store),
-                    {ok, {MSet, State#state{mstore=Store1}}};
+                    R = {Resolution, MSet},
+                    Store1 = gb_trees:insert(Bucket, R, Store),
+                    {ok, {R, State#state{mstore=Store1}}};
                 _ ->
                     {error, not_found}
             end
