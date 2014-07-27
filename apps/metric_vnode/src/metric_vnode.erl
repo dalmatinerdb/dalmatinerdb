@@ -283,28 +283,17 @@ terminate(_Reason, State=#state{tbl = T}) ->
     ok.
 
 new_store(Partition, Bucket) ->
-    DataDir = case application:get_env(riak_core, platform_data_dir) of
-                  {ok, DD} ->
-                      DD;
-                  _ ->
-                      "data"
-              end,
+    DataDir = dalmatiner_opt:get(<<"buckets">>, Bucket, <<"data_dir">>,
+                                 {riak_core, platform_data_dir}, "data"),
     PartitionDir = [DataDir | [$/ |  integer_to_list(Partition)]],
     BucketDir = [PartitionDir, [$/ | binary_to_list(Bucket)]],
     file:make_dir(PartitionDir),
     file:make_dir(BucketDir),
-    CHashSize = case application:get_env(metric_vnode, chash_size) of
-                    {ok, CHS} ->
-                        CHS;
-                    _ ->
-                        8
-                end,
-    PointsPerFile = case application:get_env(metric_vnode, points_per_file) of
-                        {ok, PPF} ->
-                            PPF;
-                        _ ->
-                            ?WEEK
-                    end,
+    CHashSize = dalmatiner_opt:get(<<"buckets">>, Bucket, <<"chash_size">>,
+                                   {metric_vnode, chash_size}, 8),
+    PointsPerFile = dalmatiner_opt:get(<<"buckets">>, Bucket,
+                                       <<"points_per_file">>,
+                                       {metric_vnode, points_per_file}, ?WEEK),
     {ok, MSet} = mstore:new(CHashSize, PointsPerFile, BucketDir),
     MSet.
 
