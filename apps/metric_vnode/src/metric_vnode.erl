@@ -128,7 +128,7 @@ handle_command({put, Bucket, Metric, {Time, Value}}, _Sender, State) ->
 
 handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, _Sender,
                #state{partition=Partition, node=Node, tbl=T} = State) ->
-    BM = {Bucket,Metric},
+    BM = {Bucket, Metric},
     State1 = case ets:lookup(T, BM) of
                  [{BM, Start, _Time, V}] ->
                      ets:delete(T, {Bucket,Metric}),
