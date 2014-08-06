@@ -36,7 +36,7 @@ loop(Socket, Transport) ->
             io:format("get~n"),
             {B, M, T, C} = dproto_tcp:decode_get(G),
             io:format(">~s/~s@~p: ~p~n", [B, M, T, C]),
-            {ok, Data, Resolution} = metric:get(B, M, T, C),
+            {ok, Resolution, Data} = metric:get(B, M, T, C),
             Transport:send(Socket, <<Resolution:64/integer, Data/binary>>),
             loop(Socket, Transport);
         {error,timeout} ->
