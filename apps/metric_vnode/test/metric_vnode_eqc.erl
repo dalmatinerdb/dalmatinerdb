@@ -3,11 +3,15 @@
 -ifdef(TEST).
 -ifdef(EQC).
 
--include_lib("eqc/include/eqc.hrl").
--include_lib("eqc/include/eqc_fsm.hrl").
--include_lib("eunit/include/eunit.hrl").
 -include_lib("riak_core/include/riak_core_vnode.hrl").
+
+-define(EQC_SETUP, true).
+
+-include_lib("eqc/include/eqc_fsm.hrl").
+-include_lib("fqc/include/fqc.hrl").
+
 -compile(export_all).
+
 -define(DIR, ".qcdata").
 -define(T, gb_trees).
 -define(V, metric_vnode).
@@ -88,7 +92,7 @@ prop_gb_comp() ->
                 {S, T} = eval(D),
                 List = ?T:to_list(T),
                 List1 = [{get(S, Time, 1), V} || {Time, V} <- List],
-                List2 = [{unlist(mmath_bin:to_list(Vs)), Vt} || {Vs, Vt} <- List1],
+                List2 = [{unlist(mmath_bin:to_list(Vs)), Vt} || {{_ ,Vs}, Vt} <- List1],
                 List3 = [true || {_V, _V} <- List2],
                 Len = length(List),
                 ?WHENFAIL(io:format(user, "L: ~p~n", [List2]),
@@ -166,9 +170,15 @@ prop_handoff() ->
 unlist([E]) ->
     E.
 
--ifndef(EQC_NUM_TESTS).
--define(EQC_NUM_TESTS, 100).
--endif.
--include("eqc_helper.hrl").
+setup() ->
+    meck:new(riak_core_metadata, [passthrough]),
+    meck:expect(riak_core_metadata, get, fun(_, _) -> undefined end),
+    meck:expect(riak_core_metadata, put, fun(_, _, _) -> ok end),
+    ok.
+
+cleanup(_) ->
+    meck:unload(riak_core_metadata),
+    ok.
+
 -endif.
 -endif.

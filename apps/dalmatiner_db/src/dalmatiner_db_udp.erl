@@ -113,9 +113,12 @@ handle_cast({loop, 0}, State) ->
 handle_cast({loop, N}, State = #state{sock=S, cbin=CBin, nodes=Nodes, w=W,
                                       port=LPort}) ->
     case gen_udp:recv(S, State#state.recbuf, State#state.wait) of
-        {ok, {_Address, _Port, D}} ->
+        {ok, {_Address, _Port,
+              <<0,
+                _BS:?BUCKET_SS/integer, Bucket:_BS/binary,
+                D/binary>>}} ->
             dyntrace:p(?DT_DDB_UDP_SIZE, LPort, byte_size(D)),
-            case handle_data(D, W, LPort, CBin, Nodes, 0, dict:new()) of
+            case handle_data(D, Bucket, W, LPort, CBin, Nodes, 0, dict:new()) of
                 ok ->
                     handle_cast({loop, N-1}, State);
                 E ->
@@ -132,21 +135,19 @@ handle_cast({loop, N}, State = #state{sock=S, cbin=CBin, nodes=Nodes, w=W,
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_data(<<0,
-              T:?TIME_SIZE/integer,
-              _BS:?BUCKET_SS/integer, Bucket:_BS/binary,
+handle_data(<<T:?TIME_SIZE/integer,
               _MS:?METRIC_SS/integer, Metric:_MS/binary,
               _DS:?DATA_SS/integer, Data:_DS/binary,
               R/binary>>,
-            W, LPort, CBin, Nodes, Cnt, Acc) when (_DS rem ?DATA_SIZE) == 0 ->
+            Bucket, W, LPort, CBin, Nodes, Cnt, Acc) when (_DS rem ?DATA_SIZE) == 0 ->
     DocIdx = riak_core_util:chash_key({Bucket, Metric}),
     {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
     Acc1 = dict:append(Idx, {Bucket, Metric, T, Data}, Acc),
-    handle_data(R, W, LPort, CBin, Nodes, Cnt + 1, Acc1);
-handle_data(<<>>, W, LPort, _, Nodes, Cnt, Acc) ->
+    handle_data(R, Bucket, W, LPort, CBin, Nodes, Cnt + 1, Acc1);
+handle_data(<<>>, _Bucket, W, LPort, _, Nodes, Cnt, Acc) ->
     dyntrace:p(?DT_DDB_UDP_CNT, LPort, Cnt),
     metric:mput(Nodes, Acc, W);
-handle_data(R, W, LPort, _, Nodes, Cnt, Acc) ->
+handle_data(R, _Bucket, W, LPort, _, Nodes, Cnt, Acc) ->
     dyntrace:p(?DT_DDB_UDP_CNT, LPort, Cnt),
     lager:error("[udp] unknown content: ~p", [R]),
     metric:mput(Nodes, Acc, W).
