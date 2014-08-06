@@ -195,7 +195,7 @@ calc_empty(I) ->
     case gb_trees:next(I) of
         none ->
             true;
-        {_, MSet, I2} ->
+        {_, {_, MSet}, I2} ->
             gb_sets:is_empty(mstore:metrics(MSet))
                 andalso calc_empty(I2)
     end.
@@ -280,7 +280,7 @@ terminate(_Reason, State=#state{tbl = T}) ->
                       do_write(Bucket, Metric, Start, V, SAcc)
               end, State, T),
     ets:delete_all_objects(T),
-    gb_trees:map(fun(_, MSet) ->
+    gb_trees:map(fun(_, {_, MSet}) ->
                          mstore:close(MSet)
                  end, State1#state.mstore),
     ok.
@@ -345,11 +345,7 @@ get_set(Bucket, State=#state{mstore=Store}) ->
         none ->
             case bucket_exists(State#state.partition, Bucket) of
                 true ->
-                    Resolution = dalmatiner_opt:get(
-                                   <<"buckets">>, Bucket, <<"resolution">>,
-                                   {metric_vnode, resolution}, 1000),
-                    MSet = new_store(State#state.partition, Bucket),
-                    R = {Resolution, MSet},
+                    R = new_store(State#state.partition, Bucket),
                     Store1 = gb_trees:insert(Bucket, R, Store),
                     {ok, {R, State#state{mstore=Store1}}};
                 _ ->
