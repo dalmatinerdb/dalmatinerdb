@@ -79,8 +79,10 @@ start(VNodeInfo, Op, User, Val) ->
     receive
         {ReqID, ok} ->
             ok;
-        {ReqID, ok, Result} ->
-            {ok, Result}
+        {ReqID, ok, {Res, Data}} ->
+            {ok, Res, Data};
+        {ReqID, ok, Res} ->
+            {ok, Res}
     after ?DEFAULT_TIMEOUT ->
             {error, timeout}
     end.
