@@ -97,12 +97,12 @@ run()
 case "$1" in
     join)
         shift
-        run howl_console join $@
+        run dalmatiner_console join $@
         ;;
 
     leave)
         shift
-        run howl_console leave $@
+        run dalmatiner_console leave $@
         ;;
 
     remove)
@@ -112,12 +112,12 @@ case "$1" in
         fi
 
         shift
-        run howl_console remove $@
+        run dalmatiner_console remove $@
         ;;
 
     reip)
         shift
-        run howl_console reip $@
+        run dalmatiner_console reip $@
         ;;
 
     member-status|member_status)
@@ -176,7 +176,7 @@ case "$1" in
 
     ringready)
         shift
-        run howl_console ringready $@
+        run dalmatiner_console ringready $@
         ;;
 
     *)
