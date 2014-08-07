@@ -8,7 +8,7 @@
 
 %% @doc The buffer size for UDP
 {mapping, "udp_buffer", "dalmatiner_db.udp_buffer",
- [{default, 32768},
+[{default, "1MB"},
   {datatype, bytesize}]}.
 
 %% @doc The number of udp listeners, each one gets a own port startting from
@@ -68,7 +68,7 @@
   {default, 120}]}.
 
 %% @doc The path data gets stored into.
-{mapping, "data_dir", "riak_core.platform_data_dir",
+{mapping, "platform_data_dir", "riak_core.platform_data_dir",
  [{default, "{{platform_data_dir}}"},
   {datatype, string}]}.
 
