@@ -243,8 +243,12 @@ handle_coverage(list, _KeySpaces, _Sender,
                       "data"
               end,
     PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
-    {ok, Buckets} = file:list_dir(PartitionDir),
-    Buckets1 = gb_sets:from_list([list_to_binary(B) || B <- Buckets]),
+    Buckets1 = case file:list_dir(PartitionDir) of
+                   {ok, Buckets} ->
+                       gb_sets:from_list([list_to_binary(B) || B <- Buckets]);
+                   _ ->
+                       gb_sets:new()
+               end,
     Reply = {ok, undefined, {Partition, Node}, Buckets1},
     {reply, Reply, State1};
 
