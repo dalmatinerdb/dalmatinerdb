@@ -112,14 +112,14 @@ handle_command({repair, Bucket, Metric, Time, Value}, _Sender, #state{tbl=T}=Sta
                      do_write(Bucket, Metric, Start, V, State);
                  _ ->
                      State
-            end,
+             end,
     State2 = do_put(Bucket, Metric, Time, Value, State1),
     {noreply, State2};
 
 handle_command({mput, Data}, _Sender, State) ->
     State1 = lists:foldl(fun({Bucket, Metric, Time, Value}, SAcc) ->
                                  do_put(Bucket, Metric, Time, Value, SAcc)
-                        end, State, Data),
+                         end, State, Data),
     {reply, ok, State1};
 
 handle_command({put, Bucket, Metric, {Time, Value}}, _Sender, State) ->
@@ -135,7 +135,7 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, _Sender,
                      do_write(Bucket, Metric, Start, V, State);
                  _ ->
                      State
-           end,
+             end,
     {D, State2} = case get_set(Bucket, State1) of
                       {ok, {{Resolution, MSet}, S2}} ->
                           {ok, Data} = mstore:get(MSet, Metric, Time, Count),
@@ -154,15 +154,15 @@ handle_command(_Message, _Sender, State) ->
 handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender,
                        State=#state{tbl=T}) ->
     State1 = ets:foldl(fun({{Bucket, Metric}, Start, _, V}, SAcc) ->
-                           do_write(Bucket, Metric, Start, V, SAcc)
-                   end, State, T),
+                               do_write(Bucket, Metric, Start, V, SAcc)
+                       end, State, T),
     ets:delete_all_objects(T),
     Ts = gb_trees:to_list(State1#state.mstore),
     Acc = lists:foldl(fun({Bucket, {_, MStore}}, AccL) ->
-                        F = fun(Metric, Time, V, AccIn) ->
-                                    Fun({Bucket, Metric}, {Time, V}, AccIn)
-                            end,
-                        mstore:fold(MStore, F, AccL)
+                              F = fun(Metric, Time, V, AccIn) ->
+                                          Fun({Bucket, Metric}, {Time, V}, AccIn)
+                                  end,
+                              mstore:fold(MStore, F, AccL)
                       end, Acc0, Ts),
     {reply, Acc, State1};
 
@@ -281,8 +281,8 @@ handle_exit(_PID, _Reason, State) ->
 
 terminate(_Reason, State=#state{tbl = T}) ->
     State1 = ets:foldl(fun({{Bucket, Metric}, Start, _, V}, SAcc) ->
-                      do_write(Bucket, Metric, Start, V, SAcc)
-              end, State, T),
+                               do_write(Bucket, Metric, Start, V, SAcc)
+                       end, State, T),
     ets:delete_all_objects(T),
     gb_trees:map(fun(_, {_, MSet}) ->
                          mstore:close(MSet)
@@ -296,14 +296,12 @@ new_store(Partition, Bucket) ->
     BucketDir = [PartitionDir, [$/ | binary_to_list(Bucket)]],
     file:make_dir(PartitionDir),
     file:make_dir(BucketDir),
-    CHashSize = dalmatiner_opt:get(<<"buckets">>, Bucket, <<"chash_size">>,
-                                   {metric_vnode, chash_size}, 8),
     PointsPerFile = dalmatiner_opt:get(<<"buckets">>, Bucket,
                                        <<"points_per_file">>,
                                        {metric_vnode, points_per_file}, ?WEEK),
     Resolution = dalmatiner_opt:get(<<"buckets">>, Bucket, <<"resolution">>,
                                     {metric_vnode, resolution}, 1000),
-    {ok, MSet} = mstore:new(CHashSize, PointsPerFile, BucketDir),
+    {ok, MSet} = mstore:new(PointsPerFile, BucketDir),
     {Resolution, MSet}.
 
 do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT}) ->

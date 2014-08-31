@@ -8,7 +8,7 @@
 
 %% @doc The buffer size for UDP
 {mapping, "udp_buffer", "dalmatiner_db.udp_buffer",
-[{default, "1MB"},
+ [{default, "1MB"},
   {datatype, bytesize}]}.
 
 %% @doc The number of udp listeners, each one gets a own port startting from
@@ -45,14 +45,6 @@
 {mapping, "tcp_listeners", "dalmatiner_db.tcp_listeners",
  [{default, 100},
   {datatype, integer}]}.
-
-%% @doc the number of chash buckets used for each vnode's mstore backend
-{mapping, "chash_size", "metric_vnode.chash_size",
- [{datatype, integer},
-  {default, 8},
-  {commented, 32},
-  {validators, ["ring_size"]}
- ]}.
 
 %% @doc The datapoints stored per file, default equals 1 week of data
 %% in a 1 second resolution.
