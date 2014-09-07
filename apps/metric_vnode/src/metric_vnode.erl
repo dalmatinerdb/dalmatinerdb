@@ -107,9 +107,9 @@ handle_command(ping, _Sender, State) ->
 
 handle_command({repair, Bucket, Metric, Time, Value}, _Sender, #state{tbl=T}=State) ->
     State1 = case ets:lookup(T, {Bucket, Metric}) of
-                 [{{Bucket,Metric}, Start, _Time, V}] ->
+                 [{{Bucket,Metric}, _Start, Cache}] ->
                      ets:delete(T, {Bucket,Metric}),
-                     do_write(Bucket, Metric, Start, V, State);
+                     do_write(Bucket, Metric, Cache, State);
                  _ ->
                      State
              end,
@@ -130,9 +130,9 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, _Sender,
                #state{partition=Partition, node=Node, tbl=T} = State) ->
     BM = {Bucket, Metric},
     State1 = case ets:lookup(T, BM) of
-                 [{BM, Start, _Time, V}] ->
+                 [{BM, _Start, Cache}] ->
                      ets:delete(T, {Bucket,Metric}),
-                     do_write(Bucket, Metric, Start, V, State);
+                     do_write(Bucket, Metric, Cache, State);
                  _ ->
                      State
              end,
@@ -153,8 +153,8 @@ handle_command(_Message, _Sender, State) ->
 
 handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender,
                        State=#state{tbl=T}) ->
-    State1 = ets:foldl(fun({{Bucket, Metric}, Start, _, V}, SAcc) ->
-                               do_write(Bucket, Metric, Start, V, SAcc)
+    State1 = ets:foldl(fun({{Bucket, Metric}, _Start, Cache}, SAcc) ->
+                               do_write(Bucket, Metric, Cache, SAcc)
                        end, State, T),
     ets:delete_all_objects(T),
     Ts = gb_trees:to_list(State1#state.mstore),
@@ -217,8 +217,8 @@ delete(State = #state{partition=Partition, tbl=T}) ->
 
 handle_coverage({metrics, Bucket}, _KeySpaces, _Sender,
                 State = #state{partition=Partition, node=Node, tbl=T}) ->
-    State1 = ets:foldl(fun({{Bkt, Metric}, Start, _, V}, SAcc) ->
-                               do_write(Bkt, Metric, Start, V, SAcc)
+    State1 = ets:foldl(fun({{Bkt, Metric}, _Start, Cache}, SAcc) ->
+                               do_write(Bkt, Metric, Cache, SAcc)
                        end, State, T),
     ets:delete_all_objects(T),
     {Ms, State2} = case get_set(Bucket, State1) of
@@ -232,8 +232,8 @@ handle_coverage({metrics, Bucket}, _KeySpaces, _Sender,
 
 handle_coverage(list, _KeySpaces, _Sender,
                 State = #state{partition=Partition, node=Node, tbl=T}) ->
-    State1 = ets:foldl(fun({{Bkt, Metric}, Start, _, V}, SAcc) ->
-                               do_write(Bkt, Metric, Start, V, SAcc)
+    State1 = ets:foldl(fun({{Bkt, Metric}, _Start, Cache}, SAcc) ->
+                               do_write(Bkt, Metric, Cache, SAcc)
                        end, State, T),
     ets:delete_all_objects(T),
     DataDir = case application:get_env(riak_core, platform_data_dir) of
@@ -254,8 +254,8 @@ handle_coverage(list, _KeySpaces, _Sender,
 
 handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
                 State = #state{partition=Partition, node=Node, tbl=T, dir=Dir}) ->
-    State1 = ets:foldl(fun({{Bkt, Metric}, Start, _, V}, SAcc) ->
-                               do_write(Bkt, Metric, Start, V, SAcc)
+    State1 = ets:foldl(fun({{Bkt, Metric}, _Start, Cache}, SAcc) ->
+                               do_write(Bkt, Metric, Cache, SAcc)
                        end, State, T),
     ets:delete_all_objects(T),
     {R, State2} = case get_set(Bucket, State1) of
@@ -280,8 +280,8 @@ handle_exit(_PID, _Reason, State) ->
     {noreply, State}.
 
 terminate(_Reason, State=#state{tbl = T}) ->
-    State1 = ets:foldl(fun({{Bucket, Metric}, Start, _, V}, SAcc) ->
-                               do_write(Bucket, Metric, Start, V, SAcc)
+    State1 = ets:foldl(fun({{Bucket, Metric}, _Start, Cache}, SAcc) ->
+                               do_write(Bucket, Metric, Cache, SAcc)
                        end, State, T),
     ets:delete_all_objects(T),
     gb_trees:map(fun(_, {_, MSet}) ->
@@ -305,38 +305,31 @@ new_store(Partition, Bucket) ->
     {Resolution, MSet}.
 
 do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT}) ->
-    Len = mmath_bin:length(Value),
     BM = {Bucket, Metric},
     case ets:lookup(T, BM) of
-        [{BM, Start, Time, V}]
+        [{BM, Start, Cache}]
           when (Time - Start) < CT ->
-            ets:update_element(T, BM,
-                               [{3, Time + Len},
-                                {4, <<V/binary, Value/binary>>}]),
+            Cache1 = case Time rem 10 of
+                         0 ->
+                             scache:compact(scache:add(Time, Value, Cache));
+                         _ ->
+                             scache:add(Time, Value, Cache)
+                     end,
+            ets:update_element(T, BM, [{3, Cache1}]),
             State;
-        [{BM, Start, _Time, V}]
-          when Start == (Time + Len) ->
-            ets:update_element(T, BM,
-                               [{2, Time},
-                                {4, <<Value/binary, V/binary>>}]),
-            State;
-        [{BM, Start, Time, V}] ->
+        [{BM, _Start, Cache}] ->
             ets:delete(T, BM),
-            do_write(Bucket, Metric, Start, <<V/binary, Value/binary>>, State);
-        [{BM, Start, _, V}] ->
-            ets:update_element(T, BM,
-                               [{2,Time},
-                                {3, Time + Len},
-                                {4, Value}]),
-            do_write(Bucket, Metric, Start, V, State);
+            do_write(Bucket, Metric, scache:add(Time, Value, Cache), State);
         [] ->
-            ets:insert(T, {BM, Time, Time + Len, Value}),
+            ets:insert(T, {BM, Time, scache:add(Time, Value, [])}),
             State
     end.
 
-do_write(Bucket, Metric, Time, Value, State) ->
+do_write(Bucket, Metric, Cache, State) ->
     {{R, MSet}, State1} = get_or_create_set(Bucket, State),
-    MSet1 = mstore:put(MSet, Metric, Time, Value),
+    MSet1 = lists:foldl(fun({Time, Value}, Acc) ->
+                                mstore:put(Acc, Metric, Time, Value)
+                        end, MSet, scache:realize(Cache)),
     Store1 = gb_trees:update(Bucket, {R, MSet1}, State1#state.mstore),
     State1#state{mstore=Store1}.
 

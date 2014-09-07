@@ -13,12 +13,18 @@
 
 
 mput(Nodes, Acc, W) ->
-    dict:fold(fun(DocIdx, Data, ok) ->
-                      do_mput(orddict:fetch(DocIdx, Nodes), Data, W);
-                 (DocIdx, Data, R) ->
-                      do_mput(orddict:fetch(DocIdx, Nodes), Data, W),
-                      R
-              end, ok, Acc).
+    ReqIDs =
+		dict:fold(fun(DocIdx, Data, Rs) ->
+						  R = async_mput(orddict:fetch(DocIdx, Nodes), Data),
+						  [R | Rs]
+				  end, [], Acc),
+	Reqs1 = [do_wait(W, ReqId) || ReqId <- ReqIDs],
+	case [R || R <- Reqs1, R /= ok] of
+		[] ->
+			ok;
+		[E | _] ->
+			E
+	end.
 
 put(Bucket, Metric, Time, Value) ->
     {ok, N} = application:get_env(dalmatiner_db, n),
@@ -44,11 +50,14 @@ do_put(Bucket, Metric, Time, Value, N, W) ->
     metric_vnode:put(Preflist, ReqID, Bucket, Metric, {Time, Value}),
     do_wait(W, ReqID).
 
-
-do_mput(Preflist, Data, W) ->
+async_mput(Preflist, Data) ->
     ReqID = make_ref(),
     metric_vnode:mput(Preflist, ReqID, Data),
-    do_wait(W, ReqID).
+	ReqID.
+
+%% do_mput(Preflist, Data, W) ->
+%% 	ReqID = async_mput(Preflist, Data),
+%%     do_wait(W, ReqID).
 
 do_wait(0, _ReqID) ->
     ok;

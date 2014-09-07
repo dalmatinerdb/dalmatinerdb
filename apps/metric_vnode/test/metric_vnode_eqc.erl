@@ -41,22 +41,42 @@ new() ->
     {S, T}.
 
 repair({S, Tr}, T, Vs) ->
-    Command = {repair, ?B, ?M, T,  << <<1, V:64/signed-integer>> || V <- Vs >>},
-    {noreply, S1} = ?V:handle_command(Command, sender, S),
-    Tr1 = tree_set(Tr, T, Vs),
-    {S1, Tr1}.
+    case overlap(Tr, T, Vs) of
+        [] ->
+            Command = {repair, ?B, ?M, T,  << <<1, V:64/signed-integer>> || V <- Vs >>},
+            {noreply, S1} = ?V:handle_command(Command, sender, S),
+            Tr1 = tree_set(Tr, T, Vs),
+            {S1, Tr1};
+        _ ->
+            {S, Tr}
+    end.
 
 put({S, Tr}, T, Vs) ->
-    Command = {put, ?B, ?M, {T, << <<1, V:64/signed-integer>> || V <- Vs >>}},
-    {reply, ok, S1} = ?V:handle_command(Command, sender, S),
-    Tr1 = tree_set(Tr, T, Vs),
-    {S1, Tr1}.
+    case overlap(Tr, T, Vs) of
+        [] ->
+            Command = {put, ?B, ?M, {T, << <<1, V:64/signed-integer>> || V <- Vs >>}},
+            {reply, ok, S1} = ?V:handle_command(Command, sender, S),
+            Tr1 = tree_set(Tr, T, Vs),
+            {S1, Tr1};
+        _ ->
+            {S, Tr}
+    end.
 
 mput({S, Tr}, T, Vs) ->
-    Command = {mput, [{?B, ?M, T, << <<1, V:64/signed-integer>> || V <- Vs >>}]},
-    {reply, ok, S1} = ?V:handle_command(Command, sender, S),
-    Tr1 = tree_set(Tr, T, Vs),
-    {S1, Tr1}.
+    case overlap(Tr, T, Vs) of
+        [] ->
+            Command = {mput, [{?B, ?M, T, << <<1, V:64/signed-integer>> || V <- Vs >>}]},
+            {reply, ok, S1} = ?V:handle_command(Command, sender, S),
+            Tr1 = tree_set(Tr, T, Vs),
+            {S1, Tr1};
+        _ ->
+            {S, Tr}
+    end.
+
+overlap(Tr, Start, Vs) ->
+    End = Start + length(Vs),
+    [T || {T, _} <- ?T:to_list(Tr),
+          T >= Start, T =< End].
 
 get(S, T, C) ->
     ReqID = T,
@@ -70,15 +90,19 @@ vnode() ->
 non_empty_list(T) ->
     ?SUCHTHAT(L, list(T), L =/= []).
 
+values() ->
+	{offset(), non_empty_list(non_z_int())}.
+
 vnode(Size) ->
     ?LAZY(oneof(
             [{call, ?MODULE, new, []} || Size == 0]
             ++ [?LETSHRINK(
                    [V], [vnode(Size-1)],
-                   oneof(
-                     [{call, ?MODULE, put, [V, offset(), non_empty_list(non_z_int())]},
-                      {call, ?MODULE, mput, [V, offset(), non_empty_list(non_z_int())]},
-                      {call, ?MODULE, repair, [V, offset(), non_empty_list(non_z_int())]}]))  || Size > 0]
+                   ?LET({T, Vs}, values(),
+                        oneof(
+                          [{call, ?MODULE, put, [V, T, Vs]},
+                           {call, ?MODULE, mput, [V, T, Vs]},
+                           {call, ?MODULE, repair, [V, T, Vs]}])))  || Size > 0]
            )).
 %%%-------------------------------------------------------------------
 %%% Properties
@@ -95,7 +119,11 @@ prop_gb_comp() ->
                 List2 = [{unlist(mmath_bin:to_list(Vs)), Vt} || {{_ ,Vs}, Vt} <- List1],
                 List3 = [true || {_V, _V} <- List2],
                 Len = length(List),
-                ?WHENFAIL(io:format(user, "L: ~p~n", [List2]),
+                ?WHENFAIL(io:format(user,
+                                    "L : ~p~n"
+                                    "L1: ~p~n"
+                                    "L2: ~p~n"
+                                    "L3: ~p~n", [List, List1, List2, List3]),
                           length(List1) == Len andalso
                           length(List2) == Len andalso
                           length(List3) == Len)
