@@ -308,31 +308,53 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT}) ->
     Len = mmath_bin:length(Value),
     BM = {Bucket, Metric},
     case ets:lookup(T, BM) of
-        [{BM, Start, Time, V}]
-          when (Time - Start) < CT ->
-            ets:update_element(T, BM,
-                               [{3, Time + Len},
-                                {4, <<V/binary, Value/binary>>}]),
-            State;
-        [{BM, Start, _Time, V}]
-          when Start == (Time + Len) ->
+		%% If the data wo got is just before the cache we can prepend it.
+        [{BM, _Start, End, V}]
+          when (Time + Len) == _Start ->
             ets:update_element(T, BM,
                                [{2, Time},
+								{3, End},
                                 {4, <<Value/binary, V/binary>>}]),
             State;
-        [{BM, Start, Time, V}] ->
+		%% If the data is before the first package in the cache we just don't
+		%% cache it this way we prevent overwriting already written data.
+        [{BM, _Start, _, _V}]
+          when Time < _Start ->
+            do_write(Bucket, Metric, Time, Value, State);
+		%% When the Delta of start time and this package is greater then the
+		%% cache time we flush the cache and start a new cache with a new
+		% package
+        [{BM, Start, _, V}]
+          when (Time - Start) >= CT ->
             ets:delete(T, BM),
-            do_write(Bucket, Metric, Start, <<V/binary, Value/binary>>, State);
+            ets:insert(T, {BM, Time, Time + Len, Value}),
+            do_write(Bucket, Metric, Start, V, State);
         [{BM, Start, _, V}] ->
             ets:update_element(T, BM,
-                               [{2,Time},
+                               [{2, Start},
                                 {3, Time + Len},
-                                {4, Value}]),
-            do_write(Bucket, Metric, Start, V, State);
+                                {4, compact(Time, Value, Start, V)}]),
+			State;
         [] ->
             ets:insert(T, {BM, Time, Time + Len, Value}),
             State
     end.
+
+compact(T, V , T0, Acc)
+  when T == (T0 + byte_size(Acc) div 9) ->
+    <<Acc/binary, V/binary>>;
+
+compact(T, V, T0, Acc) 
+  when (T - (T0 + byte_size(Acc) div 9)) > 0 ->
+	E = mmath_bin:empty(T - (T0 + byte_size(Acc) div 9)),
+	<<Acc/binary, E/binary, V/binary>>;
+
+compact(T, V, T0, Acc) ->
+	E = mmath_bin:empty(T - T0),
+	V1 = <<E/binary, V/binary>>,
+	mmath_comb:merge([Acc, V1]).
+
+
 
 do_write(Bucket, Metric, Time, Value, State) ->
     {{R, MSet}, State1} = get_or_create_set(Bucket, State),
