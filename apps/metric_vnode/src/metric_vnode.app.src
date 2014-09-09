@@ -6,6 +6,7 @@
   {applications, [
                   kernel,
                   stdlib,
+                  k6_bytea,
                   riak_core
                  ]},
   {mod, { metric_vnode_app, []}},

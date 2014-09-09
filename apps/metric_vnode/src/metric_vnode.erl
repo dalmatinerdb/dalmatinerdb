@@ -108,9 +108,11 @@ handle_command(ping, _Sender, State) ->
 
 handle_command({repair, Bucket, Metric, Time, Value}, _Sender, #state{tbl=T}=State) ->
     State1 = case ets:lookup(T, {Bucket, Metric}) of
-                 [{{Bucket,Metric}, Start, _Time, V}] ->
+                 [{{Bucket,Metric}, Start, Size, _Time, Array}] ->
+                     Bin = k6_bytea:get(Array, 0, Size * 9),
+                     k6_bytea:delete(Array),
                      ets:delete(T, {Bucket,Metric}),
-                     do_write(Bucket, Metric, Start, V, State);
+                     do_write(Bucket, Metric, Start, Bin, State);
                  _ ->
                      State
              end,
@@ -131,9 +133,11 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, _Sender,
                #state{partition=Partition, node=Node, tbl=T} = State) ->
     BM = {Bucket, Metric},
     State1 = case ets:lookup(T, BM) of
-                 [{BM, Start, _Time, V}] ->
+                 [{BM, Start, Size, _Time, Array}] ->
+                     Bin = k6_bytea:get(Array, 0, Size * 9),
+                     k6_bytea:delete(Array),
                      ets:delete(T, {Bucket,Metric}),
-                     do_write(Bucket, Metric, Start, V, State);
+                     do_write(Bucket, Metric, Start, Bin, State);
                  _ ->
                      State
              end,
@@ -154,8 +158,10 @@ handle_command(_Message, _Sender, State) ->
 
 handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender,
                        State=#state{tbl=T}) ->
-    State1 = ets:foldl(fun({{Bucket, Metric}, Start, _, V}, SAcc) ->
-                               do_write(Bucket, Metric, Start, V, SAcc)
+    State1 = ets:foldl(fun({{Bucket, Metric}, Start, Size, _, Array}, SAcc) ->
+                               Bin = k6_bytea:get(Array, 0, Size * 9),
+                               k6_bytea:delete(Array),
+                               do_write(Bucket, Metric, Start, Bin, SAcc)
                        end, State, T),
     ets:delete_all_objects(T),
     Ts = gb_trees:to_list(State1#state.mstore),
@@ -218,8 +224,10 @@ delete(State = #state{partition=Partition, tbl=T}) ->
 
 handle_coverage({metrics, Bucket}, _KeySpaces, _Sender,
                 State = #state{partition=Partition, node=Node, tbl=T}) ->
-    State1 = ets:foldl(fun({{Bkt, Metric}, Start, _, V}, SAcc) ->
-                               do_write(Bkt, Metric, Start, V, SAcc)
+    State1 = ets:foldl(fun({{Bkt, Metric}, Start, Size, _, Array}, SAcc) ->
+                               Bin = k6_bytea:get(Array, 0, Size * 9),
+                               k6_bytea:delete(Array),
+                               do_write(Bkt, Metric, Start, Bin, SAcc)
                        end, State, T),
     ets:delete_all_objects(T),
     {Ms, State2} = case get_set(Bucket, State1) of
@@ -233,8 +241,10 @@ handle_coverage({metrics, Bucket}, _KeySpaces, _Sender,
 
 handle_coverage(list, _KeySpaces, _Sender,
                 State = #state{partition=Partition, node=Node, tbl=T}) ->
-    State1 = ets:foldl(fun({{Bkt, Metric}, Start, _, V}, SAcc) ->
-                               do_write(Bkt, Metric, Start, V, SAcc)
+    State1 = ets:foldl(fun({{Bkt, Metric}, Start, Size, _, Array}, SAcc) ->
+                               Bin = k6_bytea:get(Array, 0, Size * 9),
+                               k6_bytea:delete(Array),
+                               do_write(Bkt, Metric, Start, Bin, SAcc)
                        end, State, T),
     ets:delete_all_objects(T),
     DataDir = case application:get_env(riak_core, platform_data_dir) of
@@ -255,8 +265,10 @@ handle_coverage(list, _KeySpaces, _Sender,
 
 handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
                 State = #state{partition=Partition, node=Node, tbl=T, dir=Dir}) ->
-    State1 = ets:foldl(fun({{Bkt, Metric}, Start, _, V}, SAcc) ->
-                               do_write(Bkt, Metric, Start, V, SAcc)
+    State1 = ets:foldl(fun({{Bkt, Metric}, Start, Size, _, Array}, SAcc) ->
+                               Bin = k6_bytea:get(Array, 0, Size * 9),
+                               k6_bytea:delete(Array),
+                               do_write(Bkt, Metric, Start, Bin, SAcc)
                        end, State, T),
     ets:delete_all_objects(T),
     {R, State2} = case get_set(Bucket, State1) of
@@ -281,8 +293,10 @@ handle_exit(_PID, _Reason, State) ->
     {noreply, State}.
 
 terminate(_Reason, State=#state{tbl = T}) ->
-    State1 = ets:foldl(fun({{Bucket, Metric}, Start, _, V}, SAcc) ->
-                               do_write(Bucket, Metric, Start, V, SAcc)
+    State1 = ets:foldl(fun({{Bucket, Metric}, Start, Size, _, Array}, SAcc) ->
+                               Bin = k6_bytea:get(Array, 0, Size * 9),
+                               k6_bytea:delete(Array),
+                               do_write(Bucket, Metric, Start, Bin, SAcc)
                        end, State, T),
     ets:delete_all_objects(T),
     gb_trees:map(fun(_, {_, MSet}) ->
@@ -309,50 +323,47 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT}) ->
     Len = mmath_bin:length(Value),
     BM = {Bucket, Metric},
     case ets:lookup(T, BM) of
-        %% If the data wo got is just before the cache we can prepend it.
-        [{BM, _Start, _End, V}]
-          when (Time + Len) == _Start ->
-            ets:update_element(T, BM,
-                               [{2, Time},
-                                {4, <<Value/binary, V/binary>>}]),
-            State;
         %% If the data is before the first package in the cache we just don't
         %% cache it this way we prevent overwriting already written data.
-        [{BM, _Start, _, _V}]
+        [{BM, _Start, _Size, _End, _V}]
           when Time < _Start ->
             do_write(Bucket, Metric, Time, Value, State);
         %% When the Delta of start time and this package is greater then the
         %% cache time we flush the cache and start a new cache with a new
         %% package
-        [{BM, Start, _End, V}]
-          when Time > _End ->
-            ets:delete(T, BM),
-            ets:insert(T, {BM, Time, Time + CT, Value}),
-            do_write(Bucket, Metric, Start, V, State);
-        [{BM, Start, _, V}] ->
-            ets:update_element(T, BM,
-                               [{4, compact(Time, Value, Start, V)}]),
+        [{BM, Start, Size, _End, Array}]
+          when (Time + Len) >= _End, Len < CT ->
+            Bin = k6_bytea:get(Array, 0, Size * 9),
+            k6_bytea:set(Array, 0, Value),
+            k6_bytea:set(Array, Len * 9, <<0:(9 * 8 * (CT - Len))>>),
+            ets:update_element(T, BM, [{2, Time}, {3, Len}]),
+            do_write(Bucket, Metric, Start, Bin, State);
+        %% In the case the data is already longer then the cache we flush the
+        %% cache
+        [{BM, Start, Size, _End, Array}]
+          when (Time + Len) >= _End ->
+            ets:delete(T, {Bucket,Metric}),
+            Bin = k6_bytea:get(Array, 0, Size * 9),
+            k6_bytea:delete(Array),
+            State1 = do_write(Bucket, Metric, Start, Bin, State),
+            do_write(Bucket, Metric, Time, Value, State1);
+        [{BM, Start, _Size, _End, Array}] ->
+            Idx = Time - Start,
+            k6_bytea:set(Array, Idx * 9, Value),
+            ets:update_element(T, BM, [{3, Idx + Len}]),
             State;
+        %% We don't have a cache yet and our data is smaller then
+        %% the current cache limit
+        [] when Len < CT ->
+            Array = k6_bytea:new(CT*9),
+            k6_bytea:set(Array, 0, Value),
+            ets:insert(T, {BM, Time, Len, Time + CT, Array}),
+            State;
+        %% If we don't have a cache but our data is too big for the
+        %% cache we happiely write it directly
         [] ->
-            ets:insert(T, {BM, Time, Time + random:uniform(CT*2), Value}),
-            State
+            do_write(Bucket, Metric, Time, Value, State)
     end.
-
-compact(T, V , T0, Acc)
-  when T == (T0 + byte_size(Acc) div 9) ->
-    <<Acc/binary, V/binary>>;
-
-compact(T, V, T0, Acc)
-  when (T - (T0 + byte_size(Acc) div 9)) > 0 ->
-    E = mmath_bin:empty(T - (T0 + byte_size(Acc) div 9)),
-    <<Acc/binary, E/binary, V/binary>>;
-
-compact(T, V, T0, Acc) ->
-    E = mmath_bin:empty(T - T0),
-    V1 = <<E/binary, V/binary>>,
-    mmath_comb:merge([Acc, V1]).
-
-
 
 do_write(Bucket, Metric, Time, Value, State) ->
     {{R, MSet}, State1} = get_or_create_set(Bucket, State),
