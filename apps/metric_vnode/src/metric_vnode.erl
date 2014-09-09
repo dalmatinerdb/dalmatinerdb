@@ -49,6 +49,7 @@ start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
 init([Partition]) ->
+	random:seed(now()),
     P = list_to_atom(integer_to_list(Partition)),
     CT = case application:get_env(metric_vnode, cache_points) of
              {ok, V} ->
@@ -309,11 +310,12 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT}) ->
     BM = {Bucket, Metric},
     case ets:lookup(T, BM) of
 		%% If the data wo got is just before the cache we can prepend it.
-        [{BM, _Start, End, V}]
-          when (Time + Len) == _Start ->
+        [{BM, Start, End, V}]
+          when (Time + Len) == Start ->
+			Delta = Start - Time,
             ets:update_element(T, BM,
                                [{2, Time},
-								{3, End},
+								{3, End + Delta},
                                 {4, <<Value/binary, V/binary>>}]),
             State;
 		%% If the data is before the first package in the cache we just don't
@@ -324,10 +326,11 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT}) ->
 		%% When the Delta of start time and this package is greater then the
 		%% cache time we flush the cache and start a new cache with a new
 		% package
-        [{BM, Start, _, V}]
-          when (Time - Start) >= CT ->
+        [{BM, Start, End, V}]
+          when Time > End ->
             ets:delete(T, BM),
-            ets:insert(T, {BM, Time, Time + Len, Value}),
+			Jitter = random:uniform(20) - 10,
+            ets:insert(T, {BM, Time, Time + CT + Jitter, Value}),
             do_write(Bucket, Metric, Start, V, State);
         [{BM, Start, _, V}] ->
             ets:update_element(T, BM,
@@ -336,7 +339,8 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT}) ->
                                 {4, compact(Time, Value, Start, V)}]),
 			State;
         [] ->
-            ets:insert(T, {BM, Time, Time + Len, Value}),
+			Jitter = random:uniform(20) - 10,
+            ets:insert(T, {BM, Time, Time + CT + Jitter, Value}),
             State
     end.
 
