@@ -308,35 +308,32 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT}) ->
     Len = mmath_bin:length(Value),
     BM = {Bucket, Metric},
     case ets:lookup(T, BM) of
-		%% If the data wo got is just before the cache we can prepend it.
-        [{BM, _Start, End, V}]
+        %% If the data wo got is just before the cache we can prepend it.
+        [{BM, _Start, _End, V}]
           when (Time + Len) == _Start ->
             ets:update_element(T, BM,
                                [{2, Time},
-								{3, End},
                                 {4, <<Value/binary, V/binary>>}]),
             State;
-		%% If the data is before the first package in the cache we just don't
-		%% cache it this way we prevent overwriting already written data.
+        %% If the data is before the first package in the cache we just don't
+        %% cache it this way we prevent overwriting already written data.
         [{BM, _Start, _, _V}]
           when Time < _Start ->
             do_write(Bucket, Metric, Time, Value, State);
-		%% When the Delta of start time and this package is greater then the
-		%% cache time we flush the cache and start a new cache with a new
-		% package
-        [{BM, Start, _, V}]
-          when (Time - Start) >= CT ->
+        %% When the Delta of start time and this package is greater then the
+        %% cache time we flush the cache and start a new cache with a new
+        %% package
+        [{BM, Start, _End, V}]
+          when Time > _End ->
             ets:delete(T, BM),
-            ets:insert(T, {BM, Time, Time + Len, Value}),
+            ets:insert(T, {BM, Time, Time + CT, Value}),
             do_write(Bucket, Metric, Start, V, State);
         [{BM, Start, _, V}] ->
             ets:update_element(T, BM,
-                               [{2, Start},
-                                {3, Time + Len},
-                                {4, compact(Time, Value, Start, V)}]),
-			State;
+                               [{4, compact(Time, Value, Start, V)}]),
+            State;
         [] ->
-            ets:insert(T, {BM, Time, Time + Len, Value}),
+            ets:insert(T, {BM, Time, Time + CT, Value}),
             State
     end.
 
@@ -344,15 +341,15 @@ compact(T, V , T0, Acc)
   when T == (T0 + byte_size(Acc) div 9) ->
     <<Acc/binary, V/binary>>;
 
-compact(T, V, T0, Acc) 
+compact(T, V, T0, Acc)
   when (T - (T0 + byte_size(Acc) div 9)) > 0 ->
-	E = mmath_bin:empty(T - (T0 + byte_size(Acc) div 9)),
-	<<Acc/binary, E/binary, V/binary>>;
+    E = mmath_bin:empty(T - (T0 + byte_size(Acc) div 9)),
+    <<Acc/binary, E/binary, V/binary>>;
 
 compact(T, V, T0, Acc) ->
-	E = mmath_bin:empty(T - T0),
-	V1 = <<E/binary, V/binary>>,
-	mmath_comb:merge([Acc, V1]).
+    E = mmath_bin:empty(T - T0),
+    V1 = <<E/binary, V/binary>>,
+    mmath_comb:merge([Acc, V1]).
 
 
 
