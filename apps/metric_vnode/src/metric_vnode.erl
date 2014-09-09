@@ -49,6 +49,7 @@ start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
 init([Partition]) ->
+    random:seed(now()),
     P = list_to_atom(integer_to_list(Partition)),
     CT = case application:get_env(metric_vnode, cache_points) of
              {ok, V} ->
@@ -333,7 +334,7 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT}) ->
                                [{4, compact(Time, Value, Start, V)}]),
             State;
         [] ->
-            ets:insert(T, {BM, Time, Time + CT, Value}),
+            ets:insert(T, {BM, Time, Time + random:uniform(CT*2), Value}),
             State
     end.
 
