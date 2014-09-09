@@ -336,7 +336,7 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT}) ->
             Bin = k6_bytea:get(Array, 0, Size * 9),
             k6_bytea:set(Array, 0, Value),
             k6_bytea:set(Array, Len * 9, <<0:(9 * 8 * (CT - Len))>>),
-            ets:update_element(T, BM, [{2, Time}, {3, Len}, {4, Time + Len}]),
+            ets:update_element(T, BM, [{2, Time}, {3, Len}, {4, Time + CT}]),
             do_write(Bucket, Metric, Start, Bin, State);
         %% In the case the data is already longer then the cache we flush the
         %% cache
