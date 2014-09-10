@@ -19,6 +19,8 @@
 %% API
 -export([start_link/1]).
 
+-export([handle_data/8]).
+
 -ignore_xref([start_link/1]).
 
 %% gen_server callbacks
