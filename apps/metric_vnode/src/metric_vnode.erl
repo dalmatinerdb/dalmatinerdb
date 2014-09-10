@@ -358,7 +358,8 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT}) ->
         [] when Len < CT ->
             Array = k6_bytea:new(CT*9),
             k6_bytea:set(Array, 0, Value),
-            ets:insert(T, {BM, Time, Len, Time + CT, Array}),
+            Jitter = random:uniform(CT),
+            ets:insert(T, {BM, Time, Len, Time + Jitter, Array}),
             State;
         %% If we don't have a cache but our data is too big for the
         %% cache we happiely write it directly
