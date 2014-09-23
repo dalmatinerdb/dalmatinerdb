@@ -223,30 +223,18 @@ delete(State = #state{partition=Partition, tbl=T}) ->
     {ok, State#state{mstore=gb_trees:empty()}}.
 
 handle_coverage({metrics, Bucket}, _KeySpaces, _Sender,
-                State = #state{partition=Partition, node=Node, tbl=T}) ->
-    State1 = ets:foldl(fun({{Bkt, Metric}, Start, Size, _, Array}, SAcc) ->
-                               Bin = k6_bytea:get(Array, 0, Size * 9),
-                               k6_bytea:delete(Array),
-                               do_write(Bkt, Metric, Start, Bin, SAcc)
-                       end, State, T),
-    ets:delete_all_objects(T),
-    {Ms, State2} = case get_set(Bucket, State1) of
+                State = #state{partition=Partition, node=Node}) ->
+    {Ms, State1} = case get_set(Bucket, State) of
                        {ok, {{_, M}, S2}} ->
                            {mstore:metrics(M), S2};
                        _ ->
-                           {gb_sets:new(), State1}
+                           {gb_sets:new(), State}
                    end,
     Reply = {ok, undefined, {Partition, Node}, Ms},
-    {reply, Reply, State2};
+    {reply, Reply, State1};
 
 handle_coverage(list, _KeySpaces, _Sender,
-                State = #state{partition=Partition, node=Node, tbl=T}) ->
-    State1 = ets:foldl(fun({{Bkt, Metric}, Start, Size, _, Array}, SAcc) ->
-                               Bin = k6_bytea:get(Array, 0, Size * 9),
-                               k6_bytea:delete(Array),
-                               do_write(Bkt, Metric, Start, Bin, SAcc)
-                       end, State, T),
-    ets:delete_all_objects(T),
+                State = #state{partition=Partition, node=Node}) ->
     DataDir = case application:get_env(riak_core, platform_data_dir) of
                   {ok, DD} ->
                       DD;
@@ -261,7 +249,7 @@ handle_coverage(list, _KeySpaces, _Sender,
                        gb_sets:new()
                end,
     Reply = {ok, undefined, {Partition, Node}, Buckets1},
-    {reply, Reply, State1};
+    {reply, Reply, State};
 
 handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
                 State = #state{partition=Partition, node=Node, tbl=T, dir=Dir}) ->
@@ -358,7 +346,8 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT}) ->
         [] when Len < CT ->
             Array = k6_bytea:new(CT*9),
             k6_bytea:set(Array, 0, Value),
-            ets:insert(T, {BM, Time, Len, Time + CT, Array}),
+            Jitter = random:uniform(CT),
+            ets:insert(T, {BM, Time, Len, Time + Jitter, Array}),
             State;
         %% If we don't have a cache but our data is too big for the
         %% cache we happiely write it directly
