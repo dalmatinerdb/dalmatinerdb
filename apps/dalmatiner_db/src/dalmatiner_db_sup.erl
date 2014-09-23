@@ -37,5 +37,9 @@ init([]) ->
     UDPListener = {dalmatiner_db_udp_sup,
                    {dalmatiner_db_udp_sup, start_link, []},
                    permanent, infinity, supervisor, [dalmatiner_db_udp_sup]},
-    {ok, {{one_for_one, 5, 10}, [WriteFSMs, ReadFSMs, CoverageFSMs, UDPListener]}}.
+    Metrics = {dalmatiner_metrics,
+               {dalmatiner_metrics, start_link, []},
+               permanent, infinity, worker, [dalmatiner_metrics]},
+    {ok, {{one_for_one, 5, 10},
+          [Metrics, WriteFSMs, ReadFSMs, CoverageFSMs, UDPListener]}}.
 
