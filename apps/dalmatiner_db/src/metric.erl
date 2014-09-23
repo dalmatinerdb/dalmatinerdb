@@ -67,6 +67,6 @@ do_wait(W, ReqID) ->
         {ReqID, ok} ->
             do_wait(W - 1, ReqID)
     after
-        1000 ->
+        5000 ->
             {error, timeout}
     end.

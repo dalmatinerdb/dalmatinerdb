@@ -304,12 +304,12 @@ build_histogram([{kurtosis, V} | H], Prefix, Time, CBin, Acc) ->
 build_histogram([{percentile,
                   [{50, P50}, {75, P75}, {90, P90}, {95, P95}, {99, P99},
                    {999, P999}]} | H], Prefix, Time, CBin, Acc) ->
-    Acc1 = add_metric(Prefix, CBin, <<".p50">>, Time, round(P50), Acc),
-    Acc2 = add_metric(Prefix, CBin, <<".p75">>, Time, round(P75), Acc1),
-    Acc3 = add_metric(Prefix, CBin, <<".p90">>, Time, round(P90), Acc2),
-    Acc4 = add_metric(Prefix, CBin, <<".p95">>, Time, round(P95), Acc3),
-    Acc5 = add_metric(Prefix, CBin, <<".p99">>, Time, round(P99), Acc4),
-    Acc6 = add_metric(Prefix, CBin, <<".p999">>, Time, round(P999), Acc5),
+    Acc1 = add_metric(Prefix, CBin, <<"p50">>, Time, round(P50), Acc),
+    Acc2 = add_metric(Prefix, CBin, <<"p75">>, Time, round(P75), Acc1),
+    Acc3 = add_metric(Prefix, CBin, <<"p90">>, Time, round(P90), Acc2),
+    Acc4 = add_metric(Prefix, CBin, <<"p95">>, Time, round(P95), Acc3),
+    Acc5 = add_metric(Prefix, CBin, <<"p99">>, Time, round(P99), Acc4),
+    Acc6 = add_metric(Prefix, CBin, <<"p999">>, Time, round(P999), Acc5),
     build_histogram(H, Prefix, Time, CBin, Acc6);
 
 build_histogram([{n, V} | H], Prefix, Time, CBin, Acc) ->
