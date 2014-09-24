@@ -191,7 +191,8 @@ delete(State = #state{io = IO, tbl=T}) ->
 
 handle_coverage({metrics, Bucket}, _KS, Sender, State = #state{io = IO}) ->
     AsyncWork = fun() ->
-                        metric_io:metrics(IO, Bucket)
+                        {ok, Ms} = metric_io:metrics(IO, Bucket),
+                        Ms
                 end,
     FinishFun = fun(Data) ->
                         reply(Data, Sender, State)
@@ -200,7 +201,8 @@ handle_coverage({metrics, Bucket}, _KS, Sender, State = #state{io = IO}) ->
 
 handle_coverage(list, _KS, Sender, State = #state{io = IO}) ->
     AsyncWork = fun() ->
-                        metric_io:buckets(IO)
+                        {ok, Bs} = metric_io:buckets(IO),
+                        Bs
                 end,
     FinishFun = fun(Data) ->
                         reply(Data, Sender, State)

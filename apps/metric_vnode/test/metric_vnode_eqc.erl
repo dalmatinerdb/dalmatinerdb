@@ -188,10 +188,10 @@ prop_handoff() ->
                 Lc1 = lists:sort(Lc),
                 {async,{fold, Async, _}, _, _} =
                     ?V:handle_coverage({metrics, ?B}, all, self(), S1),
-                {ok, Ms} = Async(),
+                Ms = Async(),
                 {async,{fold, AsyncC, _}, _, _} =
                     ?V:handle_coverage({metrics, ?B}, all, self(), C2),
-                {ok, MsC} = AsyncC(),
+                MsC = AsyncC(),
                 ?WHENFAIL(io:format(user, "L: ~p /= ~p~n"
                                     "M: ~p /= ~p~n",
                                     [Lc1, L1, gb_sets:to_list(MsC),
