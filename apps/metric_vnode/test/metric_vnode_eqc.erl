@@ -36,7 +36,7 @@ tree_set(Tr, T, [V | R]) ->
     tree_set(Tr1, T+1, R).
 
 new() ->
-    {ok, S} = ?V:init([0]),
+    {ok, S, _} = ?V:init([0]),
     T = ?T:empty(),
     {S, T}.
 
@@ -81,7 +81,15 @@ overlap(Tr, Start, Vs) ->
 get(S, T, C) ->
     ReqID = T,
     Command = {get, ReqID, ?B, ?M, {T, C}},
-    {reply, {ok, ReqID, _, Data}, _S1} = ?V:handle_command(Command, sender, S),
+    {noreply, _S1} = ?V:handle_command(Command, {raw, ReqID, self()}, S),
+    {ok, Data} =
+        receive
+            {ReqID, {ok, ReqID, _, D}} -> 
+                {ok, D}
+        after
+            1000 ->
+                timeout
+        end,
     Data.
 
 vnode() ->
@@ -169,19 +177,21 @@ prop_handoff() ->
                               [?V:encode_handoff_item(K, V) | A]
                       end,
                 FR = ?FOLD_REQ{foldfun=Fun, acc0=[]},
-                {reply, L, S1} = ?V:handle_handoff_command(FR, self(), S),
+                {reply,L, S1} = ?V:handle_handoff_command(FR, self(), S),
                 L1 = lists:sort(L),
-                {ok, C} = ?V:init([1]),
+                {ok, C, _} = ?V:init([1]),
                 C1 = lists:foldl(fun(Data, SAcc) ->
                                          {reply, ok, SAcc1} = ?V:handle_handoff_data(Data, SAcc),
                                          SAcc1
                                  end, C, L1),
                 {reply, Lc, C2} = ?V:handle_handoff_command(FR, self(), C1),
                 Lc1 = lists:sort(Lc),
-                {reply, {ok, _, _, Ms}, _} =
+                {async,{fold, Async, _}, _, _} =
                     ?V:handle_coverage({metrics, ?B}, all, self(), S1),
-                {reply, {ok, _, _, MsC}, _} =
+                {ok, Ms} = Async(),
+                {async,{fold, AsyncC, _}, _, _} =
                     ?V:handle_coverage({metrics, ?B}, all, self(), C2),
+                {ok, MsC} = AsyncC(),
                 ?WHENFAIL(io:format(user, "L: ~p /= ~p~n"
                                     "M: ~p /= ~p~n",
                                     [Lc1, L1, gb_sets:to_list(MsC),
