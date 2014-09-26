@@ -89,6 +89,17 @@ loop(Socket, Transport, State, Loop) ->
 
 stream_loop(Socket, Transport,
             State = #sstate{last = _L, max_diff = _Max, nodes = Nodes, w = W},
+            Dict, <<?SWRITE, Rest/binary>>) ->
+    metric:mput(Nodes, Dict, W),
+    {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
+    Nodes = chash:nodes(chashbin:to_chash(CBin)),
+    Nodes1 = [{I, riak_core_apl:get_apl(I, State#state.n, metric)}
+              || {I, _} <- Nodes],
+    State1 = State#sstate{nodes = Nodes1, cbin = CBin},
+    stream_loop(Socket, Transport, State1, dict:new(), Rest);
+
+stream_loop(Socket, Transport,
+            State = #sstate{last = _L, max_diff = _Max, nodes = Nodes, w = W},
             Dict,
             <<?SENTRY,
               Time:?TIME_SIZE/integer,
