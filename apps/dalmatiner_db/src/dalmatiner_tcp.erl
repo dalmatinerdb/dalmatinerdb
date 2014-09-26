@@ -50,14 +50,11 @@ loop(Socket, Transport, State, Loop) ->
             loop(Socket, Transport, State, Loop - 1);
         {ok, <<?LIST, L/binary>>} ->
             Bucket = dproto_tcp:decode_list(L),
-            io:format("list: ~s~n", [Bucket]),
             {ok, Ms} = metric:list(Bucket),
             Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
             loop(Socket, Transport, State, Loop - 1);
         {ok, <<?GET, G/binary>>} ->
-            io:format("get~n"),
             {B, M, T, C} = dproto_tcp:decode_get(G),
-            io:format(">~s/~s@~p: ~p~n", [B, M, T, C]),
             {ok, Resolution, Data} = metric:get(B, M, T, C),
             Transport:send(Socket, <<Resolution:64/integer, Data/binary>>),
             loop(Socket, Transport, State, Loop - 1);
@@ -71,7 +68,7 @@ loop(Socket, Transport, State, Loop) ->
                     loop(Socket, Transport, State, Loop - 1)
             end;
         {ok, <<?STREAM, _BS:?BUCKET_SS/integer, Bucket:_BS/binary, D:8>>} ->
-            lager:info("[tc] Entering stream mode for bucket '~s' "
+            lager:info("[tcp] Entering stream mode for bucket '~s' "
                        "and a max delay of: ~p", [Bucket, D]),
             ok = Transport:setopts(Socket, [{packet, 0}]),
             stream_loop(Socket, Transport,
@@ -84,7 +81,7 @@ loop(Socket, Transport, State, Loop) ->
         {error, timeout} ->
             loop(Socket, Transport, State, Loop - 1);
         E ->
-            lager:error("E: ~p~n", [E]),
+            lager:error("[tcp:loop] Error: ~p~n", [E]),
             ok = Transport:close(Socket)
     end.
 
@@ -95,7 +92,7 @@ stream_loop(Socket, Transport,
     metric:mput(Nodes, Dict, W),
     {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
     Nodes = chash:nodes(chashbin:to_chash(CBin)),
-    Nodes1 = [{I, riak_core_apl:get_apl(I, State#state.n, metric)}
+    Nodes1 = [{I, riak_core_apl:get_apl(I, State#sstate.n, metric)}
               || {I, _} <- Nodes],
     State1 = State#sstate{nodes = Nodes1, cbin = CBin},
     stream_loop(Socket, Transport, State1, dict:new(), Rest);
@@ -111,7 +108,7 @@ stream_loop(Socket, Transport,
     metric:mput(Nodes, Dict, W),
     {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
     Nodes = chash:nodes(chashbin:to_chash(CBin)),
-    Nodes1 = [{I, riak_core_apl:get_apl(I, State#state.n, metric)}
+    Nodes1 = [{I, riak_core_apl:get_apl(I, State#sstate.n, metric)}
               || {I, _} <- Nodes],
     State1 = State#sstate{nodes = Nodes1, cbin = CBin},
     Dict1 = insert_metric(State, dict:new(), Metric, Time, Points),
@@ -134,7 +131,7 @@ stream_loop(Socket, Transport, State, Dict, Acc) ->
         {error, timeout} ->
             stream_loop(Socket, Transport, State, Dict, Acc);
         E ->
-            io:format("E: ~p~n", [E]),
+            lager:error("[tcp:stream] Error: ~p~n", [E]),
             ok = Transport:close(Socket)
     end.
 
