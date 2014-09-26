@@ -72,7 +72,7 @@ loop(Socket, Transport, State, Loop) ->
             end;
         {ok, <<?STREAM, _BS:?BUCKET_SS/integer, Bucket:_BS/binary, D:8>>} ->
             lager:info("[tc] Entering stream mode for bucket '~s' "
-                       "and a max delay of", [Bucket, D]),
+                       "and a max delay of: ~p", [Bucket, D]),
             ok = Transport:setopts(Socket, [{packet, 0}]),
             stream_loop(Socket, Transport,
                         #sstate{
@@ -127,10 +127,12 @@ stream_loop(Socket, Transport, State, Dict,
 
 
 stream_loop(Socket, Transport, State, Dict, Acc) ->
-    case Transport:recv(Socket, 0) of
+    case Transport:recv(Socket, 0, 5000) of
         {ok, Data} ->
             Acc1 = <<Acc/binary, Data/binary>>,
             stream_loop(Socket, Transport, State, Dict, Acc1);
+        {error, timeout} ->
+            stream_loop(Socket, Transport, State, Dict, Acc);
         E ->
             io:format("E: ~p~n", [E]),
             ok = Transport:close(Socket)
