@@ -67,19 +67,28 @@ loop(Socket, Transport, State, Loop) ->
                     lager:error("[tcp] Fast loop cancled because of: ~p.", [E]),
                     loop(Socket, Transport, State, Loop - 1)
             end;
-        {ok, <<?STREAM, _BS:?BUCKET_SS/integer, Bucket:_BS/binary, D:8>>} ->
+        {ok, <<?STREAM, D:8, Bucket/binary>>} ->
             lager:info("[tcp] Entering stream mode for bucket '~s' "
                        "and a max delay of: ~p", [Bucket, D]),
             ok = Transport:setopts(Socket, [{packet, 0}]),
+            {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
+            N = State#state.n,
+            Nodes1 = chash:nodes(chashbin:to_chash(CBin)),
+            Nodes2 = [{I, riak_core_apl:get_apl(I, N, metric)}
+                      || {I, _} <- Nodes1],
             stream_loop(Socket, Transport,
                         #sstate{
-                           n = State#state.n,
-                           w = State#state.n,
+                           cbin = CBin,
+                           nodes = Nodes2,
+                           n = N,
+                           w = State#state.w,
                            max_diff = D,
                            bucket = Bucket},
                        dict:new(), <<>>);
         {error, timeout} ->
             loop(Socket, Transport, State, Loop - 1);
+        {error, closed} ->
+            ok;
         E ->
             lager:error("[tcp:loop] Error: ~p~n", [E]),
             ok = Transport:close(Socket)
@@ -91,10 +100,10 @@ stream_loop(Socket, Transport,
             Dict, <<?SWRITE, Rest/binary>>) ->
     metric:mput(Nodes, Dict, W),
     {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
-    Nodes = chash:nodes(chashbin:to_chash(CBin)),
-    Nodes1 = [{I, riak_core_apl:get_apl(I, State#sstate.n, metric)}
-              || {I, _} <- Nodes],
-    State1 = State#sstate{nodes = Nodes1, cbin = CBin},
+    Nodes1 = chash:nodes(chashbin:to_chash(CBin)),
+    Nodes2 = [{I, riak_core_apl:get_apl(I, State#sstate.n, metric)}
+              || {I, _} <- Nodes1],
+    State1 = State#sstate{nodes = Nodes2, cbin = CBin},
     stream_loop(Socket, Transport, State1, dict:new(), Rest);
 
 stream_loop(Socket, Transport,
@@ -107,10 +116,10 @@ stream_loop(Socket, Transport,
   when Time - _L > _Max ->
     metric:mput(Nodes, Dict, W),
     {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
-    Nodes = chash:nodes(chashbin:to_chash(CBin)),
-    Nodes1 = [{I, riak_core_apl:get_apl(I, State#sstate.n, metric)}
-              || {I, _} <- Nodes],
-    State1 = State#sstate{nodes = Nodes1, cbin = CBin},
+    Nodes1 = chash:nodes(chashbin:to_chash(CBin)),
+    Nodes2 = [{I, riak_core_apl:get_apl(I, State#sstate.n, metric)}
+              || {I, _} <- Nodes1],
+    State1 = State#sstate{nodes = Nodes2, cbin = CBin, last=Time},
     Dict1 = insert_metric(State, dict:new(), Metric, Time, Points),
     stream_loop(Socket, Transport, State1, Dict1, Rest);
 
@@ -130,8 +139,12 @@ stream_loop(Socket, Transport, State, Dict, Acc) ->
             stream_loop(Socket, Transport, State, Dict, Acc1);
         {error, timeout} ->
             stream_loop(Socket, Transport, State, Dict, Acc);
+        {error,closed} ->
+            metric:mput(State#sstate.nodes, Dict, State#sstate.w),
+            ok;
         E ->
             lager:error("[tcp:stream] Error: ~p~n", [E]),
+            metric:mput(State#sstate.nodes, Dict, State#sstate.w),
             ok = Transport:close(Socket)
     end.
 
