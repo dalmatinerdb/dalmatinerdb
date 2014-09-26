@@ -71,6 +71,8 @@ loop(Socket, Transport, State, Loop) ->
                     loop(Socket, Transport, State, Loop - 1)
             end;
         {ok, <<?STREAM, _BS:?BUCKET_SS/integer, Bucket:_BS/binary, D:8>>} ->
+            lager:info("[tc] Entering stream mode for bucket '~s' "
+                       "and a max delay of", [Bucket, D]),
             ok = Transport:setopts(Socket, [{packet, 0}]),
             stream_loop(Socket, Transport,
                         #sstate{
@@ -82,7 +84,7 @@ loop(Socket, Transport, State, Loop) ->
         {error, timeout} ->
             loop(Socket, Transport, State, Loop - 1);
         E ->
-            io:format("E: ~p~n", [E]),
+            lager:error("E: ~p~n", [E]),
             ok = Transport:close(Socket)
     end.
 
