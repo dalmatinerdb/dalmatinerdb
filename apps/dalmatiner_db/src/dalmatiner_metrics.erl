@@ -26,7 +26,7 @@
 -define(INTERVAL, 1000).
 -define(BUCKET, <<"dalmatinerdb">>).
 
--record(state, {n, w}).
+-record(state, {n, w, prefix}).
 
 %%%===================================================================
 %%% API
@@ -63,7 +63,9 @@ init([]) ->
     erlang:send_after(?INTERVAL, self(), tick),
     lager:info("[metrics] Initializing metric watcher with N: ~p, W: ~p at an "
                "interval of ~pms.", [N, W, ?INTERVAL]),
-    {ok, #state{n=N, w=W}}.
+    [Prefix|_] = re:split(atom_to_list(node()), "@"),
+    {ok, #state{n=N, w=W, prefix = Prefix}}.
+
 
 %%--------------------------------------------------------------------
 %% @private
@@ -106,15 +108,15 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(tick, State) ->
+
+handle_info(tick, State = #state{prefix = Prefix, n = N, w = W}) ->
     {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
     Nodes = chash:nodes(chashbin:to_chash(CBin)),
-    Nodes1 = [{I, riak_core_apl:get_apl(I, State#state.n, metric)} || {I, _} <- Nodes],
+    Nodes1 = [{I, riak_core_apl:get_apl(I, N, metric)} || {I, _} <- Nodes],
     Time = timestamp(),
     Spec = folsom_metrics:get_metrics_info(),
-    [Prefix|_] = re:split(atom_to_list(node()), "@"),
     Metrics = do_metrics(Prefix, CBin, Time, Spec, dict:new()),
-    metric:mput(Nodes1, Metrics, State#state.w),
+    metric:mput(Nodes1, Metrics, W),
     erlang:send_after(?INTERVAL, self(), tick),
     {noreply, State};
 

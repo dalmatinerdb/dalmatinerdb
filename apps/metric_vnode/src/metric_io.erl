@@ -22,6 +22,7 @@
 
 -define(SERVER, ?MODULE).
 -define(WEEK, 604800). %% Seconds in a week.
+-define(MAX_Q_LEN, 20).
 
 -record(state, {
           partition,
@@ -45,7 +46,12 @@ start_link(Partition) ->
     gen_server:start_link(?MODULE, [Partition], []).
 
 write(Pid, Bucket, Metric, Time, Value) ->
-    gen_server:cast(Pid, {write, Bucket, Metric, Time, Value}).
+    case erlang:process_info(Pid, message_queue_len) of
+        {message_queue_len, N} when N > ?MAX_Q_LEN ->
+            gen_server:call(Pid, {write, Bucket, Metric, Time, Value});
+        _ ->
+            gen_server:cast(Pid, {write, Bucket, Metric, Time, Value})
+    end.
 
 read(Pid, Bucket, Metric, Time, Count, ReqID, Sender) ->
     gen_server:cast(Pid, {read, Bucket, Metric, Time, Count, ReqID, Sender}).
@@ -186,6 +192,13 @@ handle_call({metrics, Bucket}, _From, State) ->
                            {gb_sets:new(), State}
                    end,
     {reply, {ok, Ms}, State1};
+
+handle_call({write, Bucket, Metric, Time, Value}, _From, State) ->
+    {{R, MSet}, State1} = get_or_create_set(Bucket, State),
+    MSet1 = mstore:put(MSet, Metric, Time, Value),
+    Store1 = gb_trees:update(Bucket, {R, MSet1}, State1#state.mstore),
+    {reply, ok, State1#state{mstore=Store1}};
+
 
 handle_call(_Request, _From, State) ->
     Reply = ok,
