@@ -194,11 +194,8 @@ handle_call({metrics, Bucket}, _From, State) ->
     {reply, {ok, Ms}, State1};
 
 handle_call({write, Bucket, Metric, Time, Value}, _From, State) ->
-    {{R, MSet}, State1} = get_or_create_set(Bucket, State),
-    MSet1 = mstore:put(MSet, Metric, Time, Value),
-    Store1 = gb_trees:update(Bucket, {R, MSet1}, State1#state.mstore),
-    {reply, ok, State1#state{mstore=Store1}};
-
+    State1 = do_write(Bucket, Metric, Time, Value, State),
+    {reply, ok, State1};
 
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -215,10 +212,8 @@ handle_call(_Request, _From, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_cast({write, Bucket, Metric, Time, Value}, State) ->
-    {{R, MSet}, State1} = get_or_create_set(Bucket, State),
-    MSet1 = mstore:put(MSet, Metric, Time, Value),
-    Store1 = gb_trees:update(Bucket, {R, MSet1}, State1#state.mstore),
-    {noreply, State1#state{mstore=Store1}};
+    State1 = do_write(Bucket, Metric, Time, Value, State),
+    {noreply, State1};
 
 handle_cast({read, Bucket, Metric, Time, Count, ReqID, Sender},
             State = #state{node = N, partition = P}) ->
@@ -350,3 +345,9 @@ calc_empty(I) ->
             gb_sets:is_empty(mstore:metrics(MSet))
                 andalso calc_empty(I2)
     end.
+
+do_write(Bucket, Metric, Time, Value, State) ->
+    {{R, MSet}, State1} = get_or_create_set(Bucket, State),
+    MSet1 = mstore:put(MSet, Metric, Time, Value),
+    Store1 = gb_trees:update(Bucket, {R, MSet1}, State1#state.mstore),
+    State1#state{mstore=Store1}.
