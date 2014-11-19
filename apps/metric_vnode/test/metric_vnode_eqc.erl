@@ -81,16 +81,18 @@ overlap(Tr, Start, Vs) ->
 get(S, T, C) ->
     ReqID = T,
     Command = {get, ReqID, ?B, ?M, {T, C}},
-    {noreply, _S1} = ?V:handle_command(Command, {raw, ReqID, self()}, S),
-    {ok, Data} =
-        receive
-            {ReqID, {ok, ReqID, _, D}} -> 
-                {ok, D}
-        after
-            1000 ->
-                timeout
-        end,
-    Data.
+    case ?V:handle_command(Command, {raw, ReqID, self()}, S) of
+        {noreply, _S1} ->
+            receive
+                {ReqID, {ok, ReqID, _, D}} ->
+                    D
+            after
+                1000 ->
+                    timeout
+            end;
+        {reply, {ok, Reply}, _S1} ->
+            Reply
+    end.
 
 vnode() ->
     ?SIZED(Size,vnode(Size)).

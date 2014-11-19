@@ -37,8 +37,11 @@
           node,
           tbl,
           ct,
-          io
+          io,
+          resolutions = gb_trees:empty()
          }).
+
+-define(ENTRY_SIZE, 9).
 
 -define(MASTER, metric_vnode_master).
 
@@ -111,7 +114,7 @@ handle_command(ping, _Sender, State) ->
 handle_command({repair, Bucket, Metric, Time, Value}, _Sender, #state{tbl=T}=State) ->
     case ets:lookup(T, {Bucket, Metric}) of
         [{{Bucket,Metric}, Start, Size, _Time, Array}] ->
-            Bin = k6_bytea:get(Array, 0, Size * 9),
+            Bin = k6_bytea:get(Array, 0, Size * ?ENTRY_SIZE),
             k6_bytea:delete(Array),
             ets:delete(T, {Bucket,Metric}),
             metric_io:write(State#state.io, Bucket, Metric, Start, Bin);
@@ -132,19 +135,51 @@ handle_command({put, Bucket, Metric, {Time, Value}}, _Sender, State) ->
     {reply, ok, State};
 
 handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
-               #state{tbl=T, io=IO} = State) ->
+               #state{tbl=T, io=IO, resolutions = Ress} = State) ->
     BM = {Bucket, Metric},
     case ets:lookup(T, BM) of
-        [{BM, Start, Size, _Time, Array}] ->
-            Bin = k6_bytea:get(Array, 0, Size * 9),
+        %% If our request is entirely cache we don't need to bother the IO node
+        [{BM, Start, Size, _Time, Array}]
+          when Start =< Time,
+               (Start + Size) >= (Time + Count)
+               ->
+            %% How many bytes can we skip?
+            SkipBytes = (Time - Start) * ?ENTRY_SIZE,
+            Data = k6_bytea:get(Array, SkipBytes, (Count * ?ENTRY_SIZE)),
+            case gb_trees:lookup(Bucket, Ress) of
+                {value, Resolution} ->
+                    {reply, {ok, {Resolution, Data}}, State};
+                none ->
+                    Resolution = dalmatiner_opt:get(
+                                   <<"buckets">>, Bucket, <<"resolution">>,
+                                   {metric_vnode, resolution}, 1000),
+                    Ress1 = gb_trees:insert(Bucket, Resolution, Ress),
+                    {reply, {ok, {Resolution, Data}},
+                     State#state{resolutions = Ress1}}
+            end;
+        %% The request is neither before, after nor entirely inside the cache
+        %% we sadly have to flush it.
+        %% This are the conditions where we have to flush the cache and then
+        %% read it from the ui server
+        [{BM, Start, Size, _Time, Array}]
+          when
+              %% The window starts before the cache but ends in it
+              (Time < Start andalso Time + Count >= Start)
+              %% The window starts inside the cahce and ends afterwards
+              orelse (Time =< Start + Size andalso Time + Count > Start + Size)
+              ->
+            Bin = k6_bytea:get(Array, 0, Size * ?ENTRY_SIZE),
             k6_bytea:delete(Array),
             ets:delete(T, {Bucket,Metric}),
-            metric_io:write(IO, Bucket, Metric, Start, Bin);
+            metric_io:write(IO, Bucket, Metric, Start, Bin),
+            metric_io:read(IO, Bucket, Metric, Time, Count, ReqID, Sender),
+            {noreply, State};
+        %% If we are here we know that there is either no cahce or the requested
+        %% window and the cache do not overlap, so we can simply serve it from the ui servers
         _ ->
-            ok
-    end,
-    metric_io:read(IO, Bucket, Metric, Time, Count, ReqID, Sender),
-    {noreply, State};
+            metric_io:read(IO, Bucket, Metric, Time, Count, ReqID, Sender),
+            {noreply, State}
+    end;
 
 handle_command(_Message, _Sender, State) ->
     {noreply, State}.
@@ -152,7 +187,7 @@ handle_command(_Message, _Sender, State) ->
 handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender,
                        State=#state{tbl=T, io = IO}) ->
     ets:foldl(fun({{Bucket, Metric}, Start, Size, _, Array}, _) ->
-                      Bin = k6_bytea:get(Array, 0, Size * 9),
+                      Bin = k6_bytea:get(Array, 0, Size * ?ENTRY_SIZE),
                       k6_bytea:delete(Array),
                       metric_io:write(IO, Bucket, Metric, Start, Bin)
               end, ok, T),
@@ -213,7 +248,7 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
                 State = #state{partition=P, node=N, tbl=T, io = IO}) ->
     ets:foldl(fun({{Bkt, Metric}, Start, Size, _, Array}, _)
                     when Bkt /= Bucket ->
-                      Bin = k6_bytea:get(Array, 0, Size * 9),
+                      Bin = k6_bytea:get(Array, 0, Size * ?ENTRY_SIZE),
                       k6_bytea:delete(Array),
                       metric_io:write(IO, Bkt, Metric, Start, Bin);
                  ({_, _, _, _, Array}, _) ->
@@ -249,7 +284,7 @@ handle_exit(_PID, _Reason, State) ->
 
 terminate(_Reason, #state{tbl = T, io = IO}) ->
     ets:foldl(fun({{Bucket, Metric}, Start, Size, _, Array}, _) ->
-                      Bin = k6_bytea:get(Array, 0, Size * 9),
+                      Bin = k6_bytea:get(Array, 0, Size * ?ENTRY_SIZE),
                       k6_bytea:delete(Array),
                       metric_io:write(IO, Bucket, Metric, Start, Bin)
               end, ok, T),
@@ -271,9 +306,9 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO}) -
         %% package
         [{BM, Start, Size, _End, Array}]
           when (Time + Len) >= _End, Len < CT ->
-            Bin = k6_bytea:get(Array, 0, Size * 9),
+            Bin = k6_bytea:get(Array, 0, Size * ?ENTRY_SIZE),
             k6_bytea:set(Array, 0, Value),
-            k6_bytea:set(Array, Len * 9, <<0:(9 * 8 * (CT - Len))>>),
+            k6_bytea:set(Array, Len * ?ENTRY_SIZE, <<0:(?ENTRY_SIZE * 8 * (CT - Len))>>),
             ets:update_element(T, BM, [{2, Time}, {3, Len}, {4, Time + CT}]),
             metric_io:write(IO, Bucket, Metric, Start, Bin);
         %% In the case the data is already longer then the cache we flush the
@@ -281,19 +316,19 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO}) -
         [{BM, Start, Size, _End, Array}]
           when (Time + Len) >= _End ->
             ets:delete(T, {Bucket,Metric}),
-            Bin = k6_bytea:get(Array, 0, Size * 9),
+            Bin = k6_bytea:get(Array, 0, Size * ?ENTRY_SIZE),
             k6_bytea:delete(Array),
             metric_io:write(IO, Bucket, Metric, Start, Bin),
             metric_io:write(IO, Bucket, Metric, Time, Value);
         [{BM, Start, _Size, _End, Array}] ->
             Idx = Time - Start,
-            k6_bytea:set(Array, Idx * 9, Value),
+            k6_bytea:set(Array, Idx * ?ENTRY_SIZE, Value),
             ets:update_element(T, BM, [{3, Idx + Len}]),
             State;
         %% We don't have a cache yet and our data is smaller then
         %% the current cache limit
         [] when Len < CT ->
-            Array = k6_bytea:new(CT*9),
+            Array = k6_bytea:new(CT * ?ENTRY_SIZE),
             k6_bytea:set(Array, 0, Value),
             Jitter = random:uniform(CT),
             ets:insert(T, {BM, Time, Len, Time + Jitter, Array});
