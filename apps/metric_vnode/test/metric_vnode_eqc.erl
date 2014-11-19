@@ -214,10 +214,13 @@ setup() ->
     meck:new(riak_core_metadata, [passthrough]),
     meck:expect(riak_core_metadata, get, fun(_, _) -> undefined end),
     meck:expect(riak_core_metadata, put, fun(_, _, _) -> ok end),
+    meck:new(dalmatiner_opt, [passthrough]),
+    meck:expect(dalmatiner_opt, get, fun( _, _, _, _, Dflt) -> Dflt end),
     ok.
 
 cleanup(_) ->
     meck:unload(riak_core_metadata),
+    meck:unload(dalmatiner_opt),
     ok.
 
 -endif.

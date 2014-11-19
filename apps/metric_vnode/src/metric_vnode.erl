@@ -111,17 +111,53 @@ get(Preflist, ReqID, {Bucket, Metric}, {Time, Count}) ->
 handle_command(ping, _Sender, State) ->
     {reply, {pong, State#state.partition}, State};
 
-handle_command({repair, Bucket, Metric, Time, Value}, _Sender, #state{tbl=T}=State) ->
+
+
+%% Repair request are always full values not including non set values!
+handle_command({repair, Bucket, Metric, Time, Value}, _Sender,
+               #state{tbl=T} = State) ->
+    Count = mmath_bin:length(Value),
     case ets:lookup(T, {Bucket, Metric}) of
-        [{{Bucket,Metric}, Start, Size, _Time, Array}] ->
+        %% If we repear ona a place before the metric, well just write it!
+        [{{Bucket, Metric}, Start, _Size, _Time, _Array}]
+          when Time + Count < Start ->
+            metric_io:write(State#state.io, Bucket, Metric, Time, Value);
+        %% The data is entirely behind the cache, so we flush the cache and use
+        %% the repair request as new cache
+        [{{Bucket, Metric}, Start, Size, _Time, Array}]
+          when Start + Size > Time ->
             Bin = k6_bytea:get(Array, 0, Size * ?ENTRY_SIZE),
             k6_bytea:delete(Array),
             ets:delete(T, {Bucket,Metric}),
-            metric_io:write(State#state.io, Bucket, Metric, Start, Bin);
-        _ ->
-            ok
+            metric_io:write(State#state.io, Bucket, Metric, Start, Bin),
+            do_put(Bucket, Metric, Time, Value, State);
+        %% Now it gets tricky teh repair is intersecting with the cache
+        %% this should never happen but it probably will, so it sucks!
+        %% There is no sane way to merge the values if they intersect,
+        %% however we know the following:
+        %% 1) A repari request, based on how it is build, will never
+        %%    contain unset values.
+        %% 2) A cache can be an entirely empty value or contain empty
+        %%    segments.
+        %% Based on that the best aproach is to flush the cache and then
+        %% also flush the repair request. So that nothing will be overwritten
+        %% with a empty value.
+        %%
+        %% - Flusing the repair once could lead to emptyies in the cache
+        %% overwriting non emptyies from the repair.
+        %% - Flushing the cache and caching the repair could lead to new
+        %% emplties in the new caceh from the repair now overwriting non
+        %% empties from the privious cache.
+        [{{Bucket, Metric}, Start, Size, _Time, Array}] ->
+            Bin = k6_bytea:get(Array, 0, Size * ?ENTRY_SIZE),
+            k6_bytea:delete(Array),
+            ets:delete(T, {Bucket,Metric}),
+            metric_io:write(State#state.io, Bucket, Metric, Start, Bin),
+            metric_io:write(State#state.io, Bucket, Metric, Time, Value);
+        %% If we had no privious cache we can safely cache the repair.
+        [] ->
+            do_put(Bucket, Metric, Time, Value, State)
     end,
-    do_put(Bucket, Metric, Time, Value, State),
     {noreply, State};
 
 handle_command({mput, Data}, _Sender, State) ->

@@ -42,7 +42,7 @@
 -endif.
 
 -ifndef(EQC_EUNIT_TIMEUT).
--define(EQC_EUNIT_TIMEUT, 60).
+-define(EQC_EUNIT_TIMEUT, 240).
 -endif.
 
 run_test_() ->
