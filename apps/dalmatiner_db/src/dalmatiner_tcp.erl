@@ -4,10 +4,6 @@
 
 -include_lib("dproto/include/dproto.hrl").
 
--define(STREAM, 4).
--define(SENTRY, 1).
--define(SWRITE, 2).
-
 -export([start_link/4]).
 -export([init/4]).
 
@@ -31,15 +27,12 @@ init(Ref, Socket, Transport, _Opts = []) ->
     ok = ranch:accept_ack(Ref),
     loop(Socket, Transport, State, 0).
 
-
-
 loop(Socket, Transport, State = #state{fast_loop_count = FL}, 0) ->
     {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
     Nodes = chash:nodes(chashbin:to_chash(CBin)),
     Nodes1 = [{I, riak_core_apl:get_apl(I, State#state.n, metric)}
               || {I, _} <- Nodes],
     loop(Socket, Transport, State#state{nodes = Nodes1, cbin=CBin}, FL);
-
 
 loop(Socket, Transport, State, Loop) ->
     case Transport:recv(Socket, 0, State#state.wait) of
