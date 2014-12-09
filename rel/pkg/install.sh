@@ -45,18 +45,14 @@ case $2 in
         CONFFILE=/opt/local/dalmatinerdb/etc/dalmatinerdb.conf
         if [ ! -f "${CONFFILE}" ]
         then
+            echo "Creating new configuration from example file."
             cp ${CONFFILE}.example ${CONFFILE}
             sed --in-place -e "s/127.0.0.1/${IP}/g" ${CONFFILE}
-            md5sum ${CONFFILE} > ${CONFFILE}.md5
-        elif [ -f ${CONFFILE}.md5 ]
-        then
-            if md5sum --quiet --strict -c ${CONFFILE}.md5 2&> /dev/null
-            then
-                echo "The config was not adjusted we'll regenerate it."
-                cp ${CONFFILE}.example ${CONFFILE}
-                sed --in-place -e "s/127.0.0.1/${IP}/g" ${CONFFILE}
-                md5sum ${CONFFILE} > ${CONFFILE}.md5
-            fi
+        else
+            echo "Merging old file with new template, the original can be found in ${CONFFILE}.old."
+            /opt/local/dalmatinerdb/share/update_config.sh ${CONFFILE}.example ${CONFFILE} > ${CONFFILE}.new &&
+                mv ${CONFFILE} ${CONFFILE}.old &&
+                mv ${CONFFILE}.new ${CONFFILE}
         fi
         ;;
 esac
