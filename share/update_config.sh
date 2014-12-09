@@ -27,6 +27,18 @@ do
         else
             echo "${line}"
         fi
+    elif echo "${line}" | grep '^#\+\s*.\+=.\+' > /dev/null
+    then
+         ## If the line looks like a commented value try to find that
+         ## git puvalue in the old config to see if we need to uncomment it
+         key=$(echo "${line}" | sed 's/[ ]*=.*$//' | sed 's/^#*[ ]*//')
+         if val=$(get ${old} ${key})
+         then
+             echo "${key} = ${val}"
+
+         else
+             echo "${line}"
+         fi
     else
         echo "${line}"
 
