@@ -153,7 +153,9 @@ handle_call(close, _From, State) ->
     gb_trees:map(fun(_, {_, MSet}) ->
                          mstore:close(MSet)
                  end, State#state.mstore),
-    {stop, normal, State#state{mstore=gb_trees:empty()}};
+    State1 = State#state{mstore=gb_trees:empty()},
+    {reply, ok, State1};
+%%{stop, normal, State1};
 
 handle_call({delete, Bucket}, _From,
             State = #state{dir = Dir}) ->

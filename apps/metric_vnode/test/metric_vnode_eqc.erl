@@ -6,7 +6,7 @@
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 
 -define(EQC_SETUP, true).
-
+-include_lib("mmath/include/mmath.hrl").
 -include_lib("eqc/include/eqc_fsm.hrl").
 -include_lib("fqc/include/fqc.hrl").
 
@@ -43,7 +43,7 @@ new() ->
 repair({S, Tr}, T, Vs) ->
     case overlap(Tr, T, Vs) of
         [] ->
-            Command = {repair, ?B, ?M, T,  << <<1, V:64/signed-integer>> || V <- Vs >>},
+            Command = {repair, ?B, ?M, T, mmath_bin:from_list(Vs)},
             {noreply, S1} = ?V:handle_command(Command, sender, S),
             Tr1 = tree_set(Tr, T, Vs),
             {S1, Tr1};
@@ -54,7 +54,7 @@ repair({S, Tr}, T, Vs) ->
 put({S, Tr}, T, Vs) ->
     case overlap(Tr, T, Vs) of
         [] ->
-            Command = {put, ?B, ?M, {T, << <<1, V:64/signed-integer>> || V <- Vs >>}},
+            Command = {put, ?B, ?M, {T, mmath_bin:from_list(Vs)}},
             {reply, ok, S1} = ?V:handle_command(Command, sender, S),
             Tr1 = tree_set(Tr, T, Vs),
             {S1, Tr1};
@@ -65,7 +65,7 @@ put({S, Tr}, T, Vs) ->
 mput({S, Tr}, T, Vs) ->
     case overlap(Tr, T, Vs) of
         [] ->
-            Command = {mput, [{?B, ?M, T, << <<1, V:64/signed-integer>> || V <- Vs >>}]},
+            Command = {mput, [{?B, ?M, T, mmath_bin:from_list(Vs)}]},
             {reply, ok, S1} = ?V:handle_command(Command, sender, S),
             Tr1 = tree_set(Tr, T, Vs),
             {S1, Tr1};
@@ -125,6 +125,7 @@ prop_gb_comp() ->
                 os:cmd("mkdir data"),
                 {S, T} = eval(D),
                 List = ?T:to_list(T),
+                ?V:terminate(normal, S),
                 List1 = [{get(S, Time, 1), V} || {Time, V} <- List],
                 List2 = [{unlist(mmath_bin:to_list(Vs)), Vt} || {{_ ,Vs}, Vt} <- List1],
                 List3 = [true || {_V, _V} <- List2],
@@ -147,6 +148,7 @@ prop_is_empty() ->
                 os:cmd("mkdir data"),
                 {S, T} = eval(D),
                 {Empty, _S1} = ?V:is_empty(S),
+                ?V:terminate(normal, S),
                 TreeEmpty = ?T:is_empty(T),
                 if
                     Empty == TreeEmpty ->
@@ -166,6 +168,7 @@ prop_empty_after_delete() ->
                 {S, _T} = eval(D),
                 {ok, S1} = ?V:delete(S),
                 {Empty, _S3} = ?V:is_empty(S1),
+                ?V:terminate(normal, S),
                 Empty == true
             end).
 
@@ -194,6 +197,8 @@ prop_handoff() ->
                 {async,{fold, AsyncC, _}, _, _} =
                     ?V:handle_coverage({metrics, ?B}, all, self(), C2),
                 MsC = AsyncC(),
+                ?V:terminate(normal, S1),
+                ?V:terminate(normal, C2),
                 ?WHENFAIL(io:format(user, "L: ~p /= ~p~n"
                                     "M: ~p /= ~p~n",
                                     [Lc1, L1, gb_sets:to_list(MsC),

@@ -9,6 +9,7 @@
 -module(dalmatiner_db_udp).
 
 -behaviour(gen_server).
+-include_lib("mmath/include/mmath.hrl").
 -include_lib("dproto/include/dproto.hrl").
 -include_lib("mstore/include/mstore.hrl").
 

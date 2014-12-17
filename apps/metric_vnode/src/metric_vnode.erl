@@ -2,6 +2,7 @@
 -behaviour(riak_core_vnode).
 
 -include_lib("riak_core/include/riak_core_vnode.hrl").
+-include_lib("mmath/include/mmath.hrl").
 
 -export([start_vnode/1,
          init/1,
@@ -40,8 +41,6 @@
           io,
           resolutions = gb_trees:empty()
          }).
-
--define(ENTRY_SIZE, 9).
 
 -define(MASTER, metric_vnode_master).
 
@@ -84,10 +83,10 @@ repair(IdxNode, {Bucket, Metric}, {Time, Obj}) ->
 
 
 put(Preflist, ReqID, Bucket, Metric, {Time, Values}) when is_list(Values) ->
-    put(Preflist, ReqID, Bucket, Metric, {Time, << <<1, V:64/signed-integer>> || V <- Values >>});
+    put(Preflist, ReqID, Bucket, Metric, {Time, << <<?INT:?TYPE_SIZE, V:?BITS/?INT_TYPE>> || V <- Values >>});
 
 put(Preflist, ReqID, Bucket, Metric, {Time, Value}) when is_integer(Value) ->
-    put(Preflist, ReqID, Bucket, Metric, {Time, <<1, Value:64/signed-integer>>});
+    put(Preflist, ReqID, Bucket, Metric, {Time, <<?INT:?TYPE_SIZE, Value:?BITS/?INT_TYPE>>});
 
 put(Preflist, ReqID, Bucket, Metric, {Time, Value}) ->
     riak_core_vnode_master:command(Preflist,
@@ -107,12 +106,6 @@ get(Preflist, ReqID, {Bucket, Metric}, {Time, Count}) ->
                                    {fsm, undefined, self()},
                                    ?MASTER).
 
-%% Sample command: respond to a ping
-handle_command(ping, _Sender, State) ->
-    {reply, {pong, State#state.partition}, State};
-
-
-
 %% Repair request are always full values not including non set values!
 handle_command({repair, Bucket, Metric, Time, Value}, _Sender,
                #state{tbl=T} = State) ->
@@ -126,7 +119,7 @@ handle_command({repair, Bucket, Metric, Time, Value}, _Sender,
         %% the repair request as new cache
         [{{Bucket, Metric}, Start, Size, _Time, Array}]
           when Start + Size > Time ->
-            Bin = k6_bytea:get(Array, 0, Size * ?ENTRY_SIZE),
+            Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
             k6_bytea:delete(Array),
             ets:delete(T, {Bucket,Metric}),
             metric_io:write(State#state.io, Bucket, Metric, Start, Bin),
@@ -149,7 +142,7 @@ handle_command({repair, Bucket, Metric, Time, Value}, _Sender,
         %% emplties in the new caceh from the repair now overwriting non
         %% empties from the privious cache.
         [{{Bucket, Metric}, Start, Size, _Time, Array}] ->
-            Bin = k6_bytea:get(Array, 0, Size * ?ENTRY_SIZE),
+            Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
             k6_bytea:delete(Array),
             ets:delete(T, {Bucket,Metric}),
             metric_io:write(State#state.io, Bucket, Metric, Start, Bin),
@@ -180,8 +173,8 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
                (Start + Size) >= (Time + Count)
                ->
             %% How many bytes can we skip?
-            SkipBytes = (Time - Start) * ?ENTRY_SIZE,
-            Data = k6_bytea:get(Array, SkipBytes, (Count * ?ENTRY_SIZE)),
+            SkipBytes = (Time - Start) * ?DATA_SIZE,
+            Data = k6_bytea:get(Array, SkipBytes, (Count * ?DATA_SIZE)),
             case gb_trees:lookup(Bucket, Ress) of
                 {value, Resolution} ->
                     {reply, {ok, {Resolution, Data}}, State};
@@ -204,7 +197,7 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
               %% The window starts inside the cahce and ends afterwards
               orelse (Time =< Start + Size andalso Time + Count > Start + Size)
               ->
-            Bin = k6_bytea:get(Array, 0, Size * ?ENTRY_SIZE),
+            Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
             k6_bytea:delete(Array),
             ets:delete(T, {Bucket,Metric}),
             metric_io:write(IO, Bucket, Metric, Start, Bin),
@@ -223,7 +216,7 @@ handle_command(_Message, _Sender, State) ->
 handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender,
                        State=#state{tbl=T, io = IO}) ->
     ets:foldl(fun({{Bucket, Metric}, Start, Size, _, Array}, _) ->
-                      Bin = k6_bytea:get(Array, 0, Size * ?ENTRY_SIZE),
+                      Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
                       k6_bytea:delete(Array),
                       metric_io:write(IO, Bucket, Metric, Start, Bin)
               end, ok, T),
@@ -284,7 +277,7 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
                 State = #state{partition=P, node=N, tbl=T, io = IO}) ->
     ets:foldl(fun({{Bkt, Metric}, Start, Size, _, Array}, _)
                     when Bkt /= Bucket ->
-                      Bin = k6_bytea:get(Array, 0, Size * ?ENTRY_SIZE),
+                      Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
                       k6_bytea:delete(Array),
                       metric_io:write(IO, Bkt, Metric, Start, Bin);
                  ({_, _, _, _, Array}, _) ->
@@ -320,7 +313,7 @@ handle_exit(_PID, _Reason, State) ->
 
 terminate(_Reason, #state{tbl = T, io = IO}) ->
     ets:foldl(fun({{Bucket, Metric}, Start, Size, _, Array}, _) ->
-                      Bin = k6_bytea:get(Array, 0, Size * ?ENTRY_SIZE),
+                      Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
                       k6_bytea:delete(Array),
                       metric_io:write(IO, Bucket, Metric, Start, Bin)
               end, ok, T),
@@ -342,9 +335,9 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO}) -
         %% package
         [{BM, Start, Size, _End, Array}]
           when (Time + Len) >= _End, Len < CT ->
-            Bin = k6_bytea:get(Array, 0, Size * ?ENTRY_SIZE),
+            Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
             k6_bytea:set(Array, 0, Value),
-            k6_bytea:set(Array, Len * ?ENTRY_SIZE, <<0:(?ENTRY_SIZE * 8 * (CT - Len))>>),
+            k6_bytea:set(Array, Len * ?DATA_SIZE, <<0:(?DATA_SIZE * 8 * (CT - Len))>>),
             ets:update_element(T, BM, [{2, Time}, {3, Len}, {4, Time + CT}]),
             metric_io:write(IO, Bucket, Metric, Start, Bin);
         %% In the case the data is already longer then the cache we flush the
@@ -352,19 +345,19 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO}) -
         [{BM, Start, Size, _End, Array}]
           when (Time + Len) >= _End ->
             ets:delete(T, {Bucket,Metric}),
-            Bin = k6_bytea:get(Array, 0, Size * ?ENTRY_SIZE),
+            Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
             k6_bytea:delete(Array),
             metric_io:write(IO, Bucket, Metric, Start, Bin),
             metric_io:write(IO, Bucket, Metric, Time, Value);
         [{BM, Start, _Size, _End, Array}] ->
             Idx = Time - Start,
-            k6_bytea:set(Array, Idx * ?ENTRY_SIZE, Value),
+            k6_bytea:set(Array, Idx * ?DATA_SIZE, Value),
             ets:update_element(T, BM, [{3, Idx + Len}]),
             State;
         %% We don't have a cache yet and our data is smaller then
         %% the current cache limit
         [] when Len < CT ->
-            Array = k6_bytea:new(CT * ?ENTRY_SIZE),
+            Array = k6_bytea:new(CT * ?DATA_SIZE),
             k6_bytea:set(Array, 0, Value),
             Jitter = random:uniform(CT),
             ets:insert(T, {BM, Time, Len, Time + Jitter, Array});
