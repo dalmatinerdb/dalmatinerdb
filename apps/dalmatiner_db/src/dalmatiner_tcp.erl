@@ -7,11 +7,25 @@
 -export([start_link/4]).
 -export([init/4]).
 
--record(state, {cbin, nodes, n, w, fast_loop_count, wait = 5000}).
+-record(state,
+        {cbin,
+         nodes,
+         n = 1 :: pos_integer(),
+         w = 1 :: pos_integer(),
+         fast_loop_count :: pos_integer(),
+         wait = 5000 :: pos_integer()
+        }).
 
 -record(sstate,
-        {cbin, nodes, n, w, last = 0, max_diff = 1, wait = 5000,
-         dict = dict:new(), bucket}).
+        {cbin,
+         nodes,
+         n = 1 :: pos_integer(),
+         w = 1 :: pos_integer(),
+         last = 0 :: non_neg_integer(),
+         max_diff = 1 :: pos_integer(),
+         wait = 5000 :: pos_integer(),
+         dict = dict:new() :: dict(),
+         bucket :: binary()}).
 
 start_link(Ref, Socket, Transport, Opts) ->
     Pid = spawn_link(?MODULE, init, [Ref, Socket, Transport, Opts]),
@@ -67,7 +81,7 @@ loop(Socket, Transport, State, Loop) ->
                                    w = State#state.w,
                                    max_diff = Delay,
                                    bucket = Bucket},
-                                dict:new(), <<>>)
+                                dict:new(), {incomplete, <<>>})
             end;
         {error, timeout} ->
             loop(Socket, Transport, State, Loop - 1);
@@ -81,22 +95,19 @@ loop(Socket, Transport, State, Loop) ->
 
 stream_loop(Socket, Transport,
             State = #sstate{last = _L, max_diff = _Max, nodes = Nodes, w = W},
-            Dict, <<?SWRITE, Rest/binary>>) ->
+            Dict, {flush, Rest}) ->
     metric:mput(Nodes, Dict, W),
     {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
     Nodes1 = chash:nodes(chashbin:to_chash(CBin)),
     Nodes2 = [{I, riak_core_apl:get_apl(I, State#sstate.n, metric)}
               || {I, _} <- Nodes1],
     State1 = State#sstate{nodes = Nodes2, cbin = CBin},
-    stream_loop(Socket, Transport, State1, dict:new(), Rest);
+    stream_loop(Socket, Transport, State1, dict:new(),
+                dproto_tcp:decode_stream(Rest));
 
 stream_loop(Socket, Transport,
             State = #sstate{last = _L, max_diff = _Max, nodes = Nodes, w = W},
-            Dict,
-            <<?SENTRY,
-              Time:?TIME_SIZE/integer,
-              _MS:?METRIC_SS/integer, Metric:_MS/binary,
-              _DS:?DATA_SS/integer, Points:_DS/binary, Rest/binary>>)
+            Dict, {{stream, Metric, Time, Points}, Rest})
   when Time - _L > _Max ->
     metric:mput(Nodes, Dict, W),
     {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
@@ -105,24 +116,24 @@ stream_loop(Socket, Transport,
               || {I, _} <- Nodes1],
     State1 = State#sstate{nodes = Nodes2, cbin = CBin, last=Time},
     Dict1 = insert_metric(State, dict:new(), Metric, Time, Points),
-    stream_loop(Socket, Transport, State1, Dict1, Rest);
+    stream_loop(Socket, Transport, State1, Dict1,
+                dproto_tcp:decode_stream(Rest));
 
 stream_loop(Socket, Transport, State, Dict,
-            <<?SENTRY,
-              Time:?TIME_SIZE/integer,
-              _MS:?METRIC_SS/integer, Metric:_MS/binary,
-              _DS:?DATA_SS/integer, Points:_DS/binary, Rest/binary>>) ->
+            {{stream, Metric, Time, Points}, Rest}) ->
     Dict1 = insert_metric(State, Dict, Metric, Time, Points),
-    stream_loop(Socket, Transport, State, Dict1, Rest);
+    stream_loop(Socket, Transport, State, Dict1,
+                dproto_tcp:decode_stream(Rest));
 
 
-stream_loop(Socket, Transport, State, Dict, Acc) ->
+stream_loop(Socket, Transport, State, Dict, {incomplete, Acc}) ->
     case Transport:recv(Socket, 0, 5000) of
         {ok, Data} ->
             Acc1 = <<Acc/binary, Data/binary>>,
-            stream_loop(Socket, Transport, State, Dict, Acc1);
+            stream_loop(Socket, Transport, State, Dict,
+                       dproto_tcp:decode_stream(Acc1));
         {error, timeout} ->
-            stream_loop(Socket, Transport, State, Dict, Acc);
+            stream_loop(Socket, Transport, State, Dict, {incomplete, Acc});
         {error,closed} ->
             metric:mput(State#sstate.nodes, Dict, State#sstate.w),
             ok;

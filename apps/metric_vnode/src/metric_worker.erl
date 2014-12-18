@@ -1,4 +1,5 @@
 -module(metric_worker).
+
 -behaviour(riak_core_vnode_worker).
 
 -export([init_worker/3,
