@@ -225,9 +225,11 @@ handle_cast({read, Bucket, Metric, Time, Count, ReqID, Sender},
                 {ok, Data} = mstore:get(MSet, Metric, Time, Count),
                 {{Resolution, Data}, S2};
             _ ->
+                lager:warning("[IO] Unknown metric: ~p/~p", [Bucket, Metric]),
                 Resolution = dalmatiner_opt:get(
                                <<"buckets">>, Bucket, <<"resolution">>,
                                {metric_vnode, resolution}, 1000),
+
                 {{Resolution, mmath_bin:empty(Count)}, State}
                   end,
     riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, D}),

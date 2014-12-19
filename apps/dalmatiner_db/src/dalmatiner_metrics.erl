@@ -63,8 +63,7 @@ init([]) ->
     erlang:send_after(?INTERVAL, self(), tick),
     lager:info("[metrics] Initializing metric watcher with N: ~p, W: ~p at an "
                "interval of ~pms.", [N, W, ?INTERVAL]),
-    [Prefix|_] = re:split(atom_to_list(node()), "@"),
-    {ok, #state{n=N, w=W, prefix = Prefix}}.
+    {ok, #state{n=N, w=W, prefix = list_to_binary(atom_to_list(node()))}}.
 
 
 %%--------------------------------------------------------------------
@@ -158,15 +157,15 @@ do_metrics(_Prefix, _CBin, _Time, [], Acc) ->
 
 do_metrics(Prefix, CBin, Time, [{N, [{type, histogram}]} | Spec], Acc) ->
     Stats = folsom_metrics:get_histogram_statistics(N),
-    Prefix1 = <<Prefix/binary, ".", (metric_name(N))/binary>>,
+    Prefix1 = [Prefix, metric_name(N)],
     Acc1 = build_histogram(Stats, Prefix1, Time, CBin, Acc),
     do_metrics(Prefix, CBin, Time, Spec, Acc1);
 
 do_metrics(Prefix, CBin, Time, [{N, [{type, spiral}]} | Spec], Acc) ->
     [{count, Count}, {one, One}] = folsom_metrics:get_metric_value(N),
     K = metric_name(N),
-    Acc1 = add_metric(Prefix, CBin, <<K/binary, ".count">>, Time, Count, Acc),
-    Acc2 = add_metric(Prefix, CBin, <<K/binary, ".one">>, Time, One, Acc1),
+    Acc1 = add_metric(Prefix, CBin, [K, <<"count">>], Time, Count, Acc),
+    Acc2 = add_metric(Prefix, CBin, [K, <<"one">>], Time, One, Acc1),
     do_metrics(Prefix, CBin, Time, Spec, Acc2);
 
 
@@ -183,7 +182,7 @@ do_metrics(Prefix, CBin, Time, [{N, [{type, duration}]} | Spec], Acc) ->
 
 
 do_metrics(Prefix, CBin, Time, [{N, [{type, meter}]} | Spec], Acc) ->
-    Prefix1 = <<Prefix/binary, ".", (metric_name(N))/binary>>,
+    Prefix1 = [Prefix, metric_name(N)],
     [{count, Count},
      {one, One},
      {five, Five},
@@ -195,69 +194,55 @@ do_metrics(Prefix, CBin, Time, [{N, [{type, meter}]} | Spec], Acc) ->
        {five_to_fifteen, FiveToFifteen},
        {one_to_fifteen, OneToFifteen}]}]
         = folsom_metrics:get_metric_value(N),
-    Acc1 = add_metric(Prefix1, CBin, <<"count">>, Time, Count, Acc),
-    Acc2 = add_metric(Prefix1, CBin, <<"one">>, Time, One, Acc1),
-    Acc3 = add_metric(Prefix1, CBin, <<"five">>, Time, Five, Acc2),
-    Acc4 = add_metric(Prefix1, CBin, <<"fifteen">>, Time, Fifteen, Acc3),
-    Acc5 = add_metric(Prefix1, CBin, <<"day">>, Time, Day, Acc4),
-    Acc6 = add_metric(Prefix1, CBin, <<"mean">>, Time, Mean, Acc5),
-    Acc7 = add_metric(Prefix1, CBin, <<"one_to_five">>, Time, OneToFive, Acc6),
-    Acc8 = add_metric(Prefix1, CBin, <<"five_to_fifteen">>, Time, FiveToFifteen, Acc7),
-    Acc9 = add_metric(Prefix1, CBin, <<"one_to_fifteen">>, Time, OneToFifteen, Acc8),
+    Acc1 = add_metric(Prefix1, CBin, [<<"count">>], Time, Count, Acc),
+    Acc2 = add_metric(Prefix1, CBin, [<<"one">>], Time, One, Acc1),
+    Acc3 = add_metric(Prefix1, CBin, [<<"five">>], Time, Five, Acc2),
+    Acc4 = add_metric(Prefix1, CBin, [<<"fifteen">>], Time, Fifteen, Acc3),
+    Acc5 = add_metric(Prefix1, CBin, [<<"day">>], Time, Day, Acc4),
+    Acc6 = add_metric(Prefix1, CBin, [<<"mean">>], Time, Mean, Acc5),
+    Acc7 = add_metric(Prefix1, CBin, [<<"one_to_five">>], Time, OneToFive, Acc6),
+    Acc8 = add_metric(Prefix1, CBin, [<<"five_to_fifteen">>], Time, FiveToFifteen, Acc7),
+    Acc9 = add_metric(Prefix1, CBin, [<<"one_to_fifteen">>], Time, OneToFifteen, Acc8),
     do_metrics(Prefix, CBin, Time, Spec, Acc9).
 
 add_metric(Prefix, CBin, Name, Time, Value, Acc) when is_integer(Value) ->
-    Metric = <<Prefix/binary, ".", (metric_name(Name))/binary>>,
-    DocIdx = riak_core_util:chash_key({?BUCKET, Metric}),
-    {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
-    dict:append(Idx, {?BUCKET, Metric, Time, <<1, Value:64/unsigned-integer>>}, Acc);
+    add_to_dict(CBin, [Prefix, metric_name(Name)], Time, Value, Acc);
 
 add_metric(Prefix, CBin, Name, Time, Value, Acc) when is_float(Value) ->
     Scale = 1000*1000,
-    Metric = <<Prefix/binary, ".", (metric_name(Name))/binary>>,
-    DocIdx = riak_core_util:chash_key({?BUCKET, Metric}),
+    add_to_dict(CBin, [Prefix, metric_name(Name)], Time, round(Value*Scale), Acc).
+
+add_to_dict(CBin, Metric, Time, Value, Acc) ->
+    Metric1 = dproto:metric_from_list(lists:flatten(Metric)),
+    DocIdx = riak_core_util:chash_key({?BUCKET, Metric1}),
     {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
-    dict:append(Idx, {?BUCKET, Metric, Time, <<1, (round(Value*Scale)):64/unsigned-integer>>}, Acc).
+    dict:append(Idx, {?BUCKET, Metric1, Time, mmath_bin:from_list(Value)}, Acc).
 
 timestamp() ->
     {Meg, S, _} = os:timestamp(),
     Meg*1000000 + S.
 
-metric_name(N1) when is_atom(N1) ->
-    erlang:atom_to_binary(N1, utf8);
-metric_name({N1, N2}) when is_atom(N1), is_atom(N2) ->
-    <<(erlang:atom_to_binary(N1, utf8))/binary, ".",
-      (erlang:atom_to_binary(N2, utf8))/binary>>;
-metric_name({N1, N2, N3}) when is_atom(N1), is_atom(N2), is_atom(N3) ->
-    <<(erlang:atom_to_binary(N1, utf8))/binary, ".",
-      (erlang:atom_to_binary(N2, utf8))/binary, ".",
-      (erlang:atom_to_binary(N3, utf8))/binary>>;
-metric_name({N1, N2, N3}) when is_atom(N1), is_atom(N2), is_atom(N3) ->
-    <<(erlang:atom_to_binary(N1, utf8))/binary, ".",
-      (erlang:atom_to_binary(N2, utf8))/binary, ".",
-      (erlang:atom_to_binary(N3, utf8))/binary>>;
-metric_name({N1, N2, N3, N4}) when is_atom(N1), is_atom(N2), is_atom(N3), is_atom(N4) ->
-    <<(erlang:atom_to_binary(N1, utf8))/binary, ".",
-      (erlang:atom_to_binary(N2, utf8))/binary, ".",
-      (erlang:atom_to_binary(N3, utf8))/binary, ".",
-      (erlang:atom_to_binary(N4, utf8))/binary>>;
-metric_name(A) when is_atom(A) ->
-    erlang:atom_to_binary(A, utf8);
 metric_name(B) when is_binary(B) ->
     B;
 metric_name(L) when is_list(L) ->
     erlang:list_to_binary(L);
+metric_name(N1) when
+      is_atom(N1) ->
+    a2b(N1);
+metric_name({N1, N2}) when
+      is_atom(N1), is_atom(N2) ->
+    [a2b(N1), a2b(N2)];
+metric_name({N1, N2, N3}) when
+      is_atom(N1), is_atom(N2), is_atom(N3) ->
+    [a2b(N1), a2b(N2), a2b(N3)];
+metric_name({N1, N2, N3, N4}) when
+      is_atom(N1), is_atom(N2), is_atom(N3), is_atom(N4) ->
+    [a2b(N1), a2b(N2), a2b(N3), a2b(N4)];
 metric_name(T) when is_tuple(T) ->
-    metric_name(tuple_to_list(T),<<>>).
+    [metric_name(E) || E <- tuple_to_list(T)].
 
-metric_name([N | R], <<>>) ->
-    metric_name(R, metric_name(N));
-
-metric_name([N | R], Acc) ->
-    metric_name(R, <<Acc/binary, ".", (metric_name(N))/binary>>);
-
-metric_name([], Acc) ->
-    Acc.
+a2b(A) ->
+    erlang:atom_to_binary(A, utf8).
 
 % build_histogram(Stats, Prefix, Time, CBin, Acc)
 build_histogram([], _, _, _, Acc) ->
