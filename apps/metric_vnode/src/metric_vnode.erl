@@ -48,33 +48,6 @@
 start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
-init([Partition]) ->
-    process_flag(trap_exit, true),
-    random:seed(now()),
-    P = list_to_atom(integer_to_list(Partition)),
-    CT = case application:get_env(metric_vnode, cache_points) of
-             {ok, V} ->
-                 V;
-             _ ->
-                 10
-         end,
-    WorkerPoolSize = case application:get_env(metric_vnode, async_workers) of
-                         {ok, Val} ->
-                             Val;
-                         undefined ->
-                             5
-                     end,
-    FoldWorkerPool = {pool, metric_worker, WorkerPoolSize, []},
-    {ok, IO} = metric_io:start_link(Partition),
-    {ok, #state{
-            partition = Partition,
-            node = node(),
-            tbl = ets:new(P, [public, ordered_set]),
-            io = IO,
-            ct = CT
-           },
-     [FoldWorkerPool]}.
-
 repair(IdxNode, {Bucket, Metric}, {Time, Obj}) ->
     riak_core_vnode_master:command(IdxNode,
                                    {repair, Bucket, Metric, Time, Obj},
@@ -105,6 +78,35 @@ get(Preflist, ReqID, {Bucket, Metric}, {Time, Count}) ->
                                    {get, ReqID, Bucket, Metric, {Time, Count}},
                                    {fsm, undefined, self()},
                                    ?MASTER).
+
+
+init([Partition]) ->
+    process_flag(trap_exit, true),
+    random:seed(now()),
+    P = list_to_atom(integer_to_list(Partition)),
+    CT = case application:get_env(metric_vnode, cache_points) of
+             {ok, V} ->
+                 V;
+             _ ->
+                 10
+         end,
+    WorkerPoolSize = case application:get_env(metric_vnode, async_workers) of
+                         {ok, Val} ->
+                             Val;
+                         undefined ->
+                             5
+                     end,
+    FoldWorkerPool = {pool, metric_worker, WorkerPoolSize, []},
+    {ok, IO} = metric_io:start_link(Partition),
+    {ok, #state{
+            partition = Partition,
+            node = node(),
+            tbl = ets:new(P, [public, ordered_set]),
+            io = IO,
+            ct = CT
+           },
+     [FoldWorkerPool]}.
+
 
 %% Repair request are always full values not including non set values!
 handle_command({repair, Bucket, Metric, Time, Value}, _Sender,
@@ -164,7 +166,8 @@ handle_command({put, Bucket, Metric, {Time, Value}}, _Sender, State) ->
     {reply, ok, State};
 
 handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
-               #state{tbl=T, io=IO, resolutions = Ress} = State) ->
+               #state{tbl=T, io=IO, resolutions = Ress,
+                      partition = Idx} = State) ->
     BM = {Bucket, Metric},
     case ets:lookup(T, BM) of
         %% If our request is entirely cache we don't need to bother the IO node
@@ -177,13 +180,13 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
             Data = k6_bytea:get(Array, SkipBytes, (Count * ?DATA_SIZE)),
             case gb_trees:lookup(Bucket, Ress) of
                 {value, Resolution} ->
-                    {reply, {ok, {Resolution, Data}}, State};
+                    {reply, {ok, ReqID, Idx, {Resolution, Data}}, State};
                 none ->
                     Resolution = dalmatiner_opt:get(
                                    <<"buckets">>, Bucket, <<"resolution">>,
                                    {metric_vnode, resolution}, 1000),
                     Ress1 = gb_trees:insert(Bucket, Resolution, Ress),
-                    {reply, {ok, {Resolution, Data}},
+                    {reply, {ok, ReqID, Idx, {Resolution, Data}},
                      State#state{resolutions = Ress1}}
             end;
         %% The request is neither before, after nor entirely inside the cache

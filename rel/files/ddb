@@ -8,7 +8,7 @@ RUNNER_BASE_DIR=${RUNNER_SCRIPT_DIR%/*}
 RUNNER_ETC_DIR=$RUNNER_BASE_DIR/etc
 RUNNER_LOG_DIR={{log_path}}
 # Note the trailing slash on $PIPE_DIR/
-PIPE_DIR=/tmp/{{run_user}}/
+PIPE_DIR=/tmp/dalmatinerdb/
 RUNNER_USER={{run_user}}
 
 # Make sure this script is running as the appropriate user

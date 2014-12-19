@@ -61,8 +61,8 @@ loop(Socket, Transport, State, Loop) ->
                     Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
                     loop(Socket, Transport, State, Loop - 1);
                 {get, B, M, T, C} ->
-                    {ok, Resolution, Data} = metric:get(B, M, T, C),
-                    Transport:send(Socket, <<Resolution:64/integer, Data/binary>>),
+                    {ok, Resolution, Points} = metric:get(B, M, T, C),
+                    Transport:send(Socket, <<Resolution:64/integer, Points/binary>>),
                     loop(Socket, Transport, State, Loop - 1);
                 {stream, Bucket, Delay} ->
                     lager:info("[tcp] Entering stream mode for bucket '~s' "
