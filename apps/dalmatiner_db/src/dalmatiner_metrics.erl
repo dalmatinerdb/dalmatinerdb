@@ -176,7 +176,7 @@ do_metrics(Prefix, CBin, Time, [{N, [{type, counter}]} | Spec], Acc) ->
 
 do_metrics(Prefix, CBin, Time, [{N, [{type, duration}]} | Spec], Acc) ->
     Stats = folsom_metrics:get_metric_value(N),
-    Prefix1 = <<Prefix/binary, ".", (metric_name(N))/binary>>,
+    Prefix1 = [Prefix, metric_name(N)],
     Acc1 = build_histogram(Stats, Prefix1, Time, CBin, Acc),
     do_metrics(Prefix, CBin, Time, Spec, Acc1);
 
@@ -216,7 +216,7 @@ add_to_dict(CBin, Metric, Time, Value, Acc) ->
     Metric1 = dproto:metric_from_list(lists:flatten(Metric)),
     DocIdx = riak_core_util:chash_key({?BUCKET, Metric1}),
     {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
-    dict:append(Idx, {?BUCKET, Metric1, Time, mmath_bin:from_list(Value)}, Acc).
+    dict:append(Idx, {?BUCKET, Metric1, Time, mmath_bin:from_list([Value])}, Acc).
 
 timestamp() ->
     {Meg, S, _} = os:timestamp(),
