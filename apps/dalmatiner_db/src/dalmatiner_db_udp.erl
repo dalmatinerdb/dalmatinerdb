@@ -141,6 +141,7 @@ handle_data(<<T:?TIME_SIZE/integer,
               _DS:?DATA_SS/integer, Data:_DS/binary,
               R/binary>>,
             Bucket, W, LPort, CBin, Nodes, Cnt, Acc) when (_DS rem ?DATA_SIZE) == 0 ->
+    dalmatiner_metrics:inc(mmath_bin:length(Data)),
     DocIdx = riak_core_util:chash_key({Bucket, Metric}),
     {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
     Acc1 = dict:append(Idx, {Bucket, Metric, T, Data}, Acc),

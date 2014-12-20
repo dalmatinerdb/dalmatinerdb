@@ -121,6 +121,7 @@ stream_loop(Socket, Transport,
 
 stream_loop(Socket, Transport, State, Dict,
             {{stream, Metric, Time, Points}, Rest}) ->
+
     Dict1 = insert_metric(State, Dict, Metric, Time, Points),
     stream_loop(Socket, Transport, State, Dict1,
                 dproto_tcp:decode_stream(Rest));
@@ -145,6 +146,7 @@ stream_loop(Socket, Transport, State, Dict, {incomplete, Acc}) ->
 
 insert_metric(#sstate{bucket = Bucket, cbin = CBin},
               Dict, Metric, Time, Points) ->
+    dalmatiner_metrics:inc(mmath_bin:length(Points)),
     DocIdx = riak_core_util:chash_key({Bucket, Metric}),
     {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
     dict:append(Idx, {Bucket, Metric, Time, Points}, Dict).
