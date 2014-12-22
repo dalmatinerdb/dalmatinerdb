@@ -248,9 +248,9 @@ handoff_cancelled(State) ->
 handoff_finished(_TargetNode, State) ->
     {ok, State}.
 
-handle_handoff_data(Data, State) ->
-    {{Bucket, {Metric, T}}, V} = binary_to_term(Data),
-    do_put(Bucket, Metric, T, V, State),
+handle_handoff_data(Data, State = #state{io = IO}) ->
+    {{Bucket, {Metric, T}}, Bin} = binary_to_term(Data),
+    metric_io:swrite(IO, Bucket, Metric, T, Bin),
     {reply, ok, State}.
 
 encode_handoff_item(Key, Value) ->

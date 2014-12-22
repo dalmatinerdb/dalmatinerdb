@@ -14,7 +14,7 @@
 -export([start_link/1,
          empty/1, fold/3, delete/1, close/1,
          buckets/1, metrics/2, delete/2,
-         read/7, write/5]).
+         read/7, write/5, swrite/5]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -49,10 +49,13 @@ start_link(Partition) ->
 write(Pid, Bucket, Metric, Time, Value) ->
     case erlang:process_info(Pid, message_queue_len) of
         {message_queue_len, N} when N > ?MAX_Q_LEN ->
-            gen_server:call(Pid, {write, Bucket, Metric, Time, Value});
+            swrite(Pid, Bucket, Metric, Time, Value);
         _ ->
             gen_server:cast(Pid, {write, Bucket, Metric, Time, Value})
     end.
+
+swrite(Pid, Bucket, Metric, Time, Value) ->
+    gen_server:call(Pid, {write, Bucket, Metric, Time, Value}).
 
 read(Pid, Bucket, Metric, Time, Count, ReqID, Sender) ->
     gen_server:cast(Pid, {read, Bucket, Metric, Time, Count, ReqID, Sender}).
