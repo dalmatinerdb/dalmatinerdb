@@ -216,7 +216,7 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
 handle_command(_Message, _Sender, State) ->
     {noreply, State}.
 
-handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender,
+handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, Sender,
                        State=#state{tbl=T, io = IO}) ->
     ets:foldl(fun({{Bucket, Metric}, Start, Size, _, Array}, _) ->
                       Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
@@ -224,8 +224,12 @@ handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender,
                       metric_io:write(IO, Bucket, Metric, Start, Bin)
               end, ok, T),
     ets:delete_all_objects(T),
-    Acc = metric_io:fold(IO, Fun, Acc0),
-    {reply, Acc, State};
+    FinishFun =
+        fun(Acc) ->
+                riak_core_vnode:reply(Sender, Acc)
+        end,
+    {ok, AsyncWork} = metric_io:fold(IO, Fun, Acc0),
+    {async, {fold, AsyncWork, FinishFun}, Sender, State};
 
 %% We want to forward all the other handoff commands
 handle_handoff_command(_Message, _Sender, State) ->

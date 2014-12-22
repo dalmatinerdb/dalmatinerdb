@@ -191,7 +191,9 @@ prop_handoff() ->
                               [?V:encode_handoff_item(K, V) | A]
                       end,
                 FR = ?FOLD_REQ{foldfun=Fun, acc0=[]},
-                {reply, L, S1} = ?V:handle_handoff_command(FR, self(), S),
+                {async,{fold, AsyncH, _}, _, S1} =
+                    ?V:handle_handoff_command(FR, self(), S),
+                L = AsyncH(),
                 L1 = lists:sort(L),
                 {ok, C, _} = ?V:init([1]),
                 C1 = lists:foldl(fun(Data, SAcc) ->
@@ -203,7 +205,9 @@ prop_handoff() ->
                 List5 = [{unlist(mmath_bin:to_list(Vs)), Vt} || {{_ ,Vs}, Vt} <- List1],
                 List6 = [true || {_V, _V} <- List2],
 
-                {reply, Lc, C2} = ?V:handle_handoff_command(FR, self(), C1),
+                {async,{fold, AsyncHc, _}, _, C2} =
+                    ?V:handle_handoff_command(FR, self(), C1),
+                Lc = AsyncHc(),
                 Lc1 = lists:sort(Lc),
                 {async,{fold, Async, _}, _, _} =
                     ?V:handle_coverage({metrics, ?B}, all, self(), S1),

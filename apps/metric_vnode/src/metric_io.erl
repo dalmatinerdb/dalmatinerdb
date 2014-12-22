@@ -129,15 +129,29 @@ init([Partition]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({fold, Fun, Acc0}, _From, State = #state{fold_size = FoldSize}) ->
-    Ts = gb_trees:to_list(State#state.mstore),
-    Acc = lists:foldl(fun({Bucket, {_, MStore}}, AccL) ->
-                              F = fun(Metric, Time, V, AccIn) ->
-                                          Fun({Bucket, Metric}, {Time, V}, AccIn)
-                                  end,
-                              mstore:fold(MStore, F, FoldSize, AccL)
-                      end, Acc0, Ts),
-    {reply, Acc, State};
+handle_call({fold, Fun, Acc0}, _From,
+            State = #state{fold_size = FoldSize, partition = Partition}) ->
+    Buckets = [Bucket || {Bucket, {_, _}} <- gb_trees:to_list(State#state.mstore)],
+    DataDir = application:get_env(riak_core, platform_data_dir, "data"),
+    PartitionDir = [DataDir | [$/ |  integer_to_list(Partition)]],
+    AsyncWork =
+        fun() ->
+                lists:foldl(
+                  fun(Bucket, AccL) ->
+                          BucketDir = [PartitionDir,
+                                       [$/ | binary_to_list(Bucket)]],
+                          {ok, MStore} = mstore:open(BucketDir),
+                          F = fun(Metric, Time, V, AccIn) ->
+                                      Fun({Bucket, Metric}, {Time, V}, AccIn)
+                              end,
+                          AccOut = mstore:fold(MStore, F, FoldSize, AccL),
+                          mstore:close(MStore),
+                              AccOut
+                  end, Acc0, Buckets)
+        end,
+    {reply,
+     {ok, AsyncWork},
+     State};
 
 handle_call(empty, _From, State) ->
     R = calc_empty(gb_trees:iterator(State#state.mstore)),
