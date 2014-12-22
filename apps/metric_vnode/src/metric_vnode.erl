@@ -245,7 +245,7 @@ handoff_finished(_TargetNode, State) ->
     {ok, State}.
 
 handle_handoff_data(Data, State) ->
-    {{Bucket, Metric}, {T, V}} = binary_to_term(Data),
+    {{Bucket, {Metric, T}}, V} = binary_to_term(Data),
     do_put(Bucket, Metric, T, V, State),
     {reply, ok, State}.
 

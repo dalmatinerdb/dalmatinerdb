@@ -142,7 +142,7 @@ handle_call({fold, Fun, Acc0}, _From,
                                        [$/ | binary_to_list(Bucket)]],
                           {ok, MStore} = mstore:open(BucketDir),
                           F = fun(Metric, Time, V, AccIn) ->
-                                      Fun({Bucket, Metric}, {Time, V}, AccIn)
+                                      Fun({Bucket, {Metric, Time}}, V, AccIn)
                               end,
                           AccOut = mstore:fold(MStore, F, FoldSize, AccL),
                           mstore:close(MStore),
