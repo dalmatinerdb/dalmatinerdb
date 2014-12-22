@@ -9,11 +9,11 @@ I try to be explict about the tradeoffs made, this way people can decide of they
 A lot of work is handed down to the file system, ZFS is exceptionally smart and can do things like checksums, compressions and caching very well. Handing down these tasks to the filesystem simplifies the codebase and builds on very well tested and highly performant code instead of trying to reimplement it.
 
 ## Integers
-All data stored in metric DB is stored as a 64-bit signed integer. Integers are 'lossless' so arithmetic over them will always produce the correct and expected results. 64-bit should offer large enough numbers for most metrics.
+All data stored in metric DB is stored as a 56-bit signed integer. Integers are 'lossless' so arithmetic over them will always produce the correct and expected results. 56-bit should offer large enough numbers for most metrics.
 
 For metrics it is enough to have a 'fixed' precisions, so storing higher than increments of 1 precision (i.e. 32.5 degrees celsius) can be simply achieved by scaling the metric to the wanted precision before storing it. This has the added advantage that it makes people think about their data instead of just vomiting it into storage.
 
-While 64-bit sounds like a lot of bits, testing with real world data has shown that the ZFS compression ratio of written metrics is > 6x (unwritten metrics compress better). This means the effective size is about 11 bit per metricpoint.
+While 56-bit sounds like a lot of bits, testing with real world data has shown that the ZFS compression ratio of written metrics is > 6x (unwritten metrics compress better). This means the effective size is about 11 bit per metricpoint.
 
 ## No guarantee of storage
 DalmatinerDB offers a 'best effort' on storing the metrics, the ingress transport is UDP and there is no log for writes (there is the ZIL if enabled in ZFS) or forced sync after each write. This means that if your network fails packets can get lost, if your server crashes unwritten data can be lost.
