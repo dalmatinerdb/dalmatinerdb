@@ -90,6 +90,8 @@ get(S, T, C) ->
                 1000 ->
                     timeout
             end;
+        {reply, {ok, _, _, Reply}, _S1} ->
+            Reply;
         {reply, {ok, Reply}, _S1} ->
             Reply
     end.
@@ -125,11 +127,11 @@ prop_gb_comp() ->
                 os:cmd("mkdir data"),
                 {S, T} = eval(D),
                 List = ?T:to_list(T),
-                ?V:terminate(normal, S),
                 List1 = [{get(S, Time, 1), V} || {Time, V} <- List],
                 List2 = [{unlist(mmath_bin:to_list(Vs)), Vt} || {{_ ,Vs}, Vt} <- List1],
                 List3 = [true || {_V, _V} <- List2],
                 Len = length(List),
+                ?V:terminate(normal, S),
                 ?WHENFAIL(io:format(user,
                                     "L : ~p~n"
                                     "L1: ~p~n"
@@ -148,7 +150,6 @@ prop_is_empty() ->
                 os:cmd("mkdir data"),
                 {S, T} = eval(D),
                 {Empty, _S1} = ?V:is_empty(S),
-                ?V:terminate(normal, S),
                 TreeEmpty = ?T:is_empty(T),
                 if
                     Empty == TreeEmpty ->
@@ -156,6 +157,7 @@ prop_is_empty() ->
                     true ->
                         io:format(user, "~p == ~p~n", [S, T])
                 end,
+                ?V:terminate(normal, S),
                 ?WHENFAIL(io:format(user, "L: ~p /= ~p~n", [Empty, TreeEmpty]),
                           Empty == TreeEmpty)
             end).
@@ -177,18 +179,30 @@ prop_handoff() ->
             begin
                 os:cmd("rm -r data"),
                 os:cmd("mkdir data"),
-                {S, _T} = eval(D),
+                {S, T} = eval(D),
+
+                List = ?T:to_list(T),
+
+                List1 = [{get(S, Time, 1), V} || {Time, V} <- List],
+                List2 = [{unlist(mmath_bin:to_list(Vs)), Vt} || {{_ ,Vs}, Vt} <- List1],
+                List3 = [true || {_V, _V} <- List2],
+
                 Fun = fun(K, V, A) ->
                               [?V:encode_handoff_item(K, V) | A]
                       end,
                 FR = ?FOLD_REQ{foldfun=Fun, acc0=[]},
-                {reply,L, S1} = ?V:handle_handoff_command(FR, self(), S),
+                {reply, L, S1} = ?V:handle_handoff_command(FR, self(), S),
                 L1 = lists:sort(L),
                 {ok, C, _} = ?V:init([1]),
                 C1 = lists:foldl(fun(Data, SAcc) ->
                                          {reply, ok, SAcc1} = ?V:handle_handoff_data(Data, SAcc),
                                          SAcc1
                                  end, C, L1),
+
+                List4 = [{get(C1, Time, 1), V} || {Time, V} <- List],
+                List5 = [{unlist(mmath_bin:to_list(Vs)), Vt} || {{_ ,Vs}, Vt} <- List1],
+                List6 = [true || {_V, _V} <- List2],
+
                 {reply, Lc, C2} = ?V:handle_handoff_command(FR, self(), C1),
                 Lc1 = lists:sort(Lc),
                 {async,{fold, Async, _}, _, _} =
@@ -197,16 +211,27 @@ prop_handoff() ->
                 {async,{fold, AsyncC, _}, _, _} =
                     ?V:handle_coverage({metrics, ?B}, all, self(), C2),
                 MsC = AsyncC(),
+
+                Len = length(List),
+
+
                 ?V:terminate(normal, S1),
                 ?V:terminate(normal, C2),
+
                 ?WHENFAIL(io:format(user, "L: ~p /= ~p~n"
                                     "M: ~p /= ~p~n",
                                     [Lc1, L1, gb_sets:to_list(MsC),
                                      gb_sets:to_list(Ms)]),
                           Lc1 == L1 andalso
-                          gb_sets:to_list(MsC) == gb_sets:to_list(Ms))
-
+                          gb_sets:to_list(MsC) == gb_sets:to_list(Ms) andalso
+                          length(List1) == Len andalso
+                          length(List2) == Len andalso
+                          length(List3) == Len andalso
+                          length(List4) == Len andalso
+                          length(List5) == Len andalso
+                          length(List6) == Len)
             end).
+
 
 %%%-------------------------------------------------------------------
 %%% Helper

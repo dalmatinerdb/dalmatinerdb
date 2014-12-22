@@ -320,7 +320,7 @@ terminate(_Reason, #state{tbl = T, io = IO}) ->
                       k6_bytea:delete(Array),
                       metric_io:write(IO, Bucket, Metric, Start, Bin)
               end, ok, T),
-    ets:delete_all_objects(T),
+    ets:delete(T),
     metric_io:close(IO),
     ok.
 
