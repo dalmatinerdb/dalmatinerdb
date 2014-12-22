@@ -250,7 +250,7 @@ handoff_finished(_TargetNode, State) ->
 
 handle_handoff_data(Data, State = #state{io = IO}) ->
     {{Bucket, {Metric, T}}, Bin} = binary_to_term(Data),
-    metric_io:swrite(IO, Bucket, Metric, T, Bin),
+    metric_io:write(IO, Bucket, Metric, T, Bin, 2),
     {reply, ok, State}.
 
 encode_handoff_item(Key, Value) ->
