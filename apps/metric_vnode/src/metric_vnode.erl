@@ -228,8 +228,12 @@ handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, Sender,
         fun(Acc) ->
                 riak_core_vnode:reply(Sender, Acc)
         end,
-    {ok, AsyncWork} = metric_io:fold(IO, Fun, Acc0),
-    {async, {fold, AsyncWork, FinishFun}, Sender, State};
+    case metric_io:fold(IO, Fun, Acc0) of
+        {ok, AsyncWork} ->
+            {async, {fold, AsyncWork, FinishFun}, Sender, State};
+        empty ->
+            {async, {fold, fun() -> Acc0 end, FinishFun}, Sender, State}
+    end;
 
 %% We want to forward all the other handoff commands
 handle_handoff_command(_Message, _Sender, State) ->
