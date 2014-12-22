@@ -43,6 +43,7 @@
          }).
 
 -define(MASTER, metric_vnode_master).
+-define(MAX_Q_LEN, 20).
 
 %% API
 start_vnode(I) ->
@@ -248,9 +249,9 @@ handoff_cancelled(State) ->
 handoff_finished(_TargetNode, State) ->
     {ok, State}.
 
-handle_handoff_data(Data, State = #state{io = IO}) ->
+handle_handoff_data(Data, State) ->
     {{Bucket, {Metric, T}}, Bin} = binary_to_term(Data),
-    metric_io:write(IO, Bucket, Metric, T, Bin, 2),
+    do_put(Bucket, Metric, T, Bin, State, 2),
     {reply, ok, State}.
 
 encode_handoff_item(Key, Value) ->
@@ -313,7 +314,6 @@ handle_info({'EXIT', IO, E}, State = #state{io = IO}) ->
 handle_info(_, State) ->
     {ok, State}.
 
-
 handle_exit(IO, normal, State = #state{io = IO}) ->
     {ok, State};
 
@@ -333,7 +333,10 @@ terminate(_Reason, #state{tbl = T, io = IO}) ->
     metric_io:close(IO),
     ok.
 
-do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO}) ->
+do_put(Bucket, Metric, Time, Value, State) ->
+    do_put(Bucket, Metric, Time, Value, State, ?MAX_Q_LEN).
+
+do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO}, Sync) ->
     Len = mmath_bin:length(Value),
     BM = {Bucket, Metric},
     case ets:lookup(T, BM) of
@@ -341,7 +344,7 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO}) -
         %% cache it this way we prevent overwriting already written data.
         [{BM, _Start, _Size, _End, _V}]
           when Time < _Start ->
-            metric_io:write(IO, Bucket, Metric, Time, Value);
+            metric_io:write(IO, Bucket, Metric, Time, Value, Sync);
         %% When the Delta of start time and this package is greater then the
         %% cache time we flush the cache and start a new cache with a new
         %% package
@@ -351,7 +354,7 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO}) -
             k6_bytea:set(Array, 0, Value),
             k6_bytea:set(Array, Len * ?DATA_SIZE, <<0:(?DATA_SIZE * 8 * (CT - Len))>>),
             ets:update_element(T, BM, [{2, Time}, {3, Len}, {4, Time + CT}]),
-            metric_io:write(IO, Bucket, Metric, Start, Bin);
+            metric_io:write(IO, Bucket, Metric, Start, Bin, Sync);
         %% In the case the data is already longer then the cache we flush the
         %% cache
         [{BM, Start, Size, _End, Array}]
@@ -359,8 +362,8 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO}) -
             ets:delete(T, {Bucket,Metric}),
             Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
             k6_bytea:delete(Array),
-            metric_io:write(IO, Bucket, Metric, Start, Bin),
-            metric_io:write(IO, Bucket, Metric, Time, Value);
+            metric_io:write(IO, Bucket, Metric, Start, Bin, Sync),
+            metric_io:write(IO, Bucket, Metric, Time, Value, Sync);
         [{BM, Start, _Size, _End, Array}] ->
             Idx = Time - Start,
             k6_bytea:set(Array, Idx * ?DATA_SIZE, Value),
@@ -376,7 +379,7 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO}) -
         %% If we don't have a cache but our data is too big for the
         %% cache we happiely write it directly
         [] ->
-            metric_io:write(IO, Bucket, Metric, Time, Value)
+            metric_io:write(IO, Bucket, Metric, Time, Value, Sync)
     end.
 
 
