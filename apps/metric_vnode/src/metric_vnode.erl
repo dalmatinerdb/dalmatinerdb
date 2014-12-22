@@ -227,8 +227,9 @@ handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender,
     Acc = metric_io:fold(IO, Fun, Acc0),
     {reply, Acc, State};
 
+%% We want to forward all the other handoff commands
 handle_handoff_command(_Message, _Sender, State) ->
-    {noreply, State}.
+    {forward, State}.
 
 handoff_starting(_TargetNode, State) ->
     {true, State}.

@@ -28,7 +28,8 @@
           partition,
           node,
           mstore=gb_trees:empty(),
-          dir
+          dir,
+          fold_size
          }).
 
 %%%===================================================================
@@ -100,11 +101,18 @@ init([Partition]) ->
                   _ ->
                       "data"
               end,
+    FoldSize = case application:get_env(metric_vnode, handoff_chunk) of
+                   {ok, FS} ->
+                       FS;
+                   _ ->
+                       10*1024
+               end,
     PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
 
     {ok, #state{ partition = Partition,
                  node = node(),
-                 dir = PartitionDir
+                 dir = PartitionDir,
+                 fold_size = FoldSize
                }}.
 
 %%--------------------------------------------------------------------
@@ -121,13 +129,13 @@ init([Partition]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({fold, Fun, Acc0}, _From, State) ->
+handle_call({fold, Fun, Acc0}, _From, State = #state{fold_size = FoldSize}) ->
     Ts = gb_trees:to_list(State#state.mstore),
     Acc = lists:foldl(fun({Bucket, {_, MStore}}, AccL) ->
                               F = fun(Metric, Time, V, AccIn) ->
                                           Fun({Bucket, Metric}, {Time, V}, AccIn)
                                   end,
-                              mstore:fold(MStore, F, AccL)
+                              mstore:fold(MStore, F, FoldSize, AccL)
                       end, Acc0, Ts),
     {reply, Acc, State};
 
