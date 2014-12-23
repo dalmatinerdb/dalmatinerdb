@@ -250,8 +250,8 @@ handoff_finished(_TargetNode, State) ->
     {ok, State}.
 
 handle_handoff_data(Data, State) ->
-    {{Bucket, {Metric, T}}, Bin} = binary_to_term(Data),
-    do_put(Bucket, Metric, T, Bin, State, 2),
+    {{Bucket, Metric}, ValList} = binary_to_term(Data),
+    [do_put(Bucket, Metric, T, Bin, State, 2) || {T, Bin} <- ValList],
     {reply, ok, State}.
 
 encode_handoff_item(Key, Value) ->

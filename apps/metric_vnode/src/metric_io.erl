@@ -135,6 +135,70 @@ init([Partition]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+%% fold_fun(Fun, Bucket) ->
+%%     fun(Metric, Time, V,
+%%         {[{_Metric2, _}|_] = AccL, AccIn})
+%%           when Metric =/= _Metric2 ->
+%%             AccOut = Fun({Bucket, {Metric, Time}}, V, AccIn)
+%%     end.
+
+-record(facc,
+        {
+          metric,
+          size = 0,
+          hacc,
+          lacc = [],
+          bucket,
+          acc_fun
+        }).
+-define(FOLD_SIZE, 50).
+
+fold_fun(Metric, Time, V,
+         Acc =
+             #facc{metric = Metric2,
+                   lacc = []}) when
+      Metric =/= Metric2 ->
+    Acc#facc{
+      metric = Metric,
+      size = mmath_bin:length(V),
+      lacc = [{Time, V}]};
+fold_fun(Metric, Time, V,
+         Acc =
+             #facc{metric = Metric2,
+                   bucket = Bucket,
+                   lacc = AccL,
+                   acc_fun = Fun,
+                   hacc = AccIn}) when
+      Metric =/= Metric2 ->
+    AccOut = Fun({Bucket, Metric2}, lists:reverse(AccL), AccIn),
+    Acc#facc{
+      metric = Metric,
+      size = mmath_bin:length(V),
+      hacc = AccOut,
+      lacc = [{Time, V}]};
+fold_fun(Metric, Time, V,
+         Acc =
+             #facc{metric = Metric,
+                   bucket = Bucket,
+                   size = Size,
+                   lacc = AccL,
+                   acc_fun = Fun,
+                   hacc = AccIn}) when
+      Size > ?FOLD_SIZE ->
+    AccOut = Fun({Bucket, Metric}, lists:reverse(AccL), AccIn),
+    Acc#facc{
+      size = mmath_bin:length(V),
+      hacc = AccOut,
+      lacc = [{Time, V}]};
+fold_fun(Metric, Time, V,
+         Acc =
+             #facc{metric = Metric,
+                   size = Size,
+                   lacc = AccL}) ->
+    Acc#facc{
+      size = Size + mmath_bin:length(V),
+      lacc = [{Time, V} | AccL]}.
+
 handle_call({fold, Fun, Acc0}, _From,
             State = #state{fold_size = FoldSize, partition = Partition}) ->
 
@@ -145,16 +209,23 @@ handle_call({fold, Fun, Acc0}, _From,
             AsyncWork =
                 fun() ->
                         lists:foldl(
-                          fun(BucketS, AccL) ->
+                          fun(BucketS, AccIn) ->
                                   Bucket = list_to_binary(BucketS),
                                   BucketDir = [PartitionDir, $/, BucketS],
                                   {ok, MStore} = mstore:open(BucketDir),
-                                  F = fun(Metric, Time, V, AccIn) ->
-                                              Fun({Bucket, {Metric, Time}}, V, AccIn)
-                                      end,
-                                  AccOut = mstore:fold(MStore, F, FoldSize, AccL),
+                                  Acc1 = #facc{hacc = AccIn,
+                                               bucket = Bucket,
+                                               acc_fun = Fun},
+                                  AccOut = mstore:fold(MStore, fun fold_fun/4,
+                                                       FoldSize, Acc1),
                                   mstore:close(MStore),
-                                  AccOut
+                                  case AccOut of
+                                      #facc{lacc=[], hacc=HAcc} ->
+                                          HAcc;
+                                      #facc{bucket = Bucket, metric = Metric,
+                                            lacc=AccL, hacc=HAcc}->
+                                          Fun({Bucket, Metric}, lists:reverse(AccL), HAcc)
+                                  end
                           end, Acc0, Buckets)
                 end,
             {reply, {ok, AsyncWork}, State};
