@@ -161,9 +161,11 @@ fold_fun(Metric, Time, V,
              #facc{metric = Metric2,
                    lacc = []}) when
       Metric =/= Metric2 ->
+    Size = mmath_bin:length(V),
     Acc#facc{
       metric = Metric,
-      size = mmath_bin:length(V),
+      last = Time + Size,
+      size = Size,
       lacc = [{Time, V}]};
 fold_fun(Metric, Time, V,
          Acc =
@@ -173,10 +175,12 @@ fold_fun(Metric, Time, V,
                    acc_fun = Fun,
                    hacc = AccIn}) when
       Metric =/= Metric2 ->
+    Size = mmath_bin:length(V),
     AccOut = Fun({Bucket, Metric2}, lists:reverse(AccL), AccIn),
     Acc#facc{
       metric = Metric,
-      size = mmath_bin:length(V),
+      last = Time + Size,
+      size = Size,
       hacc = AccOut,
       lacc = [{Time, V}]};
 fold_fun(Metric, Time, V,
