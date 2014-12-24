@@ -205,7 +205,12 @@ fold_fun(Metric, Time, V,
       Time - Last =< ?MAX_DELTA ->
     Delta = Time - Last,
     ThisSize = mmath_bin:length(V),
-    AccV = <<AccE/binary, (mmath_bin:empty(Delta))/binary, V/binary>>,
+    AccV = case Delta of
+               0 ->
+                   <<AccE/binary, V/binary>>;
+               _ ->
+                   <<AccE/binary, (mmath_bin:empty(Delta))/binary, V/binary>>
+           end,
     Acc#facc{
       size = Size + ThisSize + Delta,
       last = Last + Delta + ThisSize,
@@ -223,7 +228,7 @@ fold_fun(Metric, Time, V,
       lacc = [{Time, V} | AccL]}.
 
 handle_call({fold, Fun, Acc0}, _From,
-            State = #state{fold_size = FoldSize, partition = Partition}) ->
+            State = #state{partition = Partition}) ->
 
     DataDir = application:get_env(riak_core, platform_data_dir, "data"),
     PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
@@ -239,8 +244,7 @@ handle_call({fold, Fun, Acc0}, _From,
                                   Acc1 = #facc{hacc = AccIn,
                                                bucket = Bucket,
                                                acc_fun = Fun},
-                                  AccOut = mstore:fold(MStore, fun fold_fun/4,
-                                                       FoldSize, Acc1),
+                                  AccOut = mstore:fold(MStore, fun fold_fun/4, Acc1),
                                   mstore:close(MStore),
                                   case AccOut of
                                       #facc{lacc=[], hacc=HAcc} ->
