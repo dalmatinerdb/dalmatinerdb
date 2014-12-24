@@ -149,9 +149,12 @@ init([Partition]) ->
           hacc,
           lacc = [],
           bucket,
-          acc_fun
+          acc_fun,
+          last
         }).
+
 -define(FOLD_SIZE, 50).
+-define(MAX_DELTA, 5).
 
 fold_fun(Metric, Time, V,
          Acc =
@@ -180,23 +183,43 @@ fold_fun(Metric, Time, V,
          Acc =
              #facc{metric = Metric,
                    bucket = Bucket,
-                   size = Size,
+                   size = _Size,
                    lacc = AccL,
                    acc_fun = Fun,
                    hacc = AccIn}) when
-      Size > ?FOLD_SIZE ->
+      _Size > ?FOLD_SIZE ->
     AccOut = Fun({Bucket, Metric}, lists:reverse(AccL), AccIn),
+    Size = mmath_bin:length(V),
     Acc#facc{
-      size = mmath_bin:length(V),
+      size = Size,
       hacc = AccOut,
+      last = Time + Size,
       lacc = [{Time, V}]};
+
+fold_fun(Metric, Time, V,
+         Acc =
+             #facc{metric = Metric,
+                   size = Size,
+                   last = Last,
+                   lacc = [{T0, AccE} | AccL]}) when
+      Time - Last =< ?MAX_DELTA ->
+    Delta = Time - Last,
+    ThisSize = mmath_bin:length(V),
+    AccV = <<AccE/binary, (mmath_bin:empty(Delta))/binary, V/binary>>,
+    Acc#facc{
+      size = Size + ThisSize + Delta,
+      last = Last + Delta + ThisSize,
+      lacc = [{T0, AccV} | AccL]};
+
 fold_fun(Metric, Time, V,
          Acc =
              #facc{metric = Metric,
                    size = Size,
                    lacc = AccL}) ->
+    ThisSize = mmath_bin:length(V),
     Acc#facc{
-      size = Size + mmath_bin:length(V),
+      size = Size + ThisSize,
+      last = Time + ThisSize,
       lacc = [{Time, V} | AccL]}.
 
 handle_call({fold, Fun, Acc0}, _From,
