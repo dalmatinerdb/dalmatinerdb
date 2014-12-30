@@ -18,16 +18,10 @@
         }).
 
 -record(sstate,
-        {cbin,
-         ppf :: pos_integer(),
-         nodes,
-         n = 1 :: pos_integer(),
-         w = 1 :: pos_integer(),
-         last = 0 :: non_neg_integer(),
+        {last = 0 :: non_neg_integer(),
          max_diff = 1 :: pos_integer(),
          wait = 5000 :: pos_integer(),
-         dict = dict:new() :: dict(),
-         bucket :: binary()}).
+         dict}).
 
 start_link(Ref, Socket, Transport, Opts) ->
     Pid = spawn_link(?MODULE, init, [Ref, Socket, Transport, Opts]),
@@ -69,21 +63,10 @@ loop(Socket, Transport, State, Loop) ->
                     lager:info("[tcp] Entering stream mode for bucket '~s' "
                                "and a max delay of: ~p", [Bucket, Delay]),
                     ok = Transport:setopts(Socket, [{packet, 0}]),
-                    {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
-                    N = State#state.n,
-                    Nodes1 = chash:nodes(chashbin:to_chash(CBin)),
-                    Nodes2 = [{I, riak_core_apl:get_apl(I, N, metric)}
-                              || {I, _} <- Nodes1],
+                    Dict = bkt_dict:new(Bucket, State#state.n, State#state.w),
                     stream_loop(Socket, Transport,
-                                #sstate{
-                                   ppf = metric:ppf(Bucket),
-                                   cbin = CBin,
-                                   nodes = Nodes2,
-                                   n = N,
-                                   w = State#state.w,
-                                   max_diff = Delay,
-                                   bucket = Bucket},
-                                dict:new(), {incomplete, <<>>})
+                                #sstate{max_diff = Delay,dict = Dict},
+                                {incomplete, <<>>})
             end;
         {error, timeout} ->
             loop(Socket, Transport, State, Loop - 1);
@@ -109,71 +92,41 @@ send_parts(Socket, Transport, PPF, B, M, [{T, C} | Splits]) ->
     send_parts(Socket, Transport, PPF, B, M, Splits).
 
 stream_loop(Socket, Transport,
-            State = #sstate{last = _L, max_diff = _Max, nodes = Nodes, w = W},
-            Dict, {flush, Rest}) ->
-    metric:mput(Nodes, Dict, W),
-    {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
-    Nodes1 = chash:nodes(chashbin:to_chash(CBin)),
-    Nodes2 = [{I, riak_core_apl:get_apl(I, State#sstate.n, metric)}
-              || {I, _} <- Nodes1],
-    State1 = State#sstate{nodes = Nodes2, cbin = CBin},
-    stream_loop(Socket, Transport, State1, dict:new(),
+            State = #sstate{dict = Dict},
+            {flush, Rest}) ->
+    Dict1 = bkt_dict:flush(Dict),
+    stream_loop(Socket, Transport, State#sstate{dict = Dict1},
                 dproto_tcp:decode_stream(Rest));
 
 stream_loop(Socket, Transport,
-            State = #sstate{last = _L, max_diff = _Max, nodes = Nodes, w = W},
-            Dict, {{stream, Metric, Time, Points}, Rest})
+            State = #sstate{last = _L, max_diff = _Max, dict = Dict},
+            {{stream, Metric, Time, Points}, Rest})
   when Time - _L > _Max ->
-    metric:mput(Nodes, Dict, W),
-    {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
-    Nodes1 = chash:nodes(chashbin:to_chash(CBin)),
-    Nodes2 = [{I, riak_core_apl:get_apl(I, State#sstate.n, metric)}
-              || {I, _} <- Nodes1],
-    State1 = State#sstate{nodes = Nodes2, cbin = CBin, last=Time},
-    Dict1 = insert_metric(State, dict:new(), Metric, Time, Points),
-    stream_loop(Socket, Transport, State1, Dict1,
+    Dict1 = bkt_dict:flush(Dict),
+    Dict2 = bkt_dict:add(Metric, Time, Points, Dict1),
+    stream_loop(Socket, Transport, State#sstate{dict = Dict2},
                 dproto_tcp:decode_stream(Rest));
 
-stream_loop(Socket, Transport, State, Dict,
+stream_loop(Socket, Transport, State = #sstate{dict = Dict},
             {{stream, Metric, Time, Points}, Rest}) ->
-
-    Dict1 = insert_metric(State, Dict, Metric, Time, Points),
-    stream_loop(Socket, Transport, State, Dict1,
+    Dict1 = bkt_dict:add(Metric, Time, Points, Dict),
+    stream_loop(Socket, Transport, State#sstate{dict = Dict1},
                 dproto_tcp:decode_stream(Rest));
 
 
-stream_loop(Socket, Transport, State, Dict, {incomplete, Acc}) ->
+stream_loop(Socket, Transport, State, {incomplete, Acc}) ->
     case Transport:recv(Socket, 0, 5000) of
         {ok, Data} ->
             Acc1 = <<Acc/binary, Data/binary>>,
-            stream_loop(Socket, Transport, State, Dict,
-                       dproto_tcp:decode_stream(Acc1));
+            stream_loop(Socket, Transport, State,
+                        dproto_tcp:decode_stream(Acc1));
         {error, timeout} ->
-            stream_loop(Socket, Transport, State, Dict, {incomplete, Acc});
+            stream_loop(Socket, Transport, State, {incomplete, Acc});
         {error,closed} ->
-            metric:mput(State#sstate.nodes, Dict, State#sstate.w),
+            bkt_dict:flush(State#sstate.dict),
             ok;
         E ->
             lager:error("[tcp:stream] Error: ~p~n", [E]),
-            metric:mput(State#sstate.nodes, Dict, State#sstate.w),
+            bkt_dict:flush(State#sstate.dict),
             ok = Transport:close(Socket)
     end.
-
-insert_metric(#sstate{ppf = PPF} = State,
-              Dict, Metric, Time, Points) ->
-    Count = mmath_bin:length(Points),
-    dalmatiner_metrics:inc(Count),
-    Splits = mstore:make_splits(Time, Count, PPF),
-    insert_metric1(State, Dict, Metric, Splits, Points).
-
-insert_metric1(_State, Dict, _Metric, [], <<>>) ->
-    Dict;
-
-insert_metric1(State = #sstate{bucket = Bucket, cbin = CBin, ppf = PPF},
-               Dict, Metric, [{Time, Count} | Splits], PointsIn) ->
-    Size = (Count * ?DATA_SIZE),
-    <<Points:Size/binary, Rest/binary>> = PointsIn,
-    DocIdx = riak_core_util:chash_key({Bucket, {Metric, Time div PPF}}),
-    {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
-    Dict1 = dict:append(Idx, {Bucket, Metric, Time, Points}, Dict),
-    insert_metric1(State, Dict1, Metric, Splits, Rest).
