@@ -247,7 +247,7 @@ add_to_dict(CBin, Metric, PPF, Time, Value, Acc) ->
     Metric1 = dproto:metric_from_list(lists:flatten(Metric)),
     DocIdx = riak_core_util:chash_key({?BUCKET, {Metric, Time div PPF}}),
     {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
-    dict:append(Idx, {?BUCKET, Metric1, PPF, Time, mmath_bin:from_list([Value])}, Acc).
+    dict:append(Idx, {?BUCKET, Metric1, Time, mmath_bin:from_list([Value])}, Acc).
 
 timestamp() ->
     {Meg, S, _} = os:timestamp(),
