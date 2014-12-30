@@ -95,6 +95,7 @@ stream_loop(Socket, Transport,
             State = #sstate{dict = Dict},
             {flush, Rest}) ->
     Dict1 = bkt_dict:flush(Dict),
+    drain(),
     stream_loop(Socket, Transport, State#sstate{dict = Dict1},
                 dproto_tcp:decode_stream(Rest));
 
@@ -103,6 +104,7 @@ stream_loop(Socket, Transport,
             {{stream, Metric, Time, Points}, Rest})
   when Time - _L > _Max ->
     Dict1 = bkt_dict:flush(Dict),
+    drain(),
     Dict2 = bkt_dict:add(Metric, Time, Points, Dict1),
     stream_loop(Socket, Transport, State#sstate{dict = Dict2},
                 dproto_tcp:decode_stream(Rest));
@@ -129,4 +131,13 @@ stream_loop(Socket, Transport, State, {incomplete, Acc}) ->
             lager:error("[tcp:stream] Error: ~p~n", [E]),
             bkt_dict:flush(State#sstate.dict),
             ok = Transport:close(Socket)
+    end.
+
+drain() ->
+    receive
+        _ ->
+            drain()
+    after
+        1 ->
+            ok
     end.

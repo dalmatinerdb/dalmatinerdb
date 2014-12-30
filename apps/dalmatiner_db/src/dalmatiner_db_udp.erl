@@ -148,11 +148,25 @@ handle_data(<<T:?TIME_SIZE/integer,
     handle_data(R, Bucket, W, LPort, CBin, Nodes, Cnt + 1, Acc1);
 handle_data(<<>>, _Bucket, W, LPort, _, Nodes, Cnt, Acc) ->
     dyntrace:p(?DT_DDB_UDP_CNT, LPort, Cnt),
-    metric:mput(Nodes, Acc, W);
+    R = metric:mput(Nodes, Acc, W),
+    drain(),
+    R;
+
 handle_data(R, _Bucket, W, LPort, _, Nodes, Cnt, Acc) ->
     dyntrace:p(?DT_DDB_UDP_CNT, LPort, Cnt),
     lager:error("[udp] unknown content: ~p", [R]),
-    metric:mput(Nodes, Acc, W).
+    metric:mput(Nodes, Acc, W),
+    drain(),
+    R.
+
+drain() ->
+    receive
+        _ ->
+            drain()
+    after
+        1 ->
+            ok
+    end.
 
 %%--------------------------------------------------------------------
 %% @private
