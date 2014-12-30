@@ -153,8 +153,8 @@ init([Partition]) ->
           last
         }).
 
--define(FOLD_SIZE, 50).
--define(MAX_DELTA, 5).
+-define(FOLD_SIZE, 82800).
+-define(MAX_DELTA, 300).
 
 fold_fun(Metric, Time, V,
          Acc =
@@ -183,6 +183,7 @@ fold_fun(Metric, Time, V,
       size = Size,
       hacc = AccOut,
       lacc = [{Time, V}]};
+
 fold_fun(Metric, Time, V,
          Acc =
              #facc{metric = Metric,
@@ -206,7 +207,7 @@ fold_fun(Metric, Time, V,
                    size = Size,
                    last = Last,
                    lacc = [{T0, AccE} | AccL]}) when
-      Time - Last =< ?MAX_DELTA ->
+      Time - Last > ?MAX_DELTA ->
     Delta = Time - Last,
     ThisSize = mmath_bin:length(V),
     AccV = case Delta of

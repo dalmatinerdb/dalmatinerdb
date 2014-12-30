@@ -3,6 +3,7 @@
 -behaviour(ranch_protocol).
 
 -include_lib("dproto/include/dproto.hrl").
+-include_lib("mmath/include/mmath.hrl").
 
 -export([start_link/4]).
 -export([init/4]).
@@ -18,6 +19,7 @@
 
 -record(sstate,
         {cbin,
+         ppf :: pos_integer(),
          nodes,
          n = 1 :: pos_integer(),
          w = 1 :: pos_integer(),
@@ -61,8 +63,7 @@ loop(Socket, Transport, State, Loop) ->
                     Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
                     loop(Socket, Transport, State, Loop - 1);
                 {get, B, M, T, C} ->
-                    {ok, Resolution, Points} = metric:get(B, M, T, C),
-                    Transport:send(Socket, <<Resolution:64/integer, Points/binary>>),
+                    do_send(Socket, Transport, B, M, T, C),
                     loop(Socket, Transport, State, Loop - 1);
                 {stream, Bucket, Delay} ->
                     lager:info("[tcp] Entering stream mode for bucket '~s' "
@@ -75,6 +76,7 @@ loop(Socket, Transport, State, Loop) ->
                               || {I, _} <- Nodes1],
                     stream_loop(Socket, Transport,
                                 #sstate{
+                                   ppf = metric:ppf(Bucket),
                                    cbin = CBin,
                                    nodes = Nodes2,
                                    n = N,
@@ -91,7 +93,20 @@ loop(Socket, Transport, State, Loop) ->
             lager:error("[tcp:loop] Error: ~p~n", [E]),
             ok = Transport:close(Socket)
     end.
+do_send(Socket, Transport, B, M, T, C) ->
+    PPF = metric:ppf(B),
+    [{T0, C0} | Splits] = mstore:make_splits(T, C, PPF),
+    {ok, Resolution, Points} = metric:get(B, M, PPF, T0, C0),
+    Transport:send(Socket, <<Resolution:64/integer, Points/binary>>),
+    send_parts(Socket, Transport, PPF, B, M, Splits).
 
+send_parts(_Socket, _Transport, _PPF, _B, _M, []) ->
+    ok;
+
+send_parts(Socket, Transport, PPF, B, M, [{T, C} | Splits]) ->
+    {ok, _Resolution, Points} = metric:get(B, M, PPF, T, C),
+    Transport:send(Socket, <<Points/binary>>),
+    send_parts(Socket, Transport, PPF, B, M, Splits).
 
 stream_loop(Socket, Transport,
             State = #sstate{last = _L, max_diff = _Max, nodes = Nodes, w = W},
@@ -144,9 +159,21 @@ stream_loop(Socket, Transport, State, Dict, {incomplete, Acc}) ->
             ok = Transport:close(Socket)
     end.
 
-insert_metric(#sstate{bucket = Bucket, cbin = CBin},
+insert_metric(#sstate{ppf = PPF} = State,
               Dict, Metric, Time, Points) ->
-    dalmatiner_metrics:inc(mmath_bin:length(Points)),
-    DocIdx = riak_core_util:chash_key({Bucket, Metric}),
+    Count = mmath_bin:length(Points),
+    dalmatiner_metrics:inc(Count),
+    Splits = mstore:make_splits(Time, Count, PPF),
+    insert_metric1(State, Dict, Metric, Splits, Points).
+
+insert_metric1(_State, Dict, _Metric, [], <<>>) ->
+    Dict;
+
+insert_metric1(State = #sstate{bucket = Bucket, cbin = CBin, ppf = PPF},
+               Dict, Metric, [{Time, Count} | Splits], PointsIn) ->
+    Size = (Count * ?DATA_SIZE),
+    <<Points:Size/binary, Rest/binary>> = PointsIn,
+    DocIdx = riak_core_util:chash_key({Bucket, {Metric, Time div PPF}}),
     {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
-    dict:append(Idx, {Bucket, Metric, Time, Points}, Dict).
+    Dict1 = dict:append(Idx, {Bucket, Metric, Time, Points}, Dict),
+    insert_metric1(State, Dict1, Metric, Splits, Rest).
