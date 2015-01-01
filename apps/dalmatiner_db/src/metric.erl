@@ -2,14 +2,17 @@
 
 -export([
          put/4,
-         put/6,
          mput/3,
          get/4,
+         get/5,
+         ppf/1,
          list/0,
          list/1
         ]).
 
--ignore_xref([put/4, put/6]).
+-ignore_xref([get/4, put/4]).
+
+-define(WEEK, 604800). %% Seconds in a week.
 
 
 mput(Nodes, Acc, W) ->
@@ -25,19 +28,29 @@ mput(Nodes, Acc, W) ->
 put(Bucket, Metric, Time, Value) ->
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, W} = application:get_env(dalmatiner_db, w),
+    PPF = ppf(Bucket),
     folsom_metrics:histogram_timed_update(
       put,
       fun() ->
-              put(Bucket, Metric, Time, Value, N, W)
+              put(Bucket, Metric, PPF, Time, Value, N, W)
       end).
 
-put(Bucket, Metric, Time, Value, N, W) ->
-    do_put(Bucket, Metric, Time, Value, N, W).
+put(Bucket, Metric, PPF, Time, Value, N, W) ->
+    do_put(Bucket, Metric, PPF, Time, Value, N, W).
 
+ppf(Bucket) ->
+    dalmatiner_opt:get(<<"buckets">>, Bucket,
+                       <<"points_per_file">>,
+                       {metric_vnode, points_per_file}, ?WEEK).
 get(Bucket, Metric, Time, Count) ->
-   folsom_metrics:histogram_timed_update(
-     get, dalmatiner_read_fsm, start,
-     [{metric_vnode, metric}, get, {Bucket, Metric}, {Time, Count}]).
+    get(Bucket, Metric, ppf(Bucket), Time, Count).
+
+get(Bucket, Metric, PPF, Time, Count) when
+      Time div PPF =:= (Time + Count) div PPF->
+    folsom_metrics:histogram_timed_update(
+      get, dalmatiner_read_fsm, start,
+      [{metric_vnode, metric}, get, {Bucket, {Metric, Time div PPF}},
+                                     {Time, Count}]).
 
 list() ->
     folsom_metrics:histogram_timed_update(
@@ -47,8 +60,8 @@ list(Bucket) ->
     folsom_metrics:histogram_timed_update(
       list_metrics, metric_coverage, start, [{metrics, Bucket}]).
 
-do_put(Bucket, Metric, Time, Value, N, W) ->
-    DocIdx = riak_core_util:chash_key({Bucket, Metric}),
+do_put(Bucket, Metric, PPF, Time, Value, N, W) ->
+    DocIdx = riak_core_util:chash_key({Bucket, {Metric, Time div PPF}}),
     Preflist = riak_core_apl:get_apl(DocIdx, N, metric),
     ReqID = make_ref(),
     metric_vnode:put(Preflist, ReqID, Bucket, Metric, {Time, Value}),

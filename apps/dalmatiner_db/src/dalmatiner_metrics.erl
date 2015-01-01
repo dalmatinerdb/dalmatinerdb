@@ -14,9 +14,9 @@
 
 
 %% API
--export([start_link/0]).
+-export([start_link/0, inc/1, inc/0]).
 
--ignore_xref([start_link/0]).
+-ignore_xref([start_link/0, inc/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -25,8 +25,10 @@
 -define(SERVER, ?MODULE).
 -define(INTERVAL, 1000).
 -define(BUCKET, <<"dalmatinerdb">>).
+-define(COUNTERS_MPS, ddb_counters_mps).
 
--record(state, {n, w, prefix}).
+
+-record(state, {dict, prefix}).
 
 %%%===================================================================
 %%% API
@@ -41,6 +43,20 @@
 %%--------------------------------------------------------------------
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+
+inc() ->
+    inc(1).
+
+inc(N) ->
+    try
+        ets:update_counter(?COUNTERS_MPS, self(), N)
+    catch
+        error:badarg ->
+            ets:insert(?COUNTERS_MPS, {self(), N})
+    end,
+    ok.
+
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -58,13 +74,17 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
+    %% We want a high priority so we don't get scheduled back and have false
+    %% reporting.
+    process_flag(priority, high),
+    ets:new(?COUNTERS_MPS, [named_table, set, public, {write_concurrency, true}]),
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, W} = application:get_env(dalmatiner_db, w),
     erlang:send_after(?INTERVAL, self(), tick),
     lager:info("[metrics] Initializing metric watcher with N: ~p, W: ~p at an "
                "interval of ~pms.", [N, W, ?INTERVAL]),
-    [Prefix|_] = re:split(atom_to_list(node()), "@"),
-    {ok, #state{n=N, w=W, prefix = Prefix}}.
+    Dict = bkt_dict:new(?BUCKET, N, W),
+    {ok, #state{dict = Dict, prefix = list_to_binary(atom_to_list(node()))}}.
 
 
 %%--------------------------------------------------------------------
@@ -109,16 +129,21 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 
-handle_info(tick, State = #state{prefix = Prefix, n = N, w = W}) ->
-    {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
-    Nodes = chash:nodes(chashbin:to_chash(CBin)),
-    Nodes1 = [{I, riak_core_apl:get_apl(I, N, metric)} || {I, _} <- Nodes],
+handle_info(tick, State = #state{prefix = Prefix, dict = Dict}) ->
+    Dict1 = bkt_dict:update_chash(Dict),
     Time = timestamp(),
     Spec = folsom_metrics:get_metrics_info(),
-    Metrics = do_metrics(Prefix, CBin, Time, Spec, dict:new()),
-    metric:mput(Nodes1, Metrics, W),
+
+    MPS = ets:tab2list(?COUNTERS_MPS),
+    ets:delete_all_objects(?COUNTERS_MPS),
+    P = lists:sum([Cnt || {_, Cnt} <- MPS]),
+
+    Dict2 = add_to_dict([Prefix, <<"mps">>], Time, P, Dict1),
+    Dict3 = do_metrics(Prefix, Time, Spec, Dict2),
+    Dict4 = bkt_dict:flush(Dict3),
+
     erlang:send_after(?INTERVAL, self(), tick),
-    {noreply, State};
+    {noreply, State#state{dict = Dict4}};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -153,37 +178,37 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 
 %do_metrics(CBin, Time, Specs, Acc) ->
-do_metrics(_Prefix, _CBin, _Time, [], Acc) ->
+do_metrics(_Prefix, _Time, [], Acc) ->
     Acc;
 
-do_metrics(Prefix, CBin, Time, [{N, [{type, histogram}]} | Spec], Acc) ->
+do_metrics(Prefix, Time, [{N, [{type, histogram}]} | Spec], Acc) ->
     Stats = folsom_metrics:get_histogram_statistics(N),
-    Prefix1 = <<Prefix/binary, ".", (metric_name(N))/binary>>,
-    Acc1 = build_histogram(Stats, Prefix1, Time, CBin, Acc),
-    do_metrics(Prefix, CBin, Time, Spec, Acc1);
+    Prefix1 = [Prefix, metric_name(N)],
+    Acc1 = build_histogram(Stats, Prefix1, Time, Acc),
+    do_metrics(Prefix, Time, Spec, Acc1);
 
-do_metrics(Prefix, CBin, Time, [{N, [{type, spiral}]} | Spec], Acc) ->
+do_metrics(Prefix, Time, [{N, [{type, spiral}]} | Spec], Acc) ->
     [{count, Count}, {one, One}] = folsom_metrics:get_metric_value(N),
     K = metric_name(N),
-    Acc1 = add_metric(Prefix, CBin, <<K/binary, ".count">>, Time, Count, Acc),
-    Acc2 = add_metric(Prefix, CBin, <<K/binary, ".one">>, Time, One, Acc1),
-    do_metrics(Prefix, CBin, Time, Spec, Acc2);
+    Acc1 = add_metric(Prefix, [K, <<"count">>], Time, Count, Acc),
+    Acc2 = add_metric(Prefix, [K, <<"one">>], Time, One, Acc1),
+    do_metrics(Prefix, Time, Spec, Acc2);
 
 
-do_metrics(Prefix, CBin, Time, [{N, [{type, counter}]} | Spec], Acc) ->
+do_metrics(Prefix, Time, [{N, [{type, counter}]} | Spec], Acc) ->
     Count = folsom_metrics:get_metric_value(N),
-    Acc1 = add_metric(Prefix, CBin, N, Time, Count, Acc),
-    do_metrics(Prefix, CBin, Time, Spec, Acc1);
+    Acc1 = add_metric(Prefix, N, Time, Count, Acc),
+    do_metrics(Prefix, Time, Spec, Acc1);
 
-do_metrics(Prefix, CBin, Time, [{N, [{type, duration}]} | Spec], Acc) ->
+do_metrics(Prefix, Time, [{N, [{type, duration}]} | Spec], Acc) ->
     Stats = folsom_metrics:get_metric_value(N),
-    Prefix1 = <<Prefix/binary, ".", (metric_name(N))/binary>>,
-    Acc1 = build_histogram(Stats, Prefix1, Time, CBin, Acc),
-    do_metrics(Prefix, CBin, Time, Spec, Acc1);
+    Prefix1 = [Prefix, metric_name(N)],
+    Acc1 = build_histogram(Stats, Prefix1, Time, Acc),
+    do_metrics(Prefix, Time, Spec, Acc1);
 
 
-do_metrics(Prefix, CBin, Time, [{N, [{type, meter}]} | Spec], Acc) ->
-    Prefix1 = <<Prefix/binary, ".", (metric_name(N))/binary>>,
+do_metrics(Prefix, Time, [{N, [{type, meter}]} | Spec], Acc) ->
+    Prefix1 = [Prefix, metric_name(N)],
     [{count, Count},
      {one, One},
      {five, Five},
@@ -195,128 +220,112 @@ do_metrics(Prefix, CBin, Time, [{N, [{type, meter}]} | Spec], Acc) ->
        {five_to_fifteen, FiveToFifteen},
        {one_to_fifteen, OneToFifteen}]}]
         = folsom_metrics:get_metric_value(N),
-    Acc1 = add_metric(Prefix1, CBin, <<"count">>, Time, Count, Acc),
-    Acc2 = add_metric(Prefix1, CBin, <<"one">>, Time, One, Acc1),
-    Acc3 = add_metric(Prefix1, CBin, <<"five">>, Time, Five, Acc2),
-    Acc4 = add_metric(Prefix1, CBin, <<"fifteen">>, Time, Fifteen, Acc3),
-    Acc5 = add_metric(Prefix1, CBin, <<"day">>, Time, Day, Acc4),
-    Acc6 = add_metric(Prefix1, CBin, <<"mean">>, Time, Mean, Acc5),
-    Acc7 = add_metric(Prefix1, CBin, <<"one_to_five">>, Time, OneToFive, Acc6),
-    Acc8 = add_metric(Prefix1, CBin, <<"five_to_fifteen">>, Time, FiveToFifteen, Acc7),
-    Acc9 = add_metric(Prefix1, CBin, <<"one_to_fifteen">>, Time, OneToFifteen, Acc8),
-    do_metrics(Prefix, CBin, Time, Spec, Acc9).
+    Acc1 = add_metric(Prefix1, [<<"count">>], Time, Count, Acc),
+    Acc2 = add_metric(Prefix1, [<<"one">>], Time, One, Acc1),
+    Acc3 = add_metric(Prefix1, [<<"five">>], Time, Five, Acc2),
+    Acc4 = add_metric(Prefix1, [<<"fifteen">>], Time, Fifteen, Acc3),
+    Acc5 = add_metric(Prefix1, [<<"day">>], Time, Day, Acc4),
+    Acc6 = add_metric(Prefix1, [<<"mean">>], Time, Mean, Acc5),
+    Acc7 = add_metric(Prefix1, [<<"one_to_five">>], Time, OneToFive, Acc6),
+    Acc8 = add_metric(Prefix1, [<<"five_to_fifteen">>], Time, FiveToFifteen, Acc7),
+    Acc9 = add_metric(Prefix1, [<<"one_to_fifteen">>], Time, OneToFifteen, Acc8),
+    do_metrics(Prefix, Time, Spec, Acc9).
 
-add_metric(Prefix, CBin, Name, Time, Value, Acc) when is_integer(Value) ->
-    Metric = <<Prefix/binary, ".", (metric_name(Name))/binary>>,
-    DocIdx = riak_core_util:chash_key({?BUCKET, Metric}),
-    {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
-    dict:append(Idx, {?BUCKET, Metric, Time, <<1, Value:64/unsigned-integer>>}, Acc);
+add_metric(Prefix, Name, Time, Value, Acc) when is_integer(Value) ->
+    add_to_dict([Prefix, metric_name(Name)], Time, Value, Acc);
 
-add_metric(Prefix, CBin, Name, Time, Value, Acc) when is_float(Value) ->
+add_metric(Prefix, Name, Time, Value, Acc) when is_float(Value) ->
     Scale = 1000*1000,
-    Metric = <<Prefix/binary, ".", (metric_name(Name))/binary>>,
-    DocIdx = riak_core_util:chash_key({?BUCKET, Metric}),
-    {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
-    dict:append(Idx, {?BUCKET, Metric, Time, <<1, (round(Value*Scale)):64/unsigned-integer>>}, Acc).
+    add_to_dict([Prefix, metric_name(Name)], Time, round(Value*Scale), Acc).
+
+add_to_dict(Metric, Time, Value, Dict) ->
+    Metric1 = dproto:metric_from_list(lists:flatten(Metric)),
+    bkt_dict:add(Metric1, Time, mmath_bin:from_list([Value]), Dict).
 
 timestamp() ->
     {Meg, S, _} = os:timestamp(),
     Meg*1000000 + S.
 
-metric_name(N1) when is_atom(N1) ->
-    erlang:atom_to_binary(N1, utf8);
-metric_name({N1, N2}) when is_atom(N1), is_atom(N2) ->
-    <<(erlang:atom_to_binary(N1, utf8))/binary, ".",
-      (erlang:atom_to_binary(N2, utf8))/binary>>;
-metric_name({N1, N2, N3}) when is_atom(N1), is_atom(N2), is_atom(N3) ->
-    <<(erlang:atom_to_binary(N1, utf8))/binary, ".",
-      (erlang:atom_to_binary(N2, utf8))/binary, ".",
-      (erlang:atom_to_binary(N3, utf8))/binary>>;
-metric_name({N1, N2, N3}) when is_atom(N1), is_atom(N2), is_atom(N3) ->
-    <<(erlang:atom_to_binary(N1, utf8))/binary, ".",
-      (erlang:atom_to_binary(N2, utf8))/binary, ".",
-      (erlang:atom_to_binary(N3, utf8))/binary>>;
-metric_name({N1, N2, N3, N4}) when is_atom(N1), is_atom(N2), is_atom(N3), is_atom(N4) ->
-    <<(erlang:atom_to_binary(N1, utf8))/binary, ".",
-      (erlang:atom_to_binary(N2, utf8))/binary, ".",
-      (erlang:atom_to_binary(N3, utf8))/binary, ".",
-      (erlang:atom_to_binary(N4, utf8))/binary>>;
-metric_name(A) when is_atom(A) ->
-    erlang:atom_to_binary(A, utf8);
 metric_name(B) when is_binary(B) ->
     B;
 metric_name(L) when is_list(L) ->
     erlang:list_to_binary(L);
+metric_name(N1) when
+      is_atom(N1) ->
+    a2b(N1);
+metric_name({N1, N2}) when
+      is_atom(N1), is_atom(N2) ->
+    [a2b(N1), a2b(N2)];
+metric_name({N1, N2, N3}) when
+      is_atom(N1), is_atom(N2), is_atom(N3) ->
+    [a2b(N1), a2b(N2), a2b(N3)];
+metric_name({N1, N2, N3, N4}) when
+      is_atom(N1), is_atom(N2), is_atom(N3), is_atom(N4) ->
+    [a2b(N1), a2b(N2), a2b(N3), a2b(N4)];
 metric_name(T) when is_tuple(T) ->
-    metric_name(tuple_to_list(T),<<>>).
+    [metric_name(E) || E <- tuple_to_list(T)].
 
-metric_name([N | R], <<>>) ->
-    metric_name(R, metric_name(N));
+a2b(A) ->
+    erlang:atom_to_binary(A, utf8).
 
-metric_name([N | R], Acc) ->
-    metric_name(R, <<Acc/binary, ".", (metric_name(N))/binary>>);
-
-metric_name([], Acc) ->
-    Acc.
-
-% build_histogram(Stats, Prefix, Time, CBin, Acc)
-build_histogram([], _, _, _, Acc) ->
+% build_histogram(Stats, Prefix, Time, Acc)
+build_histogram([], _Prefix, _Time, Acc) ->
     Acc;
 
-build_histogram([{min, V} | H], Prefix, Time, CBin, Acc) ->
-    Acc1 = add_metric(Prefix, CBin, <<"min">>, Time, round(V), Acc),
-    build_histogram(H, Prefix, Time, CBin, Acc1);
+build_histogram([{min, V} | H], Prefix, Time, Acc) ->
+    Acc1 = add_metric(Prefix, <<"min">>, Time, round(V), Acc),
+    build_histogram(H, Prefix, Time, Acc1);
 
-build_histogram([{max, V} | H], Prefix, Time, CBin, Acc) ->
-    Acc1 = add_metric(Prefix, CBin, <<"max">>, Time, round(V), Acc),
-    build_histogram(H, Prefix, Time, CBin, Acc1);
+build_histogram([{max, V} | H], Prefix, Time, Acc) ->
+    Acc1 = add_metric(Prefix, <<"max">>, Time, round(V), Acc),
+    build_histogram(H, Prefix, Time, Acc1);
 
-build_histogram([{arithmetic_mean, V} | H], Prefix, Time, CBin, Acc) ->
-    Acc1 = add_metric(Prefix, CBin, <<"arithmetic_mean">>, Time, round(V), Acc),
-    build_histogram(H, Prefix, Time, CBin, Acc1);
+build_histogram([{arithmetic_mean, V} | H], Prefix, Time, Acc) ->
+    Acc1 = add_metric(Prefix, <<"arithmetic_mean">>, Time, round(V), Acc),
+    build_histogram(H, Prefix, Time, Acc1);
 
-build_histogram([{geometric_mean, V} | H], Prefix, Time, CBin, Acc) ->
-    Acc1 = add_metric(Prefix, CBin, <<"geometric_mean">>, Time, round(V), Acc),
-    build_histogram(H, Prefix, Time, CBin, Acc1);
+build_histogram([{geometric_mean, V} | H], Prefix, Time, Acc) ->
+    Acc1 = add_metric(Prefix, <<"geometric_mean">>, Time, round(V), Acc),
+    build_histogram(H, Prefix, Time, Acc1);
 
-build_histogram([{harmonic_mean, V} | H], Prefix, Time, CBin, Acc) ->
-    Acc1 = add_metric(Prefix, CBin, <<"harmonic_mean">>, Time, round(V), Acc),
-    build_histogram(H, Prefix, Time, CBin, Acc1);
+build_histogram([{harmonic_mean, V} | H], Prefix, Time, Acc) ->
+    Acc1 = add_metric(Prefix, <<"harmonic_mean">>, Time, round(V), Acc),
+    build_histogram(H, Prefix, Time, Acc1);
 
-build_histogram([{median, V} | H], Prefix, Time, CBin, Acc) ->
-    Acc1 = add_metric(Prefix, CBin, <<"median">>, Time, round(V), Acc),
-    build_histogram(H, Prefix, Time, CBin, Acc1);
+build_histogram([{median, V} | H], Prefix, Time, Acc) ->
+    Acc1 = add_metric(Prefix, <<"median">>, Time, round(V), Acc),
+    build_histogram(H, Prefix, Time, Acc1);
 
-build_histogram([{variance, V} | H], Prefix, Time, CBin, Acc) ->
-    Acc1 = add_metric(Prefix, CBin, <<"variance">>, Time, round(V), Acc),
-    build_histogram(H, Prefix, Time, CBin, Acc1);
+build_histogram([{variance, V} | H], Prefix, Time, Acc) ->
+    Acc1 = add_metric(Prefix, <<"variance">>, Time, round(V), Acc),
+    build_histogram(H, Prefix, Time, Acc1);
 
-build_histogram([{standard_deviation, V} | H], Prefix, Time, CBin, Acc) ->
-    Acc1 = add_metric(Prefix, CBin, <<"standard_deviation">>, Time, round(V), Acc),
-    build_histogram(H, Prefix, Time, CBin, Acc1);
+build_histogram([{standard_deviation, V} | H], Prefix, Time, Acc) ->
+    Acc1 = add_metric(Prefix, <<"standard_deviation">>, Time, round(V), Acc),
+    build_histogram(H, Prefix, Time, Acc1);
 
-build_histogram([{skewness, V} | H], Prefix, Time, CBin, Acc) ->
-    Acc1 = add_metric(Prefix, CBin, <<"skewness">>, Time, round(V), Acc),
-    build_histogram(H, Prefix, Time, CBin, Acc1);
+build_histogram([{skewness, V} | H], Prefix, Time, Acc) ->
+    Acc1 = add_metric(Prefix, <<"skewness">>, Time, round(V), Acc),
+    build_histogram(H, Prefix, Time, Acc1);
 
-build_histogram([{kurtosis, V} | H], Prefix, Time, CBin, Acc) ->
-    Acc1 = add_metric(Prefix, CBin, <<"kurtosis">>, Time, round(V), Acc),
-    build_histogram(H, Prefix, Time, CBin, Acc1);
+build_histogram([{kurtosis, V} | H], Prefix, Time, Acc) ->
+    Acc1 = add_metric(Prefix, <<"kurtosis">>, Time, round(V), Acc),
+    build_histogram(H, Prefix, Time, Acc1);
 
 build_histogram([{percentile,
                   [{50, P50}, {75, P75}, {90, P90}, {95, P95}, {99, P99},
-                   {999, P999}]} | H], Prefix, Time, CBin, Acc) ->
-    Acc1 = add_metric(Prefix, CBin, <<"p50">>, Time, round(P50), Acc),
-    Acc2 = add_metric(Prefix, CBin, <<"p75">>, Time, round(P75), Acc1),
-    Acc3 = add_metric(Prefix, CBin, <<"p90">>, Time, round(P90), Acc2),
-    Acc4 = add_metric(Prefix, CBin, <<"p95">>, Time, round(P95), Acc3),
-    Acc5 = add_metric(Prefix, CBin, <<"p99">>, Time, round(P99), Acc4),
-    Acc6 = add_metric(Prefix, CBin, <<"p999">>, Time, round(P999), Acc5),
-    build_histogram(H, Prefix, Time, CBin, Acc6);
+                   {999, P999}]} | H], Prefix, Time, Acc) ->
+    Acc1 = add_metric(Prefix, <<"p50">>, Time, round(P50), Acc),
+    Acc2 = add_metric(Prefix, <<"p75">>, Time, round(P75), Acc1),
+    Acc3 = add_metric(Prefix, <<"p90">>, Time, round(P90), Acc2),
+    Acc4 = add_metric(Prefix, <<"p95">>, Time, round(P95), Acc3),
+    Acc5 = add_metric(Prefix, <<"p99">>, Time, round(P99), Acc4),
+    Acc6 = add_metric(Prefix, <<"p999">>, Time, round(P999), Acc5),
+    build_histogram(H, Prefix, Time, Acc6);
 
-build_histogram([{n, V} | H], Prefix, Time, CBin, Acc) ->
-    Acc1 = add_metric(Prefix, CBin, <<"count">>, Time, V, Acc),
-    build_histogram(H, Prefix, Time, CBin, Acc1);
+build_histogram([{n, V} | H], Prefix, Time, Acc) ->
+    Acc1 = add_metric(Prefix, <<"count">>, Time, V, Acc),
+    build_histogram(H, Prefix, Time, Acc1);
 
-build_histogram([_ | H], Prefix, Time, CBin, Acc) ->
-    build_histogram(H, Prefix, Time, CBin, Acc).
+build_histogram([_ | H], Prefix, Time, Acc) ->
+    build_histogram(H, Prefix, Time, Acc).

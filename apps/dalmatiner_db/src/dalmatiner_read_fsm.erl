@@ -133,13 +133,13 @@ execute(timeout, SD0=#state{req_id=ReqId,
     case Entity of
         undefined ->
             VNode:Op(Prelist, ReqId);
-        _ ->
+        {Bucket, {Metric, _}} ->
             case Val of
                 undefined ->
-                    VNode:Op(Prelist, ReqId, Entity);
+                    VNode:Op(Prelist, ReqId, {Bucket, Metric});
                 _ ->
 
-                    VNode:Op(Prelist, ReqId, Entity, Val)
+                    VNode:Op(Prelist, ReqId, {Bucket, Metric}, Val)
             end
     end,
     {next_state, waiting, SD0}.

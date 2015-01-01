@@ -9,6 +9,7 @@
 -module(dalmatiner_db_udp).
 
 -behaviour(gen_server).
+-include_lib("mmath/include/mmath.hrl").
 -include_lib("dproto/include/dproto.hrl").
 -include_lib("mstore/include/mstore.hrl").
 
@@ -18,8 +19,6 @@
 
 %% API
 -export([start_link/1]).
-
--export([handle_data/8]).
 
 -ignore_xref([start_link/1]).
 
@@ -142,17 +141,32 @@ handle_data(<<T:?TIME_SIZE/integer,
               _DS:?DATA_SS/integer, Data:_DS/binary,
               R/binary>>,
             Bucket, W, LPort, CBin, Nodes, Cnt, Acc) when (_DS rem ?DATA_SIZE) == 0 ->
+    dalmatiner_metrics:inc(mmath_bin:length(Data)),
     DocIdx = riak_core_util:chash_key({Bucket, Metric}),
     {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
     Acc1 = dict:append(Idx, {Bucket, Metric, T, Data}, Acc),
     handle_data(R, Bucket, W, LPort, CBin, Nodes, Cnt + 1, Acc1);
 handle_data(<<>>, _Bucket, W, LPort, _, Nodes, Cnt, Acc) ->
     dyntrace:p(?DT_DDB_UDP_CNT, LPort, Cnt),
-    metric:mput(Nodes, Acc, W);
+    R = metric:mput(Nodes, Acc, W),
+    drain(),
+    R;
+
 handle_data(R, _Bucket, W, LPort, _, Nodes, Cnt, Acc) ->
     dyntrace:p(?DT_DDB_UDP_CNT, LPort, Cnt),
     lager:error("[udp] unknown content: ~p", [R]),
-    metric:mput(Nodes, Acc, W).
+    metric:mput(Nodes, Acc, W),
+    drain(),
+    R.
+
+drain() ->
+    receive
+        _ ->
+            drain()
+    after
+        0 -> 
+            ok
+    end.
 
 %%--------------------------------------------------------------------
 %% @private

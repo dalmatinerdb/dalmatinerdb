@@ -46,6 +46,18 @@
  [{default, 100},
   {datatype, integer}]}.
 
+%% @doc The number of Asyncronous worker for a vnode.
+{mapping, "async_workers", "metric_vnode.async_workers",
+ [{datatype, integer},
+  {default, 5}]}.
+
+%% @doc When handling handoffs how much should be the largest chunk be.
+%% Large chunks improve thourhgput but too large chunks will cause
+%% timeouts.
+{mapping, "handoff_max_chunk_size", "metric_vnode.handoff_chunk",
+ [{datatype, bytesize},
+  {default, "1KB"}]}.
+
 %% @doc The datapoints stored per file, default equals 1 week of data
 %% in a 1 second resolution.
 {mapping, "points_per_file", "metric_vnode.points_per_file",
@@ -100,3 +112,4 @@
 {mapping, "w", "dalmatiner_db.w",
  [{datatype, integer},
   {default, 1}]}.
+

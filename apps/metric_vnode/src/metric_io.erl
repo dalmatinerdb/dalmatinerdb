@@ -14,7 +14,7 @@
 -export([start_link/1,
          empty/1, fold/3, delete/1, close/1,
          buckets/1, metrics/2, delete/2,
-         read/7, write/5]).
+         read/7, write/5, write/6]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -28,7 +28,8 @@
           partition,
           node,
           mstore=gb_trees:empty(),
-          dir
+          dir,
+          fold_size
          }).
 
 %%%===================================================================
@@ -46,12 +47,18 @@ start_link(Partition) ->
     gen_server:start_link(?MODULE, [Partition], []).
 
 write(Pid, Bucket, Metric, Time, Value) ->
+    write(Pid, Bucket, Metric, Time, Value, ?MAX_Q_LEN).
+
+write(Pid, Bucket, Metric, Time, Value, MaxLen) ->
     case erlang:process_info(Pid, message_queue_len) of
-        {message_queue_len, N} when N > ?MAX_Q_LEN ->
-            gen_server:call(Pid, {write, Bucket, Metric, Time, Value});
+        {message_queue_len, N} when N > MaxLen ->
+            swrite(Pid, Bucket, Metric, Time, Value);
         _ ->
             gen_server:cast(Pid, {write, Bucket, Metric, Time, Value})
     end.
+
+swrite(Pid, Bucket, Metric, Time, Value) ->
+    gen_server:call(Pid, {write, Bucket, Metric, Time, Value}).
 
 read(Pid, Bucket, Metric, Time, Count, ReqID, Sender) ->
     gen_server:cast(Pid, {read, Bucket, Metric, Time, Count, ReqID, Sender}).
@@ -100,11 +107,18 @@ init([Partition]) ->
                   _ ->
                       "data"
               end,
+    FoldSize = case application:get_env(metric_vnode, handoff_chunk) of
+                   {ok, FS} ->
+                       FS;
+                   _ ->
+                       10*1024
+               end,
     PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
 
     {ok, #state{ partition = Partition,
                  node = node(),
-                 dir = PartitionDir
+                 dir = PartitionDir,
+                 fold_size = FoldSize
                }}.
 
 %%--------------------------------------------------------------------
@@ -121,15 +135,135 @@ init([Partition]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({fold, Fun, Acc0}, _From, State) ->
-    Ts = gb_trees:to_list(State#state.mstore),
-    Acc = lists:foldl(fun({Bucket, {_, MStore}}, AccL) ->
-                              F = fun(Metric, Time, V, AccIn) ->
-                                          Fun({Bucket, Metric}, {Time, V}, AccIn)
-                                  end,
-                              mstore:fold(MStore, F, AccL)
-                      end, Acc0, Ts),
-    {reply, Acc, State};
+%% fold_fun(Fun, Bucket) ->
+%%     fun(Metric, Time, V,
+%%         {[{_Metric2, _}|_] = AccL, AccIn})
+%%           when Metric =/= _Metric2 ->
+%%             AccOut = Fun({Bucket, {Metric, Time}}, V, AccIn)
+%%     end.
+
+-record(facc,
+        {
+          metric,
+          size = 0,
+          hacc,
+          lacc = [],
+          bucket,
+          acc_fun,
+          last
+        }).
+
+-define(FOLD_SIZE, 82800).
+-define(MAX_DELTA, 300).
+
+fold_fun(Metric, Time, V,
+         Acc =
+             #facc{metric = Metric2,
+                   lacc = []}) when
+      Metric =/= Metric2 ->
+    Size = mmath_bin:length(V),
+    Acc#facc{
+      metric = Metric,
+      last = Time + Size,
+      size = Size,
+      lacc = [{Time, V}]};
+fold_fun(Metric, Time, V,
+         Acc =
+             #facc{metric = Metric2,
+                   bucket = Bucket,
+                   lacc = AccL,
+                   acc_fun = Fun,
+                   hacc = AccIn}) when
+      Metric =/= Metric2 ->
+    Size = mmath_bin:length(V),
+    AccOut = Fun({Bucket, Metric2}, lists:reverse(AccL), AccIn),
+    Acc#facc{
+      metric = Metric,
+      last = Time + Size,
+      size = Size,
+      hacc = AccOut,
+      lacc = [{Time, V}]};
+
+fold_fun(Metric, Time, V,
+         Acc =
+             #facc{metric = Metric,
+                   bucket = Bucket,
+                   size = _Size,
+                   lacc = AccL,
+                   acc_fun = Fun,
+                   hacc = AccIn}) when
+      _Size > ?FOLD_SIZE ->
+    AccOut = Fun({Bucket, Metric}, lists:reverse(AccL), AccIn),
+    Size = mmath_bin:length(V),
+    Acc#facc{
+      size = Size,
+      hacc = AccOut,
+      last = Time + Size,
+      lacc = [{Time, V}]};
+
+fold_fun(Metric, Time, V,
+         Acc =
+             #facc{metric = Metric,
+                   size = Size,
+                   last = Last,
+                   lacc = [{T0, AccE} | AccL]}) when
+      (Time - Last) > ?MAX_DELTA ->
+    Delta = Time - Last,
+    ThisSize = mmath_bin:length(V),
+    AccV = case Delta of
+               0 ->
+                   <<AccE/binary, V/binary>>;
+               _ ->
+                   <<AccE/binary, (mmath_bin:empty(Delta))/binary, V/binary>>
+           end,
+    Acc#facc{
+      size = Size + ThisSize + Delta,
+      last = Last + Delta + ThisSize,
+      lacc = [{T0, AccV} | AccL]};
+
+fold_fun(Metric, Time, V,
+         Acc =
+             #facc{metric = Metric,
+                   size = Size,
+                   lacc = AccL}) ->
+    ThisSize = mmath_bin:length(V),
+    Acc#facc{
+      size = Size + ThisSize,
+      last = Time + ThisSize,
+      lacc = [{Time, V} | AccL]}.
+
+handle_call({fold, Fun, Acc0}, _From,
+            State = #state{partition = Partition}) ->
+
+    DataDir = application:get_env(riak_core, platform_data_dir, "data"),
+    PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
+    case file:list_dir(PartitionDir) of
+        {ok, Buckets} ->
+            AsyncWork =
+                fun() ->
+                        lists:foldl(
+                          fun(BucketS, AccIn) ->
+                                  Bucket = list_to_binary(BucketS),
+                                  BucketDir = [PartitionDir, $/, BucketS],
+                                  {ok, MStore} = mstore:open(BucketDir),
+                                  Acc1 = #facc{hacc = AccIn,
+                                               bucket = Bucket,
+                                               acc_fun = Fun},
+                                  AccOut = mstore:fold(MStore, fun fold_fun/4, Acc1),
+                                  mstore:close(MStore),
+                                  case AccOut of
+                                      #facc{lacc=[], hacc=HAcc} ->
+                                          HAcc;
+                                      #facc{bucket = Bucket, metric = Metric,
+                                            lacc=AccL, hacc=HAcc}->
+                                          Fun({Bucket, Metric}, lists:reverse(AccL), HAcc)
+                                  end
+                          end, Acc0, Buckets)
+                end,
+            {reply, {ok, AsyncWork}, State};
+        _ ->
+            {reply, empty, State}
+    end;
 
 handle_call(empty, _From, State) ->
     R = calc_empty(gb_trees:iterator(State#state.mstore)),
@@ -153,7 +287,9 @@ handle_call(close, _From, State) ->
     gb_trees:map(fun(_, {_, MSet}) ->
                          mstore:close(MSet)
                  end, State#state.mstore),
-    {stop, normal, State#state{mstore=gb_trees:empty()}};
+    State1 = State#state{mstore=gb_trees:empty()},
+    {reply, ok, State1};
+%%{stop, normal, State1};
 
 handle_call({delete, Bucket}, _From,
             State = #state{dir = Dir}) ->
@@ -223,9 +359,11 @@ handle_cast({read, Bucket, Metric, Time, Count, ReqID, Sender},
                 {ok, Data} = mstore:get(MSet, Metric, Time, Count),
                 {{Resolution, Data}, S2};
             _ ->
+                lager:warning("[IO] Unknown metric: ~p/~p", [Bucket, Metric]),
                 Resolution = dalmatiner_opt:get(
                                <<"buckets">>, Bucket, <<"resolution">>,
                                {metric_vnode, resolution}, 1000),
+
                 {{Resolution, mmath_bin:empty(Count)}, State}
                   end,
     riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, D}),

@@ -6,7 +6,7 @@
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 
 -define(EQC_SETUP, true).
-
+-include_lib("mmath/include/mmath.hrl").
 -include_lib("eqc/include/eqc_fsm.hrl").
 -include_lib("fqc/include/fqc.hrl").
 
@@ -43,7 +43,7 @@ new() ->
 repair({S, Tr}, T, Vs) ->
     case overlap(Tr, T, Vs) of
         [] ->
-            Command = {repair, ?B, ?M, T,  << <<1, V:64/signed-integer>> || V <- Vs >>},
+            Command = {repair, ?B, ?M, T, mmath_bin:from_list(Vs)},
             {noreply, S1} = ?V:handle_command(Command, sender, S),
             Tr1 = tree_set(Tr, T, Vs),
             {S1, Tr1};
@@ -54,7 +54,7 @@ repair({S, Tr}, T, Vs) ->
 put({S, Tr}, T, Vs) ->
     case overlap(Tr, T, Vs) of
         [] ->
-            Command = {put, ?B, ?M, {T, << <<1, V:64/signed-integer>> || V <- Vs >>}},
+            Command = {put, ?B, ?M, {T, mmath_bin:from_list(Vs)}},
             {reply, ok, S1} = ?V:handle_command(Command, sender, S),
             Tr1 = tree_set(Tr, T, Vs),
             {S1, Tr1};
@@ -65,7 +65,7 @@ put({S, Tr}, T, Vs) ->
 mput({S, Tr}, T, Vs) ->
     case overlap(Tr, T, Vs) of
         [] ->
-            Command = {mput, [{?B, ?M, T, << <<1, V:64/signed-integer>> || V <- Vs >>}]},
+            Command = {mput, [{?B, ?M, T, mmath_bin:from_list(Vs)}]},
             {reply, ok, S1} = ?V:handle_command(Command, sender, S),
             Tr1 = tree_set(Tr, T, Vs),
             {S1, Tr1};
@@ -90,6 +90,8 @@ get(S, T, C) ->
                 1000 ->
                     timeout
             end;
+        {reply, {ok, _, _, Reply}, _S1} ->
+            Reply;
         {reply, {ok, Reply}, _S1} ->
             Reply
     end.
@@ -129,6 +131,7 @@ prop_gb_comp() ->
                 List2 = [{unlist(mmath_bin:to_list(Vs)), Vt} || {{_ ,Vs}, Vt} <- List1],
                 List3 = [true || {_V, _V} <- List2],
                 Len = length(List),
+                ?V:terminate(normal, S),
                 ?WHENFAIL(io:format(user,
                                     "L : ~p~n"
                                     "L1: ~p~n"
@@ -154,6 +157,7 @@ prop_is_empty() ->
                     true ->
                         io:format(user, "~p == ~p~n", [S, T])
                 end,
+                ?V:terminate(normal, S),
                 ?WHENFAIL(io:format(user, "L: ~p /= ~p~n", [Empty, TreeEmpty]),
                           Empty == TreeEmpty)
             end).
@@ -166,6 +170,7 @@ prop_empty_after_delete() ->
                 {S, _T} = eval(D),
                 {ok, S1} = ?V:delete(S),
                 {Empty, _S3} = ?V:is_empty(S1),
+                ?V:terminate(normal, S),
                 Empty == true
             end).
 
@@ -174,19 +179,35 @@ prop_handoff() ->
             begin
                 os:cmd("rm -r data"),
                 os:cmd("mkdir data"),
-                {S, _T} = eval(D),
+                {S, T} = eval(D),
+
+                List = ?T:to_list(T),
+
+                List1 = [{get(S, Time, 1), V} || {Time, V} <- List],
+                List2 = [{unlist(mmath_bin:to_list(Vs)), Vt} || {{_ ,Vs}, Vt} <- List1],
+                List3 = [true || {_V, _V} <- List2],
+
                 Fun = fun(K, V, A) ->
                               [?V:encode_handoff_item(K, V) | A]
                       end,
                 FR = ?FOLD_REQ{foldfun=Fun, acc0=[]},
-                {reply,L, S1} = ?V:handle_handoff_command(FR, self(), S),
+                {async,{fold, AsyncH, _}, _, S1} =
+                    ?V:handle_handoff_command(FR, self(), S),
+                L = AsyncH(),
                 L1 = lists:sort(L),
                 {ok, C, _} = ?V:init([1]),
                 C1 = lists:foldl(fun(Data, SAcc) ->
                                          {reply, ok, SAcc1} = ?V:handle_handoff_data(Data, SAcc),
                                          SAcc1
                                  end, C, L1),
-                {reply, Lc, C2} = ?V:handle_handoff_command(FR, self(), C1),
+
+                List4 = [{get(C1, Time, 1), V} || {Time, V} <- List],
+                List5 = [{unlist(mmath_bin:to_list(Vs)), Vt} || {{_ ,Vs}, Vt} <- List1],
+                List6 = [true || {_V, _V} <- List2],
+
+                {async,{fold, AsyncHc, _}, _, C2} =
+                    ?V:handle_handoff_command(FR, self(), C1),
+                Lc = AsyncHc(),
                 Lc1 = lists:sort(Lc),
                 {async,{fold, Async, _}, _, _} =
                     ?V:handle_coverage({metrics, ?B}, all, self(), S1),
@@ -194,14 +215,27 @@ prop_handoff() ->
                 {async,{fold, AsyncC, _}, _, _} =
                     ?V:handle_coverage({metrics, ?B}, all, self(), C2),
                 MsC = AsyncC(),
+
+                Len = length(List),
+
+
+                ?V:terminate(normal, S1),
+                ?V:terminate(normal, C2),
+
                 ?WHENFAIL(io:format(user, "L: ~p /= ~p~n"
                                     "M: ~p /= ~p~n",
                                     [Lc1, L1, gb_sets:to_list(MsC),
                                      gb_sets:to_list(Ms)]),
                           Lc1 == L1 andalso
-                          gb_sets:to_list(MsC) == gb_sets:to_list(Ms))
-
+                          gb_sets:to_list(MsC) == gb_sets:to_list(Ms) andalso
+                          length(List1) == Len andalso
+                          length(List2) == Len andalso
+                          length(List3) == Len andalso
+                          length(List4) == Len andalso
+                          length(List5) == Len andalso
+                          length(List6) == Len)
             end).
+
 
 %%%-------------------------------------------------------------------
 %%% Helper

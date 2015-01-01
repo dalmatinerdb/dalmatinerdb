@@ -3,15 +3,25 @@
 -behaviour(ranch_protocol).
 
 -include_lib("dproto/include/dproto.hrl").
+-include_lib("mmath/include/mmath.hrl").
 
 -export([start_link/4]).
 -export([init/4]).
 
--record(state, {cbin, nodes, n, w, fast_loop_count, wait = 5000}).
+-record(state,
+        {cbin,
+         nodes,
+         n = 1 :: pos_integer(),
+         w = 1 :: pos_integer(),
+         fast_loop_count :: pos_integer(),
+         wait = 5000 :: pos_integer()
+        }).
 
 -record(sstate,
-        {cbin, nodes, n, w, last = 0, max_diff = 1, wait = 5000,
-         dict = dict:new(), bucket}).
+        {last = 0 :: non_neg_integer(),
+         max_diff = 1 :: pos_integer(),
+         wait = 5000 :: pos_integer(),
+         dict}).
 
 start_link(Ref, Socket, Transport, Opts) ->
     Pid = spawn_link(?MODULE, init, [Ref, Socket, Transport, Opts]),
@@ -23,7 +33,7 @@ init(Ref, Socket, Transport, _Opts = []) ->
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, W} = application:get_env(dalmatiner_db, w),
     State = #state{n=N, w=W, fast_loop_count=FLC, wait=Wait},
-	ok = Transport:setopts(Socket, [{packet, 4}]),
+    ok = Transport:setopts(Socket, [{packet, 4}]),
     ok = ranch:accept_ack(Ref),
     loop(Socket, Transport, State, 0).
 
@@ -36,48 +46,28 @@ loop(Socket, Transport, State = #state{fast_loop_count = FL}, 0) ->
 
 loop(Socket, Transport, State, Loop) ->
     case Transport:recv(Socket, 0, State#state.wait) of
-        %% Simple keepalive
-        {ok, <<?BUCKETS>>} ->
-            {ok, Bs} = metric:list(),
-            Transport:send(Socket, dproto_tcp:encode_metrics(Bs)),
-            loop(Socket, Transport, State, Loop - 1);
-        {ok, <<?LIST, L/binary>>} ->
-            Bucket = dproto_tcp:decode_list(L),
-            {ok, Ms} = metric:list(Bucket),
-            Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
-            loop(Socket, Transport, State, Loop - 1);
-        {ok, <<?GET, G/binary>>} ->
-            {B, M, T, C} = dproto_tcp:decode_get(G),
-            {ok, Resolution, Data} = metric:get(B, M, T, C),
-            Transport:send(Socket, <<Resolution:64/integer, Data/binary>>),
-            loop(Socket, Transport, State, Loop - 1);
-        {ok, <<?PUT,_BS:?BUCKET_SS/integer, Bucket:_BS/binary, D/binary>>} ->
-            #state{cbin=CBin, nodes=Nodes, w=W} = State,
-            case dalmatiner_db_udp:handle_data(D, Bucket, W, 0, CBin, Nodes, 0, dict:new()) of
-                ok ->
+        {ok, Data} ->
+            case dproto_tcp:decode(Data) of
+                buckets ->
+                    {ok, Bs} = metric:list(),
+                    Transport:send(Socket, dproto_tcp:encode_metrics(Bs)),
                     loop(Socket, Transport, State, Loop - 1);
-                E ->
-                    lager:error("[tcp] Fast loop cancled because of: ~p.", [E]),
-                    loop(Socket, Transport, State, Loop - 1)
+                {list, Bucket} ->
+                    {ok, Ms} = metric:list(Bucket),
+                    Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
+                    loop(Socket, Transport, State, Loop - 1);
+                {get, B, M, T, C} ->
+                    do_send(Socket, Transport, B, M, T, C),
+                    loop(Socket, Transport, State, Loop - 1);
+                {stream, Bucket, Delay} ->
+                    lager:info("[tcp] Entering stream mode for bucket '~s' "
+                               "and a max delay of: ~p", [Bucket, Delay]),
+                    ok = Transport:setopts(Socket, [{packet, 0}]),
+                    Dict = bkt_dict:new(Bucket, State#state.n, State#state.w),
+                    stream_loop(Socket, Transport,
+                                #sstate{max_diff = Delay,dict = Dict},
+                                {incomplete, <<>>})
             end;
-        {ok, <<?STREAM, D:8, Bucket/binary>>} ->
-            lager:info("[tcp] Entering stream mode for bucket '~s' "
-                       "and a max delay of: ~p", [Bucket, D]),
-            ok = Transport:setopts(Socket, [{packet, 0}]),
-            {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
-            N = State#state.n,
-            Nodes1 = chash:nodes(chashbin:to_chash(CBin)),
-            Nodes2 = [{I, riak_core_apl:get_apl(I, N, metric)}
-                      || {I, _} <- Nodes1],
-            stream_loop(Socket, Transport,
-                        #sstate{
-                           cbin = CBin,
-                           nodes = Nodes2,
-                           n = N,
-                           w = State#state.w,
-                           max_diff = D,
-                           bucket = Bucket},
-                       dict:new(), <<>>);
         {error, timeout} ->
             loop(Socket, Transport, State, Loop - 1);
         {error, closed} ->
@@ -86,63 +76,68 @@ loop(Socket, Transport, State, Loop) ->
             lager:error("[tcp:loop] Error: ~p~n", [E]),
             ok = Transport:close(Socket)
     end.
+do_send(Socket, Transport, B, M, T, C) ->
+    PPF = metric:ppf(B),
+    [{T0, C0} | Splits] = mstore:make_splits(T, C, PPF),
+    {ok, Resolution, Points} = metric:get(B, M, PPF, T0, C0),
+    Transport:send(Socket, <<Resolution:64/integer, Points/binary>>),
+    send_parts(Socket, Transport, PPF, B, M, Splits).
 
+send_parts(_Socket, _Transport, _PPF, _B, _M, []) ->
+    ok;
+
+send_parts(Socket, Transport, PPF, B, M, [{T, C} | Splits]) ->
+    {ok, _Resolution, Points} = metric:get(B, M, PPF, T, C),
+    Transport:send(Socket, <<Points/binary>>),
+    send_parts(Socket, Transport, PPF, B, M, Splits).
 
 stream_loop(Socket, Transport,
-            State = #sstate{last = _L, max_diff = _Max, nodes = Nodes, w = W},
-            Dict, <<?SWRITE, Rest/binary>>) ->
-    metric:mput(Nodes, Dict, W),
-    {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
-    Nodes1 = chash:nodes(chashbin:to_chash(CBin)),
-    Nodes2 = [{I, riak_core_apl:get_apl(I, State#sstate.n, metric)}
-              || {I, _} <- Nodes1],
-    State1 = State#sstate{nodes = Nodes2, cbin = CBin},
-    stream_loop(Socket, Transport, State1, dict:new(), Rest);
+            State = #sstate{dict = Dict},
+            {flush, Rest}) ->
+    Dict1 = bkt_dict:flush(Dict),
+    drain(),
+    stream_loop(Socket, Transport, State#sstate{dict = Dict1},
+                dproto_tcp:decode_stream(Rest));
 
 stream_loop(Socket, Transport,
-            State = #sstate{last = _L, max_diff = _Max, nodes = Nodes, w = W},
-            Dict,
-            <<?SENTRY,
-              Time:?TIME_SIZE/integer,
-              _MS:?METRIC_SS/integer, Metric:_MS/binary,
-              _DS:?DATA_SS/integer, Points:_DS/binary, Rest/binary>>)
+            State = #sstate{last = _L, max_diff = _Max, dict = Dict},
+            {{stream, Metric, Time, Points}, Rest})
   when Time - _L > _Max ->
-    metric:mput(Nodes, Dict, W),
-    {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
-    Nodes1 = chash:nodes(chashbin:to_chash(CBin)),
-    Nodes2 = [{I, riak_core_apl:get_apl(I, State#sstate.n, metric)}
-              || {I, _} <- Nodes1],
-    State1 = State#sstate{nodes = Nodes2, cbin = CBin, last=Time},
-    Dict1 = insert_metric(State, dict:new(), Metric, Time, Points),
-    stream_loop(Socket, Transport, State1, Dict1, Rest);
+    Dict1 = bkt_dict:flush(Dict),
+    drain(),
+    Dict2 = bkt_dict:add(Metric, Time, Points, Dict1),
+    stream_loop(Socket, Transport, State#sstate{dict = Dict2},
+                dproto_tcp:decode_stream(Rest));
 
-stream_loop(Socket, Transport, State, Dict,
-            <<?SENTRY,
-              Time:?TIME_SIZE/integer,
-              _MS:?METRIC_SS/integer, Metric:_MS/binary,
-              _DS:?DATA_SS/integer, Points:_DS/binary, Rest/binary>>) ->
-    Dict1 = insert_metric(State, Dict, Metric, Time, Points),
-    stream_loop(Socket, Transport, State, Dict1, Rest);
+stream_loop(Socket, Transport, State = #sstate{dict = Dict},
+            {{stream, Metric, Time, Points}, Rest}) ->
+    Dict1 = bkt_dict:add(Metric, Time, Points, Dict),
+    stream_loop(Socket, Transport, State#sstate{dict = Dict1},
+                dproto_tcp:decode_stream(Rest));
 
 
-stream_loop(Socket, Transport, State, Dict, Acc) ->
+stream_loop(Socket, Transport, State, {incomplete, Acc}) ->
     case Transport:recv(Socket, 0, 5000) of
         {ok, Data} ->
             Acc1 = <<Acc/binary, Data/binary>>,
-            stream_loop(Socket, Transport, State, Dict, Acc1);
+            stream_loop(Socket, Transport, State,
+                        dproto_tcp:decode_stream(Acc1));
         {error, timeout} ->
-            stream_loop(Socket, Transport, State, Dict, Acc);
+            stream_loop(Socket, Transport, State, {incomplete, Acc});
         {error,closed} ->
-            metric:mput(State#sstate.nodes, Dict, State#sstate.w),
+            bkt_dict:flush(State#sstate.dict),
             ok;
         E ->
             lager:error("[tcp:stream] Error: ~p~n", [E]),
-            metric:mput(State#sstate.nodes, Dict, State#sstate.w),
+            bkt_dict:flush(State#sstate.dict),
             ok = Transport:close(Socket)
     end.
 
-insert_metric(#sstate{bucket = Bucket, cbin = CBin},
-              Dict, Metric, Time, Points) ->
-    DocIdx = riak_core_util:chash_key({Bucket, Metric}),
-    {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
-    dict:append(Idx, {Bucket, Metric, Time, Points}, Dict).
+drain() ->
+    receive
+        _ ->
+            drain()
+    after
+        0 ->
+            ok
+    end.
