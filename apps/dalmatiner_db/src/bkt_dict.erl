@@ -25,10 +25,8 @@ flush(BD = #bkt_dict{dict = Dict, nodes = Nodes, w = W}) ->
 update_chash(BD = #bkt_dict{n = N}) ->
     {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
     Nodes1 = chash:nodes(chashbin:to_chash(CBin)),
-    Nodes2 = [{I, riak_core_apl:get_apl(I, N, metric)}
-              || {I, _} <- Nodes1],
+    Nodes2 = [{I, riak_core_apl:get_apl(I, N, metric)} || {I, _} <- Nodes1],
     BD#bkt_dict{nodes = Nodes2, cbin = CBin}.
-
 
 insert_metric(_Metric, [], <<>>, BD) ->
     BD;

@@ -138,6 +138,6 @@ drain() ->
         _ ->
             drain()
     after
-        1 ->
+        0 ->
             ok
     end.

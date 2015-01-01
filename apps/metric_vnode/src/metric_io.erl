@@ -207,7 +207,7 @@ fold_fun(Metric, Time, V,
                    size = Size,
                    last = Last,
                    lacc = [{T0, AccE} | AccL]}) when
-      Time - Last > ?MAX_DELTA ->
+      (Time - Last) > ?MAX_DELTA ->
     Delta = Time - Last,
     ThisSize = mmath_bin:length(V),
     AccV = case Delta of
