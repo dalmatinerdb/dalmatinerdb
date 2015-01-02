@@ -18,7 +18,7 @@
         }).
 
 -record(sstate,
-        {last = 0 :: non_neg_integer(),
+        {last = undefined :: non_neg_integer(),
          max_diff = 1 :: pos_integer(),
          wait = 5000 :: pos_integer(),
          dict}).
@@ -100,13 +100,20 @@ stream_loop(Socket, Transport,
                 dproto_tcp:decode_stream(Rest));
 
 stream_loop(Socket, Transport,
+            State = #sstate{dict = Dict, last = undefined},
+            {{stream, Metric, Time, Points}, Rest}) ->
+    Dict1 = bkt_dict:add(Metric, Time, Points, Dict),
+    stream_loop(Socket, Transport, State#sstate{dict = Dict1, last = Time},
+                dproto_tcp:decode_stream(Rest));
+
+stream_loop(Socket, Transport,
             State = #sstate{last = _L, max_diff = _Max, dict = Dict},
             {{stream, Metric, Time, Points}, Rest})
   when Time - _L > _Max ->
     Dict1 = bkt_dict:flush(Dict),
     drain(),
     Dict2 = bkt_dict:add(Metric, Time, Points, Dict1),
-    stream_loop(Socket, Transport, State#sstate{dict = Dict2},
+    stream_loop(Socket, Transport, State#sstate{dict = Dict2, last = undefined},
                 dproto_tcp:decode_stream(Rest));
 
 stream_loop(Socket, Transport, State = #sstate{dict = Dict},
