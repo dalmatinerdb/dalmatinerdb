@@ -116,7 +116,7 @@ handle_cast({loop, N}, State = #state{sock=S, cbin=CBin, nodes=Nodes, w=W,
     case gen_udp:recv(S, State#state.recbuf, State#state.wait) of
         {ok, {_Address, _Port,
               <<0,
-                _BS:?BUCKET_SS/integer, Bucket:_BS/binary,
+                _BS:?BUCKET_SS/?SIZE_TYPE, Bucket:_BS/binary,
                 D/binary>>}} ->
             dyntrace:p(?DT_DDB_UDP_SIZE, LPort, byte_size(D)),
             case handle_data(D, Bucket, W, LPort, CBin, Nodes, 0, dict:new()) of
@@ -136,9 +136,9 @@ handle_cast({loop, N}, State = #state{sock=S, cbin=CBin, nodes=Nodes, w=W,
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_data(<<T:?TIME_SIZE/integer,
-              _MS:?METRIC_SS/integer, Metric:_MS/binary,
-              _DS:?DATA_SS/integer, Data:_DS/binary,
+handle_data(<<T:?TIME_SIZE/?TIME_TYPE,
+              _MS:?METRIC_SS/?SIZE_TYPE, Metric:_MS/binary,
+              _DS:?DATA_SS/?SIZE_TYPE, Data:_DS/binary,
               R/binary>>,
             Bucket, W, LPort, CBin, Nodes, Cnt, Acc) when (_DS rem ?DATA_SIZE) == 0 ->
     dalmatiner_metrics:inc(mmath_bin:length(Data)),
