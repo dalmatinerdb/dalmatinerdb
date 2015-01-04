@@ -205,13 +205,12 @@ fold_fun(Metric, Time, V,
 fold_fun(Metric, Time, V,
          Acc =
              #facc{metric = Metric,
-                   size = Size,
                    last = Last,
                    lacc = [{T0, AccE} | AccL],
                   max_delta = _MaxDelta}) when
       (Time - Last) =< _MaxDelta ->
     Delta = Time - Last,
-    ThisSize = mmath_bin:length(V),
+    Size = mmath_bin:length(V),
     AccV = case Delta of
                0 ->
                    <<AccE/binary, V/binary>>;
@@ -219,8 +218,8 @@ fold_fun(Metric, Time, V,
                    <<AccE/binary, (mmath_bin:empty(Delta))/binary, V/binary>>
            end,
     Acc#facc{
-      size = Size + ThisSize + Delta,
-      last = Last + Delta + ThisSize,
+      size = mmath_bin:length(AccV),
+      last = Time + Size,
       lacc = [{T0, AccV} | AccL]};
 
 fold_fun(Metric, Time, V,
