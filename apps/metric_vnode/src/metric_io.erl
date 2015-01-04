@@ -150,11 +150,11 @@ init([Partition]) ->
           lacc = [],
           bucket,
           acc_fun,
-          last
+          last,
+          max_delta = 300,
+          fold_size = 82800
         }).
 
--define(FOLD_SIZE, 82800).
--define(MAX_DELTA, 300).
 
 fold_fun(Metric, Time, V,
          Acc =
@@ -191,8 +191,9 @@ fold_fun(Metric, Time, V,
                    size = _Size,
                    lacc = AccL,
                    acc_fun = Fun,
-                   hacc = AccIn}) when
-      _Size > ?FOLD_SIZE ->
+                   hacc = AccIn,
+                   fold_size = _FoldSize}) when
+      _Size > _FoldSize ->
     AccOut = Fun({Bucket, Metric}, lists:reverse(AccL), AccIn),
     Size = mmath_bin:length(V),
     Acc#facc{
@@ -206,8 +207,9 @@ fold_fun(Metric, Time, V,
              #facc{metric = Metric,
                    size = Size,
                    last = Last,
-                   lacc = [{T0, AccE} | AccL]}) when
-      (Time - Last) > ?MAX_DELTA ->
+                   lacc = [{T0, AccE} | AccL],
+                  max_delta = _MaxDelta}) when
+      (Time - Last) =< _MaxDelta ->
     Delta = Time - Last,
     ThisSize = mmath_bin:length(V),
     AccV = case Delta of
@@ -234,7 +236,6 @@ fold_fun(Metric, Time, V,
 
 handle_call({fold, Fun, Acc0}, _From,
             State = #state{partition = Partition}) ->
-
     DataDir = application:get_env(riak_core, platform_data_dir, "data"),
     PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
     case file:list_dir(PartitionDir) of
