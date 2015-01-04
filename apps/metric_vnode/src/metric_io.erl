@@ -208,31 +208,28 @@ fold_fun(Metric, Time, V,
                    size = Size,
                    last = Last,
                    lacc = [{T0, AccE} | AccL],
-                  max_delta = _MaxDelta}) when
-      (Time - Last) =< _MaxDelta ->
-    Delta = Time - Last,
+                   max_delta = MaxDelta}) ->
     ThisSize = mmath_bin:length(V),
-    AccV = case Delta of
-               0 ->
-                   <<AccE/binary, V/binary>>;
-               _ ->
-                   <<AccE/binary, (mmath_bin:empty(Delta))/binary, V/binary>>
-           end,
-    Acc#facc{
-      size = Size + ThisSize + Delta,
-      last = Last + Delta + ThisSize,
-      lacc = [{T0, AccV} | AccL]};
-
-fold_fun(Metric, Time, V,
-         Acc =
-             #facc{metric = Metric,
-                   size = Size,
-                   lacc = AccL}) ->
-    ThisSize = mmath_bin:length(V),
-    Acc#facc{
-      size = Size + ThisSize,
-      last = Time + ThisSize,
-      lacc = [{Time, V} | AccL]}.
+    case Time - Last of
+        Delta when Delta > 0,
+        Delta =< MaxDelta ->
+            AccV = <<AccE/binary, (mmath_bin:empty(Delta))/binary, V/binary>>,
+            Acc#facc{
+              size = Size + Delta + ThisSize,
+              last = Time + ThisSize,
+              lacc = [{T0, AccV} | AccL]};
+        %% Otherwise delta is either 0 which should happen so rarely that it
+        %% does not matter or be negative.
+        %%
+        %% Now this seems odd but a negative delta can happen when when
+        %% multiple datafiles exists since their processing order is not
+        %% guaranteed.
+        _ ->
+            Acc#facc{
+              size = Size + ThisSize,
+              last = Time + ThisSize,
+              lacc = [{Time, V}, {T0, AccE} | AccL]}
+    end.
 
 handle_call({fold, Fun, Acc0}, _From,
             State = #state{partition = Partition}) ->
