@@ -263,13 +263,13 @@ different(A) -> fun(B) -> A =/= B end.
 %% @doc Repair any vnodes that do not have the correct object.
 repair(_, _, _, _, []) -> ok;
 
-repair(Time, VNode, MetAndTime, MObj, [{IdxNode,Obj}|T]) ->
+repair(Time, VNode, {Bkt, {Met, _}} = MetAndTime, MObj, [{IdxNode,Obj}|T]) ->
     case MObj == Obj of
         true ->
             repair(Time, VNode, MetAndTime, MObj, T);
         false ->
             {_, Data} = MObj,
-            VNode:repair(IdxNode, MetAndTime, {Time, Data}),
+            VNode:repair(IdxNode, {Bkt, Met}, {Time, Data}),
             repair(Time, VNode, MetAndTime, MObj, T)
     end.
 

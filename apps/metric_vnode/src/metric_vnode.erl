@@ -111,7 +111,8 @@ init([Partition]) ->
 
 %% Repair request are always full values not including non set values!
 handle_command({repair, Bucket, Metric, Time, Value}, _Sender,
-               #state{tbl=T} = State) ->
+               #state{tbl=T} = State)
+  when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     Count = mmath_bin:length(Value),
     case ets:lookup(T, {Bucket, Metric}) of
         %% If we repear ona a place before the metric, well just write it!
@@ -157,12 +158,14 @@ handle_command({repair, Bucket, Metric, Time, Value}, _Sender,
     {noreply, State};
 
 handle_command({mput, Data}, _Sender, State) ->
-    lists:foldl(fun({Bucket, Metric, Time, Value}, _) ->
+    lists:foldl(fun({Bucket, Metric, Time, Value}, _)
+                      when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
                                  do_put(Bucket, Metric, Time, Value, State)
                          end, ok, Data),
     {reply, ok, State};
 
-handle_command({put, Bucket, Metric, {Time, Value}}, _Sender, State) ->
+handle_command({put, Bucket, Metric, {Time, Value}}, _Sender, State)
+  when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     do_put(Bucket, Metric, Time, Value, State),
     {reply, ok, State};
 
@@ -212,10 +215,7 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
         _ ->
             metric_io:read(IO, Bucket, Metric, Time, Count, ReqID, Sender),
             {noreply, State}
-    end;
-
-handle_command(_Message, _Sender, State) ->
-    {noreply, State}.
+    end.
 
 handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, Sender,
                        State=#state{tbl=T, io = IO}) ->
@@ -251,6 +251,8 @@ handoff_finished(_TargetNode, State) ->
 
 handle_handoff_data(Data, State) ->
     {{Bucket, Metric}, ValList} = binary_to_term(Data),
+    true = is_binary(Bucket),
+    true = is_binary(Metric),
     [do_put(Bucket, Metric, T, Bin, State, 2) || {T, Bin} <- ValList],
     {reply, ok, State}.
 
@@ -299,11 +301,7 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
     ets:delete_all_objects(T),
     R = metric_io:delete(IO, Bucket),
     Reply = {ok, undefined, {P, N}, R},
-
-    {reply, Reply, State};
-
-handle_coverage(_Req, _KeySpaces, _Sender, State) ->
-    {stop, not_implemented, State}.
+    {reply, Reply, State}.
 
 handle_info({'EXIT', IO, normal}, State = #state{io = IO}) ->
     {ok, State};
@@ -336,7 +334,8 @@ terminate(_Reason, #state{tbl = T, io = IO}) ->
 do_put(Bucket, Metric, Time, Value, State) ->
     do_put(Bucket, Metric, Time, Value, State, ?MAX_Q_LEN).
 
-do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO}, Sync) ->
+do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO},
+       Sync) when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     Len = mmath_bin:length(Value),
     BM = {Bucket, Metric},
     case ets:lookup(T, BM) of
