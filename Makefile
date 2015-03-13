@@ -82,7 +82,7 @@ dev1 dev2 dev3 dev4: all
 	($(REBAR) generate target_dir=../dev/$@ overlay_vars=vars/$@.config)
 
 xref: all
-	$(REBAR) xref skip_deps=true
+	$(REBAR) -r skip_deps=true xref
 
 ##
 ## Dialyzer
