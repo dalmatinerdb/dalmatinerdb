@@ -8,10 +8,10 @@ cp-hooks:
 	cp hooks/* .git/hooks
 
 quick-xref:
-	$(REBAR) xref skip_deps=true
+	$(REBAR) -r skip_deps=true xref
 
 quick-test:
-	$(REBAR) skip_deps=true eunit
+	$(REBAR) -r skip_deps=true eunit
 
 version:
 	@echo "$(shell git symbolic-ref HEAD 2> /dev/null | cut -b 12-)-$(shell git log --pretty=format:'%h, %ad' -1)" > dalmatiner_db.version
@@ -33,13 +33,13 @@ distclean: clean devclean relclean
 	$(REBAR) delete-deps
 
 test: all xref
-	$(REBAR) skip_deps=true eunit
+	$(REBAR) -r skip_deps=true eunit
 
 qc:
-	$(REBAR) -C rebar_eqc.config compile skip_deps=true eunit --verbose
+	$(REBAR) -r -C rebar_eqc.config compile skip_deps=true eunit --verbose
 
 eqc-ci: clean all
-	$(REBAR) -D EQC_CI -C rebar_eqc_ci.config compile eunit skip_deps=true --verbose
+	$(REBAR) -r -D EQC_CI -C rebar_eqc_ci.config compile eunit skip_deps=true --verbose
 
 rel: all 
 	-rm -r rel/dalmatinerdb 2> /dev/null || true

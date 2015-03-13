@@ -7,7 +7,6 @@
 
 -define(EQC_SETUP, true).
 -include_lib("mmath/include/mmath.hrl").
--include_lib("eqc/include/eqc_fsm.hrl").
 -include_lib("fqc/include/fqc.hrl").
 
 -compile(export_all).
