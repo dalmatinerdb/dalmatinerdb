@@ -113,3 +113,16 @@
  [{datatype, integer},
   {default, 1}]}.
 
+%% @doc Schema directory
+{mapping, "schema_dir", "riak_core.schema_dirs",
+ [{default, "./share/schema"},
+  {datatype, string}]
+}.
+
+{translation,
+  "riak_core.schema_dirs",
+  fun(Conf) ->
+          D = cuttlefish:conf_get("schema_dir", Conf),
+          [D]
+  end
+}.
