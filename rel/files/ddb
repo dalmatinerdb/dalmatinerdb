@@ -11,6 +11,8 @@ RUNNER_LOG_DIR={{log_path}}
 PIPE_DIR=/tmp/dalmatinerdb/
 RUNNER_USER={{run_user}}
 
+ulimit -n {{ulimit}}
+
 # Make sure this script is running as the appropriate user
 if [ ! -z "$RUNNER_USER" ] && [ `whoami` != "$RUNNER_USER" ]; then
     exec sudo -u $RUNNER_USER $0 $@
