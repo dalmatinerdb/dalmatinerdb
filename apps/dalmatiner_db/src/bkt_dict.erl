@@ -4,7 +4,11 @@
 
 -export([new/3, update_chash/1, flush/1, add/4]).
 
+-export_type([bkt_dict/0]).
+
 -record(bkt_dict, {bucket, ppf, dict, n, w, nodes, cbin}).
+
+-type bkt_dict() :: #bkt_dict{}.
 
 new(Bkt, N, W) ->
     PPF = metric:ppf(Bkt),

@@ -421,20 +421,37 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-new_store(Partition, Bucket) ->
-    DataDir = dalmatiner_opt:get(<<"buckets">>, Bucket, <<"data_dir">>,
-                                 {riak_core, platform_data_dir}, "data"),
-    PartitionDir = [DataDir | [$/ |  integer_to_list(Partition)]],
-    BucketDir = [PartitionDir, [$/ | binary_to_list(Bucket)]],
+-spec ppf(binary()) -> pos_integer().
+
+ppf(Bucket) ->
+    case dalmatiner_opt:get(<<"buckets">>, Bucket,
+                            <<"points_per_file">>,
+                            {metric_vnode, points_per_file}, ?WEEK) of
+        PPF when is_integer(PPF), PPF > 0 ->
+            PPF;
+        _ ->
+            ?WEEK
+    end.
+
+-spec bucket_dir(binary(), non_neg_integer()) -> string().
+
+bucket_dir(Bucket, Partition) ->
+    DataDir = application:get_env(riak_core, platform_data_dir, "data"),
+    PartitionDir = DataDir ++ [$/, integer_to_list(Partition)],
+    BucketDir = PartitionDir ++ [$/, binary_to_list(Bucket)],
     file:make_dir(PartitionDir),
     file:make_dir(BucketDir),
-    PointsPerFile = dalmatiner_opt:get(<<"buckets">>, Bucket,
-                                       <<"points_per_file">>,
-                                       {metric_vnode, points_per_file}, ?WEEK),
+    BucketDir.
+
+new_store(Partition, Bucket) when is_binary(Bucket) ->
+    BucketDir = bucket_dir(Bucket, Partition),
+    PointsPerFile = ppf(Bucket),
     Resolution = dalmatiner_opt:get(<<"buckets">>, Bucket, <<"resolution">>,
                                     {metric_vnode, resolution}, 1000),
     {ok, MSet} = mstore:new(PointsPerFile, BucketDir),
     {Resolution, MSet}.
+
+
 
 get_set(Bucket, State=#state{mstore=Store}) ->
     case gb_trees:lookup(Bucket, Store) of
