@@ -278,6 +278,16 @@ handle_coverage({metrics, Bucket}, _KS, Sender, State = #state{io = IO}) ->
                 end,
     {async, {fold, AsyncWork, FinishFun}, Sender, State};
 
+handle_coverage({metrics, Bucket, Prefix}, _KS, Sender, State = #state{io = IO}) ->
+    AsyncWork = fun() ->
+                        {ok, Ms} = metric_io:metrics(IO, Bucket, Prefix),
+                        Ms
+                end,
+    FinishFun = fun(Data) ->
+                        reply(Data, Sender, State)
+                end,
+    {async, {fold, AsyncWork, FinishFun}, Sender, State};
+
 handle_coverage(list, _KS, Sender, State = #state{io = IO}) ->
     AsyncWork = fun() ->
                         {ok, Bs} = metric_io:buckets(IO),
