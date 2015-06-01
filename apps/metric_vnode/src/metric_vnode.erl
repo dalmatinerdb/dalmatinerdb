@@ -39,21 +39,25 @@
           tbl,
           ct,
           io,
-          resolutions = gb_trees:empty()
+          now,
+          resolutions = btrie:new(),
+          lifetimes  = btrie:new()
          }).
 
 -define(MASTER, metric_vnode_master).
 -define(MAX_Q_LEN, 20).
+-define(TICK, 1000).
 
 %% API
 start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
 repair(IdxNode, {Bucket, Metric}, {Time, Obj}) ->
-    riak_core_vnode_master:command(IdxNode,
-                                   {repair, Bucket, Metric, Time, Obj},
-                                   ignore,
-                                   ?MASTER).
+    riak_core_vnode_master:command(
+      IdxNode,
+      {repair, Bucket, Metric, Time, Obj},
+      ignore,
+      ?MASTER).
 
 
 put(Preflist, ReqID, Bucket, Metric, {Time, Values}) when is_list(Values) ->
@@ -82,6 +86,7 @@ get(Preflist, ReqID, {Bucket, Metric}, {Time, Count}) ->
 
 
 init([Partition]) ->
+    erlang:send_after(?TICK, self(), tick),
     process_flag(trap_exit, true),
     random:seed(now()),
     P = list_to_atom(integer_to_list(Partition)),
@@ -114,64 +119,67 @@ handle_command({repair, Bucket, Metric, Time, Value}, _Sender,
                #state{tbl=T} = State)
   when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     Count = mmath_bin:length(Value),
-    case ets:lookup(T, {Bucket, Metric}) of
-        %% If we repear ona a place before the metric, well just write it!
-        [{{Bucket, Metric}, Start, _Size, _Time, _Array}]
-          when Time + Count < Start ->
-            metric_io:write(State#state.io, Bucket, Metric, Time, Value);
-        %% The data is entirely behind the cache, so we flush the cache and use
-        %% the repair request as new cache
-        [{{Bucket, Metric}, Start, Size, _Time, Array}]
-          when Start + Size > Time ->
-            Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
-            k6_bytea:delete(Array),
-            ets:delete(T, {Bucket,Metric}),
-            metric_io:write(State#state.io, Bucket, Metric, Start, Bin),
-            do_put(Bucket, Metric, Time, Value, State);
-        %% Now it gets tricky teh repair is intersecting with the cache
-        %% this should never happen but it probably will, so it sucks!
-        %% There is no sane way to merge the values if they intersect,
-        %% however we know the following:
-        %% 1) A repari request, based on how it is build, will never
-        %%    contain unset values.
-        %% 2) A cache can be an entirely empty value or contain empty
-        %%    segments.
-        %% Based on that the best aproach is to flush the cache and then
-        %% also flush the repair request. So that nothing will be overwritten
-        %% with a empty value.
-        %%
-        %% - Flusing the repair once could lead to emptyies in the cache
-        %% overwriting non emptyies from the repair.
-        %% - Flushing the cache and caching the repair could lead to new
-        %% emplties in the new caceh from the repair now overwriting non
-        %% empties from the privious cache.
-        [{{Bucket, Metric}, Start, Size, _Time, Array}] ->
-            Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
-            k6_bytea:delete(Array),
-            ets:delete(T, {Bucket,Metric}),
-            metric_io:write(State#state.io, Bucket, Metric, Start, Bin),
-            metric_io:write(State#state.io, Bucket, Metric, Time, Value);
-        %% If we had no privious cache we can safely cache the repair.
-        [] ->
-            do_put(Bucket, Metric, Time, Value, State)
-    end,
-    {noreply, State};
+    State1 =
+        case ets:lookup(T, {Bucket, Metric}) of
+            %% If we repear ona a place before the metric, well just write it!
+            [{{Bucket, Metric}, Start, _Size, _Time, _Array}]
+              when Time + Count < Start ->
+                metric_io:write(State#state.io, Bucket, Metric, Time, Value),
+                State;
+            %% The data is entirely behind the cache, so we flush the cache and use
+            %% the repair request as new cache
+            [{{Bucket, Metric}, Start, Size, _Time, Array}]
+              when Start + Size > Time ->
+                Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
+                k6_bytea:delete(Array),
+                ets:delete(T, {Bucket,Metric}),
+                metric_io:write(State#state.io, Bucket, Metric, Start, Bin),
+                do_put(Bucket, Metric, Time, Value, State);
+            %% Now it gets tricky teh repair is intersecting with the cache
+            %% this should never happen but it probably will, so it sucks!
+            %% There is no sane way to merge the values if they intersect,
+            %% however we know the following:
+            %% 1) A repari request, based on how it is build, will never
+            %%    contain unset values.
+            %% 2) A cache can be an entirely empty value or contain empty
+            %%    segments.
+            %% Based on that the best aproach is to flush the cache and then
+            %% also flush the repair request. So that nothing will be overwritten
+            %% with a empty value.
+            %%
+            %% - Flusing the repair once could lead to emptyies in the cache
+            %% overwriting non emptyies from the repair.
+            %% - Flushing the cache and caching the repair could lead to new
+            %% emplties in the new caceh from the repair now overwriting non
+            %% empties from the privious cache.
+            [{{Bucket, Metric}, Start, Size, _Time, Array}] ->
+                Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
+                k6_bytea:delete(Array),
+                ets:delete(T, {Bucket,Metric}),
+                metric_io:write(State#state.io, Bucket, Metric, Start, Bin),
+                metric_io:write(State#state.io, Bucket, Metric, Time, Value),
+                State;
+            %% If we had no privious cache we can safely cache the repair.
+            [] ->
+                do_put(Bucket, Metric, Time, Value, State)
+        end,
+    {noreply, State1};
 
 handle_command({mput, Data}, _Sender, State) ->
-    lists:foldl(fun({Bucket, Metric, Time, Value}, _)
-                      when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
-                                 do_put(Bucket, Metric, Time, Value, State)
-                         end, ok, Data),
-    {reply, ok, State};
+    State1 = lists:foldl(fun({Bucket, Metric, Time, Value}, StateAcc)
+                               when is_binary(Bucket), is_binary(Metric),
+                                    is_integer(Time) ->
+                                 do_put(Bucket, Metric, Time, Value, StateAcc)
+                         end, State, Data),
+    {reply, ok, State1};
 
 handle_command({put, Bucket, Metric, {Time, Value}}, _Sender, State)
   when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
-    do_put(Bucket, Metric, Time, Value, State),
-    {reply, ok, State};
+    State1=  do_put(Bucket, Metric, Time, Value, State),
+    {reply, ok, State1};
 
 handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
-               #state{tbl=T, io=IO, resolutions = Ress,
-                      partition = Idx} = State) ->
+               #state{tbl=T, io=IO, partition = Idx} = State) ->
     BM = {Bucket, Metric},
     case ets:lookup(T, BM) of
         %% If our request is entirely cache we don't need to bother the IO node
@@ -182,17 +190,8 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
             %% How many bytes can we skip?
             SkipBytes = (Time - Start) * ?DATA_SIZE,
             Data = k6_bytea:get(Array, SkipBytes, (Count * ?DATA_SIZE)),
-            case gb_trees:lookup(Bucket, Ress) of
-                {value, Resolution} ->
-                    {reply, {ok, ReqID, Idx, {Resolution, Data}}, State};
-                none ->
-                    Resolution = dalmatiner_opt:get(
-                                   <<"buckets">>, Bucket, <<"resolution">>,
-                                   {metric_vnode, resolution}, 1000),
-                    Ress1 = gb_trees:insert(Bucket, Resolution, Ress),
-                    {reply, {ok, ReqID, Idx, {Resolution, Data}},
-                     State#state{resolutions = Ress1}}
-            end;
+            {Resolution, State1} = get_resolution(Bucket, State),
+            {reply, {ok, ReqID, Idx, {Resolution, Data}}, State1};
         %% The request is neither before, after nor entirely inside the cache
         %% we sadly have to flush it.
         %% This are the conditions where we have to flush the cache and then
@@ -253,8 +252,10 @@ handle_handoff_data(Data, State) ->
     {{Bucket, Metric}, ValList} = binary_to_term(Data),
     true = is_binary(Bucket),
     true = is_binary(Metric),
-    [do_put(Bucket, Metric, T, Bin, State, 2) || {T, Bin} <- ValList],
-    {reply, ok, State}.
+    State1 = lists:foldl(fun ({T, Bin}, StateAcc) ->
+                                 do_put(Bucket, Metric, T, Bin, StateAcc, 2)
+                         end, State, ValList),
+    {reply, ok, State1}.
 
 encode_handoff_item(Key, Value) ->
     term_to_binary({Key, Value}).
@@ -313,6 +314,13 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
     Reply = {ok, undefined, {P, N}, R},
     {reply, Reply, State}.
 
+
+handle_info(tick, State = #state{}) ->
+    {Mega, Secs, MicroSecs} = now(),
+    Timestamp = ((Mega*1000000 + Secs) * 1000000 + MicroSecs) div 1000,
+    erlang:send_after(?TICK, self(), tick),
+    {ok, State = #state{now = Timestamp}};
+
 handle_info({'EXIT', IO, normal}, State = #state{io = IO}) ->
     {ok, State};
 
@@ -344,53 +352,109 @@ terminate(_Reason, #state{tbl = T, io = IO}) ->
 do_put(Bucket, Metric, Time, Value, State) ->
     do_put(Bucket, Metric, Time, Value, State, ?MAX_Q_LEN).
 
-do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO},
+do_put(Bucket, Metric, Time, Value,
+       State = #state{tbl = T, ct = CT, io = IO},
        Sync) when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     Len = mmath_bin:length(Value),
     BM = {Bucket, Metric},
-    case ets:lookup(T, BM) of
-        %% If the data is before the first package in the cache we just don't
-        %% cache it this way we prevent overwriting already written data.
-        [{BM, _Start, _Size, _End, _V}]
-          when Time < _Start ->
-            metric_io:write(IO, Bucket, Metric, Time, Value, Sync);
-        %% When the Delta of start time and this package is greater then the
-        %% cache time we flush the cache and start a new cache with a new
-        %% package
-        [{BM, Start, Size, _End, Array}]
-          when (Time + Len) >= _End, Len < CT ->
-            Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
-            k6_bytea:set(Array, 0, Value),
-            k6_bytea:set(Array, Len * ?DATA_SIZE, <<0:(?DATA_SIZE * 8 * (CT - Len))>>),
-            ets:update_element(T, BM, [{2, Time}, {3, Len}, {4, Time + CT}]),
-            metric_io:write(IO, Bucket, Metric, Start, Bin, Sync);
-        %% In the case the data is already longer then the cache we flush the
-        %% cache
-        [{BM, Start, Size, _End, Array}]
-          when (Time + Len) >= _End ->
-            ets:delete(T, {Bucket,Metric}),
-            Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
-            k6_bytea:delete(Array),
-            metric_io:write(IO, Bucket, Metric, Start, Bin, Sync),
-            metric_io:write(IO, Bucket, Metric, Time, Value, Sync);
-        [{BM, Start, _Size, _End, Array}] ->
-            Idx = Time - Start,
-            k6_bytea:set(Array, Idx * ?DATA_SIZE, Value),
-            ets:update_element(T, BM, [{3, Idx + Len}]),
-            State;
-        %% We don't have a cache yet and our data is smaller then
-        %% the current cache limit
-        [] when Len < CT ->
-            Array = k6_bytea:new(CT * ?DATA_SIZE),
-            k6_bytea:set(Array, 0, Value),
-            Jitter = random:uniform(CT),
-            ets:insert(T, {BM, Time, Len, Time + Jitter, Array});
-        %% If we don't have a cache but our data is too big for the
-        %% cache we happiely write it directly
-        [] ->
-            metric_io:write(IO, Bucket, Metric, Time, Value, Sync)
+    case valid_ts(Time + Len, Bucket, State) of
+        {false, State1} ->
+            State1;
+        {true, State1} ->
+            case ets:lookup(T, BM) of
+                %% If the data is before the first package in the cache we just
+                %% don't cache it this way we prevent overwriting already
+                %% written data.
+                [{BM, _Start, _Size, _End, _V}]
+                  when Time < _Start ->
+                    metric_io:write(IO, Bucket, Metric, Time, Value, Sync);
+                %% When the Delta of start time and this package is greater
+                %% then the cache time we flush the cache and start a new cache
+                %% with a new package
+                [{BM, Start, Size, _End, Array}]
+                  when (Time + Len) >= _End, Len < CT ->
+                    Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
+                    k6_bytea:set(Array, 0, Value),
+                    k6_bytea:set(Array, Len * ?DATA_SIZE, <<0:(?DATA_SIZE * 8 * (CT - Len))>>),
+                    ets:update_element(T, BM, [{2, Time}, {3, Len}, {4, Time + CT}]),
+                    metric_io:write(IO, Bucket, Metric, Start, Bin, Sync);
+                %% In the case the data is already longer then the cache we
+                %% flush the cache
+                [{BM, Start, Size, _End, Array}]
+                  when (Time + Len) >= _End ->
+                    ets:delete(T, {Bucket,Metric}),
+                    Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
+                    k6_bytea:delete(Array),
+                    metric_io:write(IO, Bucket, Metric, Start, Bin, Sync),
+                    metric_io:write(IO, Bucket, Metric, Time, Value, Sync);
+                [{BM, Start, _Size, _End, Array}] ->
+                    Idx = Time - Start,
+                    k6_bytea:set(Array, Idx * ?DATA_SIZE, Value),
+                    ets:update_element(T, BM, [{3, Idx + Len}]);
+                %% We don't have a cache yet and our data is smaller then
+                %% the current cache limit
+                [] when Len < CT ->
+                    Array = k6_bytea:new(CT * ?DATA_SIZE),
+                    k6_bytea:set(Array, 0, Value),
+                    Jitter = random:uniform(CT),
+                    ets:insert(T, {BM, Time, Len, Time + Jitter, Array});
+                %% If we don't have a cache but our data is too big for the
+                %% cache we happiely write it directly
+                [] ->
+                    metric_io:write(IO, Bucket, Metric, Time, Value, Sync)
+            end,
+            State1
     end.
-
 
 reply(Reply, {_, ReqID, _} = Sender, #state{node=N, partition=P}) ->
     riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Reply}).
+
+
+valid_ts(TS, Bucket, State) ->
+    case expiery(Bucket, State) of
+        %% TODO:
+        %% We ignore every data where the last point is older then the
+        %% lifetime this means we could still potentially write in the
+        %% past if writing baches but this is a problem for another day!
+        {Exp, State1} when is_integer(Exp),
+                         TS < Exp ->
+            {false, State1};
+        {_, State1} ->
+            {true, State1}
+    end.
+%% Return the latest point we'd ever want to save This is more strict
+%% then the expiration we do on the data but it is strong enough for
+%% our guarantee.
+expiery(Bucket, State = #state{now = Now}) ->
+    case get_lifetime(Bucket, State) of
+        {infinity, State1} ->
+            {infinity, State1};
+        {LT, State1} ->
+            {Res, State2} = get_resolution(Bucket, State1),
+            Exp = (Now - LT) / Res,
+            {Exp, State2}
+    end.
+
+get_resolution(Bucket, State = #state{resolutions = Ress}) ->
+    case btrie:find(Bucket, Ress) of
+        {ok, Resolution} ->
+            {Resolution, State};
+        error ->
+            Resolution = dalmatiner_opt:get(
+                           <<"buckets">>, Bucket, <<"resolution">>,
+                           {metric_vnode, resolution}, 1000),
+            Ress1 = btrie:store(Bucket, Resolution, Ress),
+            {Resolution, State#state{resolutions = Ress1}}
+    end.
+
+get_lifetime(Bucket, State = #state{lifetimes = Lifetimes}) ->
+    case btrie:find(Bucket, Lifetimes) of
+        {ok, Resolution} ->
+            {Resolution, State};
+        error ->
+            Resolution = dalmatiner_opt:get(
+                           <<"buckets">>, Bucket, <<"lifetime">>,
+                           {metric_vnode, lifetime}, infinity),
+            Lifetimes1 = btrie:store(Bucket, Resolution, Lifetimes),
+            {Resolution, State#state{lifetimes = Lifetimes1}}
+    end.
