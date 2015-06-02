@@ -226,7 +226,7 @@ prop_handoff() ->
                                     [Lc1, L1, gb_sets:to_list(MsC),
                                      gb_sets:to_list(Ms)]),
                           Lc1 == L1 andalso
-                          gb_sets:to_list(MsC) == gb_sets:to_list(Ms) andalso
+                          btrie:fetch_keys(MsC) == btrie:fetch_keys(Ms) andalso
                           length(List1) == Len andalso
                           length(List2) == Len andalso
                           length(List3) == Len andalso

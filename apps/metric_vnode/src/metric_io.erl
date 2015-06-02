@@ -13,7 +13,7 @@
 %% API
 -export([start_link/1,
          empty/1, fold/3, delete/1, close/1,
-         buckets/1, metrics/2, delete/2,
+         buckets/1, metrics/2, metrics/3, delete/2,
          read/7, write/5, write/6]).
 
 %% gen_server callbacks
@@ -68,6 +68,9 @@ buckets(Pid) ->
 
 metrics(Pid, Bucket) ->
     gen_server:call(Pid, {metrics, Bucket}).
+
+metrics(Pid, Bucket, Prefix) ->
+    gen_server:call(Pid, {metrics, Bucket, Prefix}).
 
 fold(Pid, Fun, Acc0) ->
     gen_server:call(Pid, {fold, Fun, Acc0}).
@@ -312,9 +315,9 @@ handle_call(buckets, _From, State = #state{partition = P}) ->
     PartitionDir = [DataDir, $/,  integer_to_list(P)],
     Buckets1 = case file:list_dir(PartitionDir) of
                    {ok, Buckets} ->
-                       gb_sets:from_list([list_to_binary(B) || B <- Buckets]);
+                       btrie:from_list([{list_to_binary(B), t} || B <- Buckets]);
                    _ ->
-                       gb_sets:new()
+                       btrie:new()
                end,
     {reply, {ok, Buckets1}, State};
 
@@ -323,9 +326,20 @@ handle_call({metrics, Bucket}, _From, State) ->
                        {ok, {{_, M}, S2}} ->
                            {mstore:metrics(M), S2};
                        _ ->
-                           {gb_sets:new(), State}
+                           {btrie:new(), State}
                    end,
     {reply, {ok, Ms}, State1};
+
+handle_call({metrics, Bucket, Prefix}, _From, State) ->
+    {MsR, State1} = case get_set(Bucket, State) of
+                       {ok, {{_, M}, S2}} ->
+                           Ms = mstore:metrics(M),
+                           Ms1 = btrie:fetch_keys_similar(Prefix, Ms),
+                           {btrie:from_list(Ms1), S2};
+                       _ ->
+                           {btrie:new(), State}
+                   end,
+    {reply, {ok, MsR}, State1};
 
 handle_call({write, Bucket, Metric, Time, Value}, _From, State) ->
     State1 = do_write(Bucket, Metric, Time, Value, State),
@@ -448,7 +462,7 @@ new_store(Partition, Bucket) when is_binary(Bucket) ->
     PointsPerFile = ppf(Bucket),
     Resolution = dalmatiner_opt:get(<<"buckets">>, Bucket, <<"resolution">>,
                                     {metric_vnode, resolution}, 1000),
-    {ok, MSet} = mstore:new(PointsPerFile, BucketDir),
+    {ok, MSet} = mstore:new(BucketDir, [{file_size, PointsPerFile}]),
     {Resolution, MSet}.
 
 
@@ -495,7 +509,7 @@ calc_empty(I) ->
         none ->
             true;
         {_, {_, MSet}, I2} ->
-            gb_sets:is_empty(mstore:metrics(MSet))
+            btrie:size(mstore:metrics(MSet)) =:= 0
                 andalso calc_empty(I2)
     end.
 

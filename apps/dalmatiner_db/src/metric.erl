@@ -7,7 +7,8 @@
          get/5,
          ppf/1,
          list/0,
-         list/1
+         list/1,
+         list/2
         ]).
 
 -ignore_xref([get/4, put/4]).
@@ -59,6 +60,10 @@ list() ->
 list(Bucket) ->
     folsom_metrics:histogram_timed_update(
       list_metrics, metric_coverage, start, [{metrics, Bucket}]).
+
+list(Bucket, Prefix) ->
+    folsom_metrics:histogram_timed_update(
+      list_metrics, metric_coverage, start, [{metrics, Bucket, Prefix}]).
 
 do_put(Bucket, Metric, PPF, Time, Value, N, W) ->
     DocIdx = riak_core_util:chash_key({Bucket, {Metric, Time div PPF}}),

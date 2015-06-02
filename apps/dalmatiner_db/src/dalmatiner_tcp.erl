@@ -63,6 +63,10 @@ loop(Socket, Transport, State, Loop) ->
                     {ok, Ms} = metric:list(Bucket),
                     Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
                     loop(Socket, Transport, State, Loop - 1);
+                {list, Bucket, Prefix} ->
+                    {ok, Ms} = metric:list(Bucket, Prefix),
+                    Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
+                    loop(Socket, Transport, State, Loop - 1);
                 {get, B, M, T, C} ->
                     do_send(Socket, Transport, B, M, T, C),
                     loop(Socket, Transport, State, Loop - 1);
