@@ -126,3 +126,11 @@
           [D]
   end
 }.
+
+%% @doc handoff.ip is the network address that Riak binds to for
+%% intra-cluster data handoff.
+{mapping, "handoff.ip", "riak_core.handoff_ip", [
+  {default, "127.0.0.1" },
+  {datatype, string},
+  {validators, ["valid_ipaddr"]}
+]}.
