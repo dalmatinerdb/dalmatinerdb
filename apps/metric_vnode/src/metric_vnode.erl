@@ -4,6 +4,7 @@
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 -include_lib("mmath/include/mmath.hrl").
 
+
 -export([start_vnode/1,
          init/1,
          terminate/2,
@@ -47,6 +48,7 @@
 -define(MASTER, metric_vnode_master).
 -define(MAX_Q_LEN, 20).
 -define(TICK, 1000).
+-define(VAC, 1000*60*60*2).
 
 %% API
 start_vnode(I) ->
@@ -119,51 +121,56 @@ handle_command({repair, Bucket, Metric, Time, Value}, _Sender,
                #state{tbl=T} = State)
   when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     Count = mmath_bin:length(Value),
-    State1 =
-        case ets:lookup(T, {Bucket, Metric}) of
-            %% If we repear ona a place before the metric, well just write it!
-            [{{Bucket, Metric}, Start, _Size, _Time, _Array}]
-              when Time + Count < Start ->
-                metric_io:write(State#state.io, Bucket, Metric, Time, Value),
-                State;
-            %% The data is entirely behind the cache, so we flush the cache and use
-            %% the repair request as new cache
-            [{{Bucket, Metric}, Start, Size, _Time, Array}]
-              when Start + Size > Time ->
-                Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
-                k6_bytea:delete(Array),
-                ets:delete(T, {Bucket,Metric}),
-                metric_io:write(State#state.io, Bucket, Metric, Start, Bin),
-                do_put(Bucket, Metric, Time, Value, State);
-            %% Now it gets tricky teh repair is intersecting with the cache
-            %% this should never happen but it probably will, so it sucks!
-            %% There is no sane way to merge the values if they intersect,
-            %% however we know the following:
-            %% 1) A repari request, based on how it is build, will never
-            %%    contain unset values.
-            %% 2) A cache can be an entirely empty value or contain empty
-            %%    segments.
-            %% Based on that the best aproach is to flush the cache and then
-            %% also flush the repair request. So that nothing will be overwritten
-            %% with a empty value.
-            %%
-            %% - Flusing the repair once could lead to emptyies in the cache
-            %% overwriting non emptyies from the repair.
-            %% - Flushing the cache and caching the repair could lead to new
-            %% emplties in the new caceh from the repair now overwriting non
-            %% empties from the privious cache.
-            [{{Bucket, Metric}, Start, Size, _Time, Array}] ->
-                Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
-                k6_bytea:delete(Array),
-                ets:delete(T, {Bucket,Metric}),
-                metric_io:write(State#state.io, Bucket, Metric, Start, Bin),
-                metric_io:write(State#state.io, Bucket, Metric, Time, Value),
-                State;
-            %% If we had no privious cache we can safely cache the repair.
-            [] ->
-                do_put(Bucket, Metric, Time, Value, State)
-        end,
-    {noreply, State1};
+    case valid_ts(Time + Count, Bucket, State) of
+        {true, State1} ->
+            State2 = 
+                case ets:lookup(T, {Bucket, Metric}) of
+                    %% If we repear ona a place before the metric, well just write it!
+                    [{{Bucket, Metric}, Start, _Size, _Time, _Array}]
+                      when Time + Count < Start ->
+                        metric_io:write(State#state.io, Bucket, Metric, Time, Value),
+                        State1;
+                    %% The data is entirely behind the cache, so we flush the cache and use
+                    %% the repair request as new cache
+                    [{{Bucket, Metric}, Start, Size, _Time, Array}]
+                      when Start + Size > Time ->
+                        Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
+                        k6_bytea:delete(Array),
+                        ets:delete(T, {Bucket,Metric}),
+                        metric_io:write(State#state.io, Bucket, Metric, Start, Bin),
+                        do_put(Bucket, Metric, Time, Value, State);
+                    %% Now it gets tricky teh repair is intersecting with the cache
+                    %% this should never happen but it probably will, so it sucks!
+                    %% There is no sane way to merge the values if they intersect,
+                    %% however we know the following:
+                    %% 1) A repari request, based on how it is build, will never
+                    %%    contain unset values.
+                    %% 2) A cache can be an entirely empty value or contain empty
+                    %%    segments.
+                    %% Based on that the best aproach is to flush the cache and then
+                    %% also flush the repair request. So that nothing will be overwritten
+                    %% with a empty value.
+                    %%
+                    %% - Flusing the repair once could lead to emptyies in the cache
+                    %% overwriting non emptyies from the repair.
+                    %% - Flushing the cache and caching the repair could lead to new
+                    %% emplties in the new caceh from the repair now overwriting non
+                    %% empties from the privious cache.
+                    [{{Bucket, Metric}, Start, Size, _Time, Array}] ->
+                        Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
+                        k6_bytea:delete(Array),
+                        ets:delete(T, {Bucket,Metric}),
+                        metric_io:write(State#state.io, Bucket, Metric, Start, Bin),
+                        metric_io:write(State#state.io, Bucket, Metric, Time, Value),
+                        State1;
+                    %% If we had no privious cache we can safely cache the repair.
+                    [] ->
+                        do_put(Bucket, Metric, Time, Value, State)
+                end,
+            {noreply, State2};
+        {false, State1} ->
+            {noreply, State1}
+    end;
 
 handle_command({mput, Data}, _Sender, State) ->
     State1 = lists:foldl(fun({Bucket, Metric, Time, Value}, StateAcc)
