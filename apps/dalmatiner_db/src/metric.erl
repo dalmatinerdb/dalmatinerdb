@@ -47,11 +47,11 @@ get(Bucket, Metric, Time, Count) ->
     get(Bucket, Metric, ppf(Bucket), Time, Count).
 
 get(Bucket, Metric, PPF, Time, Count) when
-      Time div PPF =:= (Time + Count) div PPF->
+      Time div PPF =:= (Time + Count - 1) div PPF->
     folsom_metrics:histogram_timed_update(
       get, dalmatiner_read_fsm, start,
       [{metric_vnode, metric}, get, {Bucket, {Metric, Time div PPF}},
-                                     {Time, Count}]).
+       {Time, Count}]).
 
 list() ->
     folsom_metrics:histogram_timed_update(
