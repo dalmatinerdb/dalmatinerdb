@@ -326,7 +326,7 @@ handle_info(tick, State = #state{}) ->
     {Mega, Secs, MicroSecs} = now(),
     Timestamp = ((Mega*1000000 + Secs) * 1000000 + MicroSecs) div 1000,
     erlang:send_after(?TICK, self(), tick),
-    {ok, State = #state{now = Timestamp}};
+    {ok, State#state{now = Timestamp}};
 
 handle_info({'EXIT', IO, normal}, State = #state{io = IO}) ->
     {ok, State};
