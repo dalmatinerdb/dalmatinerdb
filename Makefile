@@ -1,17 +1,17 @@
-REBAR = $(shell pwd)/rebar
+REBAR = $(shell pwd)/rebar3
 
 .PHONY: deps rel stagedevrel package version all
 
-all: cp-hooks deps compile
+all: cp-hooks compile
 
 cp-hooks:
 	cp hooks/* .git/hooks
 
 quick-xref:
-	$(REBAR) -r skip_deps=true xref
+	$(REBAR) xref
 
 quick-test:
-	$(REBAR) -r skip_deps=true eunit
+	$(REBAR) eunit
 
 version:
 	@echo "$(shell git symbolic-ref HEAD 2> /dev/null | cut -b 12-)-$(shell git log --pretty=format:'%h, %ad' -1)" > dalmatiner_db.version
@@ -21,9 +21,6 @@ version_header: version
 
 compile: version_header
 	$(REBAR) compile
-
-deps:
-	$(REBAR) get-deps
 
 clean:
 	$(REBAR) clean
