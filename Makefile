@@ -1,17 +1,11 @@
 REBAR = $(shell pwd)/rebar3
 
-.PHONY: deps rel stagedevrel package version all
+.PHONY: rel stagedevrel package version all
 
 all: cp-hooks compile
 
 cp-hooks:
 	cp hooks/* .git/hooks
-
-quick-xref:
-	$(REBAR) xref
-
-quick-test:
-	$(REBAR) eunit
 
 version:
 	@echo "$(shell git symbolic-ref HEAD 2> /dev/null | cut -b 12-)-$(shell git log --pretty=format:'%h, %ad' -1)" > dalmatiner_db.version
@@ -26,24 +20,15 @@ clean:
 	$(REBAR) clean
 	make -C rel/pkg clean
 
-distclean: clean devclean relclean
-	$(REBAR) delete-deps
-
 test: all xref
-	$(REBAR) -r skip_deps=true eunit
+	$(REBAR) eunit
 
 qc:
-	$(REBAR) -r -C rebar_eqc.config compile skip_deps=true eunit --verbose
+	$(REBAR) as eqc eqc
 
-eqc-ci: clean all
-	$(REBAR) -r -D EQC_CI -C rebar_eqc_ci.config compile eunit skip_deps=true --verbose
-
-rel: all 
+rel: all
 	-rm -r rel/dalmatinerdb 2> /dev/null || true
-	$(REBAR) generate
-
-relclean:
-	rm -rf rel/dalmatinerdb
+	$(REBAR) as prod release
 
 devrel: dev1 dev2 dev3 dev4
 
@@ -79,7 +64,7 @@ dev1 dev2 dev3 dev4: all
 	($(REBAR) generate target_dir=../dev/$@ overlay_vars=vars/$@.config)
 
 xref: all
-	$(REBAR) -r skip_deps=true xref
+	$(REBAR) xref
 
 ##
 ## Dialyzer
