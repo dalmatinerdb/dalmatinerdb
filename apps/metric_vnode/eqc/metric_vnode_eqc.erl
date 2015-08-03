@@ -1,13 +1,9 @@
 -module(metric_vnode_eqc).
 
--ifdef(TEST).
--ifdef(EQC).
-
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 
--define(EQC_SETUP, true).
 -include_lib("mmath/include/mmath.hrl").
--include_lib("fqc/include/fqc.hrl").
+-include_lib("eqc/include/eqc.hrl").
 
 -compile(export_all).
 
@@ -113,8 +109,7 @@ vnode(Size) ->
                         oneof(
                           [{call, ?MODULE, put, [V, T, Vs]},
                            {call, ?MODULE, mput, [V, T, Vs]},
-                           {call, ?MODULE, repair, [V, T, Vs]}])))  || Size > 0]
-           )).
+                           {call, ?MODULE, repair, [V, T, Vs]}])))  || Size > 0])).
 %%%-------------------------------------------------------------------
 %%% Properties
 %%%-------------------------------------------------------------------
@@ -255,6 +250,3 @@ cleanup(_) ->
     meck:unload(riak_core_metadata),
     meck:unload(dalmatiner_opt),
     ok.
-
--endif.
--endif.
