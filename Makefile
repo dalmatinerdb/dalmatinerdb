@@ -28,7 +28,7 @@ qc:
 
 rel: all
 	-rm -r rel/dalmatinerdb 2> /dev/null || true
-	$(REBAR) as prod generate
+	$(REBAR) as prod release
 
 devrel: dev1 dev2 dev3 dev4
 
