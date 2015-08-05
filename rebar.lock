@@ -80,7 +80,7 @@
   0},
  {<<"mstore">>,
   {git,"https://github.com/DalmatinerDB/mstore.git",
-       {ref,"3187c387d7edab520c3054d3462a9013035a9325"}},
+       {ref,"922def8b67fe50979b2c82a67d6c61fa3773353e"}},
   0},
  {<<"mmath">>,
   {git,"https://github.com/DalmatinerDB/mmath.git",

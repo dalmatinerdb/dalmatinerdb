@@ -88,7 +88,10 @@ get(Preflist, ReqID, {Bucket, Metric}, {Time, Count}) ->
 
 
 init([Partition]) ->
+    ok = dalmatiner_vacuum:register(),
     erlang:send_after(?TICK, self(), tick),
+    {Mega, Secs, MicroSecs} = now(),
+    Timestamp = ((Mega*1000000 + Secs) * 1000000 + MicroSecs) div 1000,
     process_flag(trap_exit, true),
     random:seed(now()),
     P = list_to_atom(integer_to_list(Partition)),
@@ -107,6 +110,7 @@ init([Partition]) ->
     FoldWorkerPool = {pool, metric_worker, WorkerPoolSize, []},
     {ok, IO} = metric_io:start_link(Partition),
     {ok, #state{
+            now = Timestamp,
             partition = Partition,
             node = node(),
             tbl = ets:new(P, [public, ordered_set]),
@@ -306,6 +310,13 @@ handle_coverage(list, _KS, Sender, State = #state{io = IO}) ->
                 end,
     {async, {fold, AsyncWork, FinishFun}, Sender, State};
 
+handle_coverage({update_ttl, Bucket}, _KeySpaces, _Sender,
+                State = #state{partition=P, node=N,
+                               lifetimes = Lifetimes}) ->
+    LT1 = btrie:erase(Bucket, Lifetimes),
+    Reply = {ok, undefined, {P, N}, ok},
+    {reply, Reply, State#state{lifetimes = LT1}};
+
 handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
                 State = #state{partition=P, node=N, tbl=T, io = IO}) ->
     ets:foldl(fun({{Bkt, Metric}, Start, Size, _, Array}, _)
@@ -321,12 +332,27 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
     Reply = {ok, undefined, {P, N}, R},
     {reply, Reply, State}.
 
-
 handle_info(tick, State = #state{}) ->
     {Mega, Secs, MicroSecs} = now(),
     Timestamp = ((Mega*1000000 + Secs) * 1000000 + MicroSecs) div 1000,
     erlang:send_after(?TICK, self(), tick),
     {ok, State#state{now = Timestamp}};
+
+handle_info(vacuum, State = #state{io = IO, partition = P}) ->
+    lager:info("[vaccum] Starting vaccum for partution ~p.", [P]),
+    {ok, Bs} = metric_io:buckets(IO),
+    State1 =
+        lists:foldl(fun (Bucket, SAcc) ->
+                            case expiery(Bucket, SAcc) of
+                                {infinity, SAcc1} ->
+                                    SAcc1;
+                                {Exp, SAcc1} ->
+                                    metric_io:delete(IO, Bucket, Exp),
+                                    SAcc1
+                            end
+                    end, State, btrie:fetch_keys(Bs)),
+    lager:info("[vaccum] Finalized vaccum for partution ~p.", [P]),
+    {ok, State1};
 
 handle_info({'EXIT', IO, normal}, State = #state{io = IO}) ->
     {ok, State};
@@ -416,7 +442,6 @@ do_put(Bucket, Metric, Time, Value,
 reply(Reply, {_, ReqID, _} = Sender, #state{node=N, partition=P}) ->
     riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Reply}).
 
-
 valid_ts(TS, Bucket, State) ->
     case expiery(Bucket, State) of
         %% TODO:
@@ -429,7 +454,7 @@ valid_ts(TS, Bucket, State) ->
         {_, State1} ->
             {true, State1}
     end.
-%% Return the latest point we'd ever want to save This is more strict
+%% Return the latest point we'd ever want to save. This is more strict
 %% then the expiration we do on the data but it is strong enough for
 %% our guarantee.
 expiery(Bucket, State = #state{now = Now}) ->
@@ -438,7 +463,7 @@ expiery(Bucket, State = #state{now = Now}) ->
             {infinity, State1};
         {LT, State1} ->
             {Res, State2} = get_resolution(Bucket, State1),
-            Exp = (Now - LT) / Res,
+            Exp = (Now - LT) div Res,
             {Exp, State2}
     end.
 
