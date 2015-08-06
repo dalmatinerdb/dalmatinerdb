@@ -60,7 +60,7 @@ register() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    Tick = case application:get_env(dalmatiner_vaccum, interval) of
+    Tick = case application:get_env(dalmatiner_vacuum, interval) of
                    {ok, FS} ->
                    FS;
                _ ->
