@@ -28,7 +28,7 @@ set(Ks, Val) ->
     case is_valid(Ks, Val) of
         {true, V1} ->
             [Prefix, SubPrefix, Key] =
-                [list_to_atom(K) || K <- Ks],
+                [ensure_bin(K) || K <- Ks],
             set(Prefix, SubPrefix, Key, V1);
         E ->
             E
@@ -61,6 +61,7 @@ opts() ->
               {"resolution", integer},
               {"cache_points", integer},
               {"points_per_file", integer},
+              {"lifetime", integer},
               {"chash_size", integer}]}]}].
 
 get_type(Ks) ->

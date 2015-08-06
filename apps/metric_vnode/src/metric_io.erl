@@ -12,8 +12,8 @@
 
 %% API
 -export([start_link/1,
-         empty/1, fold/3, delete/1, close/1,
-         buckets/1, metrics/2, metrics/3, delete/2,
+         empty/1, fold/3, delete/1, delete/2, delete/3, close/1,
+         buckets/1, metrics/2, metrics/3,
          read/7, write/5, write/6]).
 
 %% gen_server callbacks
@@ -86,6 +86,9 @@ close(Pid) ->
 
 delete(Pid, Bucket) ->
     gen_server:call(Pid, {delete, Bucket}).
+
+delete(Pid, Bucket, Before) ->
+    gen_server:call(Pid, {delete, Bucket, Before}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -299,6 +302,18 @@ handle_call({delete, Bucket}, _From,
                           mstore:delete(MSet),
                           file:del_dir([Dir, $/, Bucket]),
                           MStore = gb_trees:delete(Bucket, S1#state.mstore),
+                          {ok, S1#state{mstore = MStore}};
+                      _ ->
+                          {not_found, State}
+                  end,
+    {reply, R, State1};
+
+handle_call({delete, Bucket, Before}, _From, State) ->
+    {R, State1} = case get_set(Bucket, State) of
+                      {ok, {{Res, MSet}, S1}} ->
+                          {ok, MSet1} = mstore:delete(MSet, Before),
+                          V = {Res, MSet1},
+                          MStore = gb_trees:enter(Bucket, V, S1#state.mstore),
                           {ok, S1#state{mstore = MStore}};
                       _ ->
                           {not_found, State}

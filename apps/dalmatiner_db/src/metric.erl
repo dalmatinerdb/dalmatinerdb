@@ -8,10 +8,11 @@
          ppf/1,
          list/0,
          list/1,
-         list/2
+         list/2,
+         update_ttl/2
         ]).
 
--ignore_xref([get/4, put/4]).
+-ignore_xref([update_ttl/2, get/4, put/4]).
 
 -define(WEEK, 604800). %% Seconds in a week.
 
@@ -52,6 +53,10 @@ get(Bucket, Metric, PPF, Time, Count) when
       get, dalmatiner_read_fsm, start,
       [{metric_vnode, metric}, get, {Bucket, {Metric, Time div PPF}},
        {Time, Count}]).
+
+update_ttl(Bucket, TTL) ->
+    dalmatiner_opt:set([<<"buckets">>, Bucket, <<"lifetime">>], TTL),
+    metric_coverage:start({update_times, Bucket}).
 
 list() ->
     folsom_metrics:histogram_timed_update(
