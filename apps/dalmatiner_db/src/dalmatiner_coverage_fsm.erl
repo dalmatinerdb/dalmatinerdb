@@ -39,7 +39,6 @@
                 r,
                 n,
                 preflist,
-                start,
                 num_r=0,
                 size,
                 timeout=?DEFAULT_TIMEOUT,
@@ -95,7 +94,6 @@ init([ReqId, {VNode, System}, Op, From, Entity, Val]) ->
                 val=Val,
                 r=R,
                 n=N,
-                start=now(),
                 vnode=VNode,
                 system=System,
                 entity=Entity},
@@ -184,4 +182,4 @@ terminate(_Reason, _SN, _SD) ->
 %%%===================================================================
 
 mk_reqid() ->
-    erlang:phash2(erlang:now()).
+    erlang:unique_integer().

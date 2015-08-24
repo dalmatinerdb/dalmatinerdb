@@ -55,7 +55,6 @@
                 op :: atom(),
                 w,
                 n,
-                start,
                 vnode,
                 system,
                 cordinator :: node(),
@@ -93,7 +92,7 @@ write({VNode, System}, Op, User, Val) ->
     end.
 
 mk_reqid() ->
-    erlang:phash2(erlang:now()).
+    erlang:unique_integer().
 
 %%%===================================================================
 %%% States
@@ -109,7 +108,6 @@ init([{VNode, System}, ReqID, From, Entity, Op, Val]) ->
                 from=From,
                 entity=Entity,
                 op=Op,
-                start=now(),
                 vnode=VNode,
                 system=System,
                 cordinator=node(),

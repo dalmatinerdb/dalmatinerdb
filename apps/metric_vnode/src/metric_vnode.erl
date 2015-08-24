@@ -90,10 +90,11 @@ get(Preflist, ReqID, {Bucket, Metric}, {Time, Count}) ->
 init([Partition]) ->
     ok = dalmatiner_vacuum:register(),
     erlang:send_after(?TICK, self(), tick),
-    {Mega, Secs, MicroSecs} = now(),
-    Timestamp = ((Mega*1000000 + Secs) * 1000000 + MicroSecs) div 1000,
+    Timestamp = erlang:system_time(milli_seconds),
     process_flag(trap_exit, true),
-    random:seed(now()),
+    random:seed(erlang:phash2([node()]),
+                erlang:monotonic_time(),
+                erlang:unique_integer()),
     P = list_to_atom(integer_to_list(Partition)),
     CT = case application:get_env(metric_vnode, cache_points) of
              {ok, V} ->
@@ -333,8 +334,7 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
     {reply, Reply, State}.
 
 handle_info(tick, State = #state{}) ->
-    {Mega, Secs, MicroSecs} = now(),
-    Timestamp = ((Mega*1000000 + Secs) * 1000000 + MicroSecs) div 1000,
+    Timestamp = erlang:system_time(milli_seconds),
     erlang:send_after(?TICK, self(), tick),
     {ok, State#state{now = Timestamp}};
 
