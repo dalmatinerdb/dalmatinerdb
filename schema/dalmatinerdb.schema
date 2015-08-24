@@ -38,7 +38,7 @@
 %% @doc How long data is kept by default
 {mapping, "lifetime", "metric_vnode.lifetime",
  [{datatype, [integer, {atom, infinity}]},
-  {default, infinity}]}.
+  {default, "infinity"}]}.
 
 %% @doc How often a pertition will be picked to be vacuumed.
 {mapping, "vacuum_interval", "dalmatiner_vacuum.interval",
