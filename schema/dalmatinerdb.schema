@@ -35,15 +35,21 @@
  [{datatype, integer},
   {default, 120}]}.
 
-%% @doc The path data gets stored into.
-{mapping, "platform_data_dir", "riak_core.platform_data_dir",
- [{default, "{{platform_data_dir}}"},
-  {datatype, string}]}.
+%% @doc How long data is kept by default
+{mapping, "lifetime", "metric_vnode.lifetime",
+ [{datatype, [integer, {atom, infinity}]},
+  {default, infinity}]}.
 
 %% @doc How often a pertition will be picked to be vacuumed.
 {mapping, "vacuum_interval", "dalmatiner_vacuum.interval",
  [{default, "1h"},
   {datatype, {duration, ms}}]}.
+
+%% @doc The path data gets stored into.
+{mapping, "platform_data_dir", "riak_core.platform_data_dir",
+ [{default, "{{platform_data_dir}}"},
+  {datatype, string}]}.
+
 
 %% @doc Default ring creation size.  Make sure it is a power of 2,
 %% e.g. 16, 32, 64, 128, 256, 512 etc
@@ -52,7 +58,7 @@
 %% the manual at http://bit.ly/1ciKRkS
 {mapping, "ring_size", "riak_core.ring_creation_size",
  [{datatype, integer},
-  {default, 8},
+  {default, 64},
   {commented, 64},
   {validators, ["ring_size"]}
  ]}.
