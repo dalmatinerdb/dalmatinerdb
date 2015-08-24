@@ -1,12 +1,15 @@
 %% @doc Interface for dalmatiner-admin commands.
 -module(dalmatiner_console).
--export([join/1,
+-export([
+         join/1,
          leave/1,
          remove/1,
          down/1,
          reip/1,
          staged_join/1,
-         ringready/1]).
+         ringready/1,
+         update_ttl/1
+        ]).
 
 -ignore_xref([
               join/1,
@@ -15,8 +18,14 @@
               down/1,
               reip/1,
               staged_join/1,
-              ringready/1
+              ringready/1,
+              update_ttl/1
              ]).
+
+update_ttl([Buckets, TTLs]) ->
+    TTL = integer_to_list(TTLs),
+    Bucket = list_to_binary(Buckets),
+    metric:update_ttl(Bucket, TTL).
 
 join([NodeStr]) ->
     join(NodeStr, fun riak_core:join/1,
