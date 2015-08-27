@@ -1,6 +1,6 @@
 REBAR = $(shell pwd)/rebar3
 
-.PHONY: rel stagedevrel package version all
+.PHONY: rel stagedevrel package version all tree
 
 all: cp-hooks compile
 
@@ -97,3 +97,8 @@ cleanplt:
 	@echo
 	sleep 5
 	rm $(COMBO_PLT)
+
+tree:
+	rebar3 tree | grep '|' | sed 's/ (.*//' > tree
+tree-diff: tree
+	git diff test -- tree

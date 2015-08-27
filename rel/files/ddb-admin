@@ -95,6 +95,10 @@ run()
 
 # Check the first argument for instructions
 case "$1" in
+    ttl)
+        shift
+        run dalmatiner_console update_ttl $@
+        ;;
     join)
         shift
         run dalmatiner_console join $@
