@@ -83,7 +83,7 @@ do_send(Socket, Transport, B, M, T, C) ->
     Transport:setopts(Socket, [{packet, 0}]),
     %% TODO: make this math for configureable length
     %% 8 (resolution + points)
-    Size = 8 + (C * 9),
+    Size = 8 + (C * 8),
     Padding = mmath_bin:empty(C0 - mmath_bin:length(Points)),
     Transport:send(Socket, <<Size:32/integer, Resolution:64/integer,
                              Points/binary, Padding/binary>>),
