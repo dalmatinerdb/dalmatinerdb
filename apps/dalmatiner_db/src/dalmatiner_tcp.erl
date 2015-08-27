@@ -79,15 +79,24 @@ do_send(Socket, Transport, B, M, T, C) ->
     PPF = metric:ppf(B),
     [{T0, C0} | Splits] = mstore:make_splits(T, C, PPF),
     {ok, Resolution, Points} = metric:get(B, M, PPF, T0, C0),
-    Transport:send(Socket, <<Resolution:64/integer, Points/binary>>),
+    %% Set the socket to no package control so we can do that ourselfs.
+    Transport:setopts(Socket, [{packet, 0}]),
+    %% TODO: make this math for configureable length
+    %% 8 (resolution + points)
+    Size = 8 + (C * 9),
+    Padding = mmath_bin:empty(C0 - mmath_bin:length(Points)),
+    Transport:send(Socket, <<Size:32/integer, Resolution:64/integer,
+                             Points/binary, Padding/binary>>),
     send_parts(Socket, Transport, PPF, B, M, Splits).
 
-send_parts(_Socket, _Transport, _PPF, _B, _M, []) ->
-    ok;
+send_parts(Socket, Transport, _PPF, _B, _M, []) ->
+    %% Reset the socket to 4 byte packages
+    Transport:setopts(Socket, [{packet, 4}]);
 
 send_parts(Socket, Transport, PPF, B, M, [{T, C} | Splits]) ->
     {ok, _Resolution, Points} = metric:get(B, M, PPF, T, C),
-    Transport:send(Socket, <<Points/binary>>),
+    Padding = mmath_bin:empty(C - mmath_bin:length(Points)),
+    Transport:send(Socket, <<Points/binary, Padding/binary>>),
     send_parts(Socket, Transport, PPF, B, M, Splits).
 
 -spec stream_loop(port(), term(), stream_state(),
@@ -149,7 +158,6 @@ stream_loop(Socket, Transport, State = #sstate{max_diff = D},
             bkt_dict:flush(State#sstate.dict),
             ok = Transport:close(Socket)
     end.
-
 
 -spec batch_loop(port(), term(), stream_state(), non_neg_integer(),
                  {dproto_tcp:batch_message(), binary()}) ->
