@@ -1,8 +1,11 @@
 REBAR = $(shell pwd)/rebar3
 
-.PHONY: rel stagedevrel package version all
+.PHONY: rel stagedevrel package version all tree
 
-all: cp-hooks compile
+all: cp-hooks compile update
+
+update:
+	$(REBAR) update
 
 cp-hooks:
 	cp hooks/* .git/hooks
@@ -13,7 +16,7 @@ version:
 version_header: version
 	@echo "-define(VERSION, <<\"$(shell cat dalmatiner_db.version)\">>)." > apps/dalmatiner_db/include/dalmatiner_db_version.hrl
 
-compile: version_header
+compile: update version_header
 	$(REBAR) compile
 
 clean:
@@ -102,3 +105,6 @@ rebar.lock:
 
 tree: rebar.lock
 	rebar3 tree | grep -v '=' | sed 's/ (.*//' > tree
+
+tree-diff: tree
+	git diff test -- tree
