@@ -28,7 +28,7 @@ ttl([Buckets]) ->
     Res = dalmatiner_opt:resolution(Bucket),
     TTL = dalmatiner_opt:lifetime(Bucket),
     TTLs = cuttlefish_datatypes:to_string(TTL * Res, {duration, ms}),
-    io:format("~p~n", [TTLs]);
+    io:format("~s~n", [TTLs]);
 
 ttl([Buckets, "infinity"]) ->
     Bucket = list_to_binary(Buckets),
