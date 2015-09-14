@@ -8,7 +8,8 @@
          reip/1,
          staged_join/1,
          ringready/1,
-         ttl/1
+         ttl/1,
+         buckets/1
         ]).
 
 -ignore_xref([
@@ -19,9 +20,14 @@
               reip/1,
               staged_join/1,
               ringready/1,
-              ttl/1
+              ttl/1,
+              buckets/1
              ]).
 
+buckets([]) ->
+    {ok, Bkts} = metric:list(),
+    [io:format("* ~s~n", [B]) || B <- Bkts],
+    ok.
 
 ttl([Buckets]) ->
     Bucket = list_to_binary(Buckets),

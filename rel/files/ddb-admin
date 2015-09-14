@@ -99,6 +99,10 @@ case "$1" in
         shift
         run dalmatiner_console ttl $@
         ;;
+    buckets)
+        shift
+        run dalmatiner_console buckets $@
+        ;;
     join)
         shift
         run dalmatiner_console join $@
@@ -188,8 +192,9 @@ case "$1" in
         echo "                 services | wait-for-service | member-status |"
         echo "                 ring-status }"
         echo
-        echo " ttl <bucket>         - Shows the TTL of a bucket"
-        echo " ttl <bucket> <TTL>   - sets the lifetime of a bucket, either in the"
+        echo " buckets              - List all buckets"
+        echo " ttl <bucket>         - Show the TTL of a bucket"
+        echo " ttl <bucket> <TTL>   - Set the lifetime of a bucket, either in the"
         echo "                        buckets native time b using a simple number or"
         echo "                        in relative time by using a suffix like 'w' 's' 'h'."
         exit 1
