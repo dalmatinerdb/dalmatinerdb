@@ -11,7 +11,7 @@
 -type bkt_dict() :: #bkt_dict{}.
 
 new(Bkt, N, W) ->
-    PPF = metric:ppf(Bkt),
+    PPF = dalmatiner_opt:ppf(Bkt),
     Dict = dict:new(),
     update_chash(#bkt_dict{bucket = Bkt, ppf = PPF, dict = Dict, n = N, w = W}).
 

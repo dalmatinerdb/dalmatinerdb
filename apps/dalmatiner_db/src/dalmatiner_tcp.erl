@@ -76,7 +76,7 @@ loop(Socket, Transport, State) ->
             ok = Transport:close(Socket)
     end.
 do_send(Socket, Transport, B, M, T, C) ->
-    PPF = metric:ppf(B),
+    PPF = dalmatiner_opt:ppf(B),
     [{T0, C0} | Splits] = mstore:make_splits(T, C, PPF),
     {ok, Resolution, Points} = metric:get(B, M, PPF, T0, C0),
     %% Set the socket to no package control so we can do that ourselfs.

@@ -97,7 +97,7 @@ run()
 case "$1" in
     ttl)
         shift
-        run dalmatiner_console update_ttl $@
+        run dalmatiner_console ttl $@
         ;;
     join)
         shift
@@ -187,6 +187,11 @@ case "$1" in
         echo "Usage: $SCRIPT { join | leave | reip | ringready | remove |"
         echo "                 services | wait-for-service | member-status |"
         echo "                 ring-status }"
+        echo
+        echo " ttl <bucket>         - Shows the TTL of a bucket"
+        echo " ttl <bucket> <TTL>   - sets the lifetime of a bucket, either in the"
+        echo "                        buckets native time b using a simple number or"
+        echo "                        in relative time by using a suffix like 'w' 's' 'h'."
         exit 1
         ;;
 esac
