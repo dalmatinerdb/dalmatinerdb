@@ -63,7 +63,7 @@
   3},
  {<<"mmath">>,
   {git,"https://github.com/DalmatinerDB/mmath.git",
-       {ref,"59ecbbfe2fc2a23d7c5c0c5a4a5a6236c9c58199"}},
+       {ref,"99c9610acc69faea7876f54a7fc0d7225ad1c96c"}},
   0},
  {<<"mstore">>,
   {git,"https://github.com/DalmatinerDB/mstore.git",
