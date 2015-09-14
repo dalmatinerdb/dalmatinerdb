@@ -4,7 +4,9 @@
 -export([valid_type/2]).
 -endif.
 
--export([get/5, set/2]).
+-define(WEEK, 604800). %% Seconds in a week.
+
+-export([get/5, set/2, resolution/1, lifetime/1, ppf/1]).
 -ignore_xref([get/5, set/2]).
 
 get(Prefix, SubPrefix, Key, {EnvApp, EnvKey}, Dflt) ->
@@ -50,6 +52,22 @@ is_valid(Ks, V) ->
         E ->
             E
     end.
+
+
+resolution(Bucket) ->
+    dalmatiner_opt:get(
+      <<"buckets">>, Bucket, <<"resolution">>,
+      {metric_vnode, resolution}, 1000).
+
+lifetime(Bucket) ->
+    dalmatiner_opt:get(
+      <<"buckets">>, Bucket, <<"lifetime">>,
+      {metric_vnode, lifetime}, infinity).
+
+ppf(Bucket) ->
+    dalmatiner_opt:get(<<"buckets">>, Bucket,
+                       <<"points_per_file">>,
+                       {metric_vnode, points_per_file}, ?WEEK).
 
 %%%===================================================================
 %%% Internal Functions
@@ -153,3 +171,4 @@ ensure_bin(B) when is_binary(B) ->
     B;
 ensure_bin(O) ->
     list_to_binary(ensure_str(O)).
+

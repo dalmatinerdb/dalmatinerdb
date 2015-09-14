@@ -472,9 +472,7 @@ get_resolution(Bucket, State = #state{resolutions = Ress}) ->
         {ok, Resolution} ->
             {Resolution, State};
         error ->
-            Resolution = dalmatiner_opt:get(
-                           <<"buckets">>, Bucket, <<"resolution">>,
-                           {metric_vnode, resolution}, 1000),
+            Resolution = dalmatiner_opt:resolution(Bucket),
             Ress1 = btrie:store(Bucket, Resolution, Ress),
             {Resolution, State#state{resolutions = Ress1}}
     end.
@@ -484,9 +482,7 @@ get_lifetime(Bucket, State = #state{lifetimes = Lifetimes}) ->
         {ok, Resolution} ->
             {Resolution, State};
         error ->
-            Resolution = dalmatiner_opt:get(
-                           <<"buckets">>, Bucket, <<"lifetime">>,
-                           {metric_vnode, lifetime}, infinity),
+            Resolution = dalmatiner_opt:lifetime(Bucket),
             Lifetimes1 = btrie:store(Bucket, Resolution, Lifetimes),
             {Resolution, State#state{lifetimes = Lifetimes1}}
     end.

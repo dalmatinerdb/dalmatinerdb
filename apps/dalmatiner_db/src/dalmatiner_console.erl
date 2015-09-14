@@ -8,7 +8,7 @@
          reip/1,
          staged_join/1,
          ringready/1,
-         update_ttl/1
+         ttl/1
         ]).
 
 -ignore_xref([
@@ -19,12 +19,32 @@
               reip/1,
               staged_join/1,
               ringready/1,
-              update_ttl/1
+              ttl/1
              ]).
 
-update_ttl([Buckets, TTLs]) ->
-    TTL = integer_to_list(TTLs),
+
+ttl([Buckets]) ->
     Bucket = list_to_binary(Buckets),
+    Res = dalmatiner_opt:resolution(Bucket),
+    TTL = dalmatiner_opt:lifetime(Bucket),
+    TTLs = cuttlefish_datatypes:to_string(TTL * Res, {duration, ms}),
+    io:format("~p~n", [TTLs]);
+
+ttl([Buckets, "infinity"]) ->
+    Bucket = list_to_binary(Buckets),
+    metric:update_ttl(Bucket, infinity);
+
+
+ttl([Buckets, TTLs]) ->
+    Bucket = list_to_binary(Buckets),
+    TTL = try
+              integer_to_list(TTLs)
+          catch
+              _:_ ->
+                  TTLms = cuttlefish_datatypes:from_string(TTLs, {duration, ms}),
+                  Res = dalmatiner_opt:resolution(Bucket),
+                  TTLms div Res
+          end,
     metric:update_ttl(Bucket, TTL).
 
 join([NodeStr]) ->

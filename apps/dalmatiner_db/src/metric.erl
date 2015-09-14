@@ -5,7 +5,6 @@
          mput/3,
          get/4,
          get/5,
-         ppf/1,
          list/0,
          list/1,
          list/2,
@@ -14,7 +13,6 @@
 
 -ignore_xref([update_ttl/2, get/4, put/4]).
 
--define(WEEK, 604800). %% Seconds in a week.
 
 
 mput(Nodes, Acc, W) ->
@@ -30,7 +28,7 @@ mput(Nodes, Acc, W) ->
 put(Bucket, Metric, Time, Value) ->
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, W} = application:get_env(dalmatiner_db, w),
-    PPF = ppf(Bucket),
+    PPF = dalmatiner_opt:ppf(Bucket),
     folsom_metrics:histogram_timed_update(
       put,
       fun() ->
@@ -40,12 +38,8 @@ put(Bucket, Metric, Time, Value) ->
 put(Bucket, Metric, PPF, Time, Value, N, W) ->
     do_put(Bucket, Metric, PPF, Time, Value, N, W).
 
-ppf(Bucket) ->
-    dalmatiner_opt:get(<<"buckets">>, Bucket,
-                       <<"points_per_file">>,
-                       {metric_vnode, points_per_file}, ?WEEK).
 get(Bucket, Metric, Time, Count) ->
-    get(Bucket, Metric, ppf(Bucket), Time, Count).
+    get(Bucket, Metric, dalmatiner_opt:ppf(Bucket), Time, Count).
 
 get(Bucket, Metric, PPF, Time, Count) when
       Time div PPF =:= (Time + Count - 1) div PPF->
