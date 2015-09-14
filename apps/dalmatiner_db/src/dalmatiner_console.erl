@@ -26,7 +26,7 @@
 
 buckets([]) ->
     {ok, Bkts} = metric:list(),
-    [io:format("* ~s~n", [B]) || B <- Bkts],
+    [io:format("~s~n", [B]) || B <- Bkts],
     ok.
 
 ttl([Buckets]) ->
