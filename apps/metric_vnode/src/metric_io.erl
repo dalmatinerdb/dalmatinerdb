@@ -237,32 +237,35 @@ fold_fun(Metric, Time, V,
               lacc = [{Time, V}, {T0, AccE} | AccL]}
     end.
 
+bucket_fold_fun({BucketDir, Bucket}, {AccIn, Fun}) ->
+    {ok, MStore} = mstore:open(BucketDir),
+    Acc1 = #facc{hacc = AccIn,
+                 bucket = Bucket,
+                 acc_fun = Fun},
+    AccOut = mstore:fold(MStore, fun fold_fun/4, Acc1),
+    mstore:close(MStore),
+    case AccOut of
+        #facc{lacc=[], hacc=HAcc} ->
+            {HAcc, Fun};
+        #facc{bucket = Bucket, metric = Metric,
+              lacc=AccL, hacc=HAcc}->
+            {Fun({Bucket, Metric}, lists:reverse(AccL), HAcc), Fun}
+    end.
+
 handle_call({fold, Fun, Acc0}, _From,
             State = #state{partition = Partition}) ->
     DataDir = application:get_env(riak_core, platform_data_dir, "data"),
     PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
     case file:list_dir(PartitionDir) of
         {ok, Buckets} ->
+            Buckets1 = [{[PartitionDir, $/, BucketS], list_to_binary(BucketS)}
+                        || BucketS <- Buckets],
             AsyncWork =
                 fun() ->
-                        lists:foldl(
-                          fun(BucketS, AccIn) ->
-                                  Bucket = list_to_binary(BucketS),
-                                  BucketDir = [PartitionDir, $/, BucketS],
-                                  {ok, MStore} = mstore:open(BucketDir),
-                                  Acc1 = #facc{hacc = AccIn,
-                                               bucket = Bucket,
-                                               acc_fun = Fun},
-                                  AccOut = mstore:fold(MStore, fun fold_fun/4, Acc1),
-                                  mstore:close(MStore),
-                                  case AccOut of
-                                      #facc{lacc=[], hacc=HAcc} ->
-                                          HAcc;
-                                      #facc{bucket = Bucket, metric = Metric,
-                                            lacc=AccL, hacc=HAcc}->
-                                          Fun({Bucket, Metric}, lists:reverse(AccL), HAcc)
-                                  end
-                          end, Acc0, Buckets)
+                        {Out, _} =
+                            lists:foldl(fun bucket_fold_fun/2,
+                                        {Acc0, Fun}, Buckets1),
+                        Out
                 end,
             {reply, {ok, AsyncWork}, State};
         _ ->
