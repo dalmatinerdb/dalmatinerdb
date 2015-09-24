@@ -1,7 +1,6 @@
 -module(metric_vnode_eqc).
 
 -include_lib("riak_core/include/riak_core_vnode.hrl").
-
 -include_lib("mmath/include/mmath.hrl").
 -include_lib("eqc/include/eqc.hrl").
 
