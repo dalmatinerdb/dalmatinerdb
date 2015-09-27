@@ -1,7 +1,4 @@
-                                         "https://github.com/basho/cluster_info.git",
-                                         {ref,
-                                          "76c73fcac58c32f1603f8a1b98d7c441da92fa91"}})
-[0m├─ cluster_info─2.0.3
+[0m├─ cluster_info─2.0.4
 ├─ cuttlefish─2.0.0+build.479.reff5f6fdc
 │  ├─ getopt─0.4.3
 │  └─ neotoma─1.7.2
@@ -15,7 +12,7 @@
 ├─ lager─2.1.1
 │  └─ goldrush─0.1.6
 ├─ metric_vnode─1
-├─ mmath─0.1.13
+├─ mmath─0.1.14
 ├─ mstore─0.1.8
 ├─ ranch─1.1.0
 ├─ recon─2.2.1
