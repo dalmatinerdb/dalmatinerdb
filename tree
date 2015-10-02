@@ -4,7 +4,7 @@
 │  └─ neotoma─1.7.2
 ├─ dalmatiner_db─1
 ├─ dalmatiner_vacuum─0.1.0
-├─ dproto─0.1.10
+├─ dproto─0.1.12
 ├─ edown─0.7+build.147.refc770057
 ├─ eper─0.94.0
 ├─ fifo_utils─0.1.13
@@ -12,8 +12,8 @@
 ├─ lager─2.1.1
 │  └─ goldrush─0.1.6
 ├─ metric_vnode─1
-├─ mmath─0.1.14
-├─ mstore─0.1.8
+├─ mmath─0.1.15
+├─ mstore─0.1.9
 ├─ ranch─1.1.0
 ├─ recon─2.2.1
 ├─ riak_core─fifo-0.4.4+build.1799.ref088de5d
