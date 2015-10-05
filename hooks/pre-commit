@@ -7,7 +7,7 @@
 #
 # To enable this hook, rename this file to "pre-commit".
 
-if [ "x$SKIP_TEST" == "x1" ]
+if [ "x$SKIP" == "x1" ]
 then
   exit 0
 fi

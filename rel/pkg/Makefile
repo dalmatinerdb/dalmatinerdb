@@ -3,9 +3,7 @@ COMPONENT_INTERNAL=ddb
 COMPONENT=dalmatinerdb
 DEPS="erlang" "coreutils" "sudo"
 
-
-include ../../_build/prod/lib/fifo_utils/priv/pkg.mk
-
+include ../../_build/default/lib/fifo_utils/priv/pkg.mk
 
 .PHONY: prepare
 
