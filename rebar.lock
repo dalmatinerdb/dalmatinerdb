@@ -41,7 +41,7 @@
   1},
  {<<"fifo_utils">>,
   {git,"https://github.com/project-fifo/fifo_utils.git",
-       {ref,"10b4c26af2de4fe8bc729e5dc5bc57c6a2b96997"}},
+       {ref,"138548e7fb219ff9fc5da219f30c4af32b7f4ab3"}},
   0},
  {<<"folsom">>,
   {git,"git://github.com/basho/folsom.git",

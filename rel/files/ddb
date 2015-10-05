@@ -8,10 +8,8 @@ RUNNER_BASE_DIR=${RUNNER_SCRIPT_DIR%/*}
 RUNNER_ETC_DIR=$RUNNER_BASE_DIR/etc
 RUNNER_LOG_DIR={{log_path}}
 # Note the trailing slash on $PIPE_DIR/
-PIPE_DIR=/tmp/dalmatinerdb/
+PIPE_DIR=/tmp/{{run_user}}/
 RUNNER_USER={{run_user}}
-
-ulimit -n {{ulimit}}
 
 # Make sure this script is running as the appropriate user
 if [ ! -z "$RUNNER_USER" ] && [ `whoami` != "$RUNNER_USER" ]; then
@@ -48,7 +46,7 @@ else
         echo "  -sname is not supported."
         exit 1
     fi
-    COOKIE_ARG=`grep -e '-setcookie' $RUNNER_ETC_DIR/vm.args 2> /dev/null`
+    COOKIE_ARG=`egrep '-setcookie' $RUNNER_ETC_DIR/vm.args 2> /dev/null`
     if [ -z "$COOKIE" ]; then
         echo "vm.args needs to have a -setcookie parameter."
         exit 1
@@ -73,7 +71,7 @@ NODETOOL="$ERTS_PATH/escript $ERTS_PATH/nodetool $NAME_ARG $COOKIE_ARG"
 case "$1" in
     start)
         # Make sure there is not already a node running
-        RES=`$NODETOOL ping`
+        RES=`$NODETOOL ping 2> /dev/null`
         if [ "$RES" = "pong" ]; then
             echo "Node is already running!"
             exit 1
@@ -146,7 +144,7 @@ case "$1" in
             exit 1
         fi
         case "$1" in
-            console)        BOOTFILE=dalmatinerdb ;;
+            console)        BOOTFILE=$SCRIPT ;;
             console_clean)  BOOTFILE=start_clean ;;
         esac
         # Setup beam-required vars
