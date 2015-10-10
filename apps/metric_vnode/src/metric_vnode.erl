@@ -2,6 +2,8 @@
 -behaviour(riak_core_vnode).
 
 -include_lib("riak_core/include/riak_core_vnode.hrl").
+-include_lib("mmath/include/mmath.hrl").
+
 
 -export([start_vnode/1,
          init/1,
@@ -20,7 +22,6 @@
          handle_info/2,
          handle_exit/3]).
 
--define(WEEK, 604800). %% Seconds in a week.
 -export([mput/3, put/5, get/4]).
 
 -ignore_xref([
@@ -36,52 +37,36 @@
 -record(state, {
           partition,
           node,
-          mstore=gb_trees:empty(),
           tbl,
           ct,
-          dir
+          io,
+          now,
+          resolutions = btrie:new(),
+          lifetimes  = btrie:new()
          }).
 
 -define(MASTER, metric_vnode_master).
+-define(MAX_Q_LEN, 20).
+-define(TICK, 1000).
+-define(VAC, 1000*60*60*2).
 
 %% API
 start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
-init([Partition]) ->
-    P = list_to_atom(integer_to_list(Partition)),
-    CT = case application:get_env(metric_vnode, cache_points) of
-             {ok, V} ->
-                 V;
-             _ ->
-                 10
-         end,
-    DataDir = case application:get_env(riak_core, platform_data_dir) of
-                  {ok, DD} ->
-                      DD;
-                  _ ->
-                      "data"
-              end,
-    PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
-    {ok, #state { partition = Partition,
-                  node = node(),
-                  tbl = ets:new(P, [public, ordered_set]),
-                  ct = CT,
-                  dir = PartitionDir
-                }}.
-
 repair(IdxNode, {Bucket, Metric}, {Time, Obj}) ->
-    riak_core_vnode_master:command(IdxNode,
-                                   {repair, Bucket, Metric, Time, Obj},
-                                   ignore,
-                                   ?MASTER).
+    riak_core_vnode_master:command(
+      IdxNode,
+      {repair, Bucket, Metric, Time, Obj},
+      ignore,
+      ?MASTER).
 
 
 put(Preflist, ReqID, Bucket, Metric, {Time, Values}) when is_list(Values) ->
-    put(Preflist, ReqID, Bucket, Metric, {Time, << <<1, V:64/signed-integer>> || V <- Values >>});
+    put(Preflist, ReqID, Bucket, Metric, {Time, << <<?INT:?TYPE_SIZE, V:?BITS/?INT_TYPE>> || V <- Values >>});
 
 put(Preflist, ReqID, Bucket, Metric, {Time, Value}) when is_integer(Value) ->
-    put(Preflist, ReqID, Bucket, Metric, {Time, <<1, Value:64/signed-integer>>});
+    put(Preflist, ReqID, Bucket, Metric, {Time, <<?INT:?TYPE_SIZE, Value:?BITS/?INT_TYPE>>});
 
 put(Preflist, ReqID, Bucket, Metric, {Time, Value}) ->
     riak_core_vnode_master:command(Preflist,
@@ -101,70 +86,170 @@ get(Preflist, ReqID, {Bucket, Metric}, {Time, Count}) ->
                                    {fsm, undefined, self()},
                                    ?MASTER).
 
-%% Sample command: respond to a ping
-handle_command(ping, _Sender, State) ->
-    {reply, {pong, State#state.partition}, State};
 
-handle_command({repair, Bucket, Metric, Time, Value}, _Sender, #state{tbl=T}=State) ->
-    State1 = case ets:lookup(T, {Bucket, Metric}) of
-                 [{{Bucket,Metric}, Start, _Time, V}] ->
-                     ets:delete(T, {Bucket,Metric}),
-                     do_write(Bucket, Metric, Start, V, State);
-                 _ ->
-                     State
-            end,
-    State2 = do_put(Bucket, Metric, Time, Value, State1),
-    {noreply, State2};
+init([Partition]) ->
+    ok = dalmatiner_vacuum:register(),
+    erlang:send_after(?TICK, self(), tick),
+    Timestamp = erlang:system_time(milli_seconds),
+    process_flag(trap_exit, true),
+    random:seed(erlang:phash2([node()]),
+                erlang:monotonic_time(),
+                erlang:unique_integer()),
+    P = list_to_atom(integer_to_list(Partition)),
+    CT = case application:get_env(metric_vnode, cache_points) of
+             {ok, V} ->
+                 V;
+             _ ->
+                 10
+         end,
+    WorkerPoolSize = case application:get_env(metric_vnode, async_workers) of
+                         {ok, Val} ->
+                             Val;
+                         undefined ->
+                             5
+                     end,
+    FoldWorkerPool = {pool, metric_worker, WorkerPoolSize, []},
+    {ok, IO} = metric_io:start_link(Partition),
+    {ok, #state{
+            now = Timestamp,
+            partition = Partition,
+            node = node(),
+            tbl = ets:new(P, [public, ordered_set]),
+            io = IO,
+            ct = CT
+           },
+     [FoldWorkerPool]}.
+
+
+%% Repair request are always full values not including non set values!
+handle_command({repair, Bucket, Metric, Time, Value}, _Sender,
+               #state{tbl=T} = State)
+  when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
+    Count = mmath_bin:length(Value),
+    case valid_ts(Time + Count, Bucket, State) of
+        {true, State1} ->
+            State2 = 
+                case ets:lookup(T, {Bucket, Metric}) of
+                    %% If we repear ona a place before the metric, well just write it!
+                    [{{Bucket, Metric}, Start, _Size, _Time, _Array}]
+                      when Time + Count < Start ->
+                        metric_io:write(State#state.io, Bucket, Metric, Time, Value),
+                        State1;
+                    %% The data is entirely behind the cache, so we flush the cache and use
+                    %% the repair request as new cache
+                    [{{Bucket, Metric}, Start, Size, _Time, Array}]
+                      when Start + Size > Time ->
+                        Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
+                        k6_bytea:delete(Array),
+                        ets:delete(T, {Bucket,Metric}),
+                        metric_io:write(State#state.io, Bucket, Metric, Start, Bin),
+                        do_put(Bucket, Metric, Time, Value, State);
+                    %% Now it gets tricky teh repair is intersecting with the cache
+                    %% this should never happen but it probably will, so it sucks!
+                    %% There is no sane way to merge the values if they intersect,
+                    %% however we know the following:
+                    %% 1) A repari request, based on how it is build, will never
+                    %%    contain unset values.
+                    %% 2) A cache can be an entirely empty value or contain empty
+                    %%    segments.
+                    %% Based on that the best aproach is to flush the cache and then
+                    %% also flush the repair request. So that nothing will be overwritten
+                    %% with a empty value.
+                    %%
+                    %% - Flusing the repair once could lead to emptyies in the cache
+                    %% overwriting non emptyies from the repair.
+                    %% - Flushing the cache and caching the repair could lead to new
+                    %% emplties in the new caceh from the repair now overwriting non
+                    %% empties from the privious cache.
+                    [{{Bucket, Metric}, Start, Size, _Time, Array}] ->
+                        Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
+                        k6_bytea:delete(Array),
+                        ets:delete(T, {Bucket,Metric}),
+                        metric_io:write(State#state.io, Bucket, Metric, Start, Bin),
+                        metric_io:write(State#state.io, Bucket, Metric, Time, Value),
+                        State1;
+                    %% If we had no privious cache we can safely cache the repair.
+                    [] ->
+                        do_put(Bucket, Metric, Time, Value, State)
+                end,
+            {noreply, State2};
+        {false, State1} ->
+            {noreply, State1}
+    end;
 
 handle_command({mput, Data}, _Sender, State) ->
-    State1 = lists:foldl(fun({Bucket, Metric, Time, Value}, SAcc) ->
-                                 do_put(Bucket, Metric, Time, Value, SAcc)
-                        end, State, Data),
+    State1 = lists:foldl(fun({Bucket, Metric, Time, Value}, StateAcc)
+                               when is_binary(Bucket), is_binary(Metric),
+                                    is_integer(Time) ->
+                                 do_put(Bucket, Metric, Time, Value, StateAcc)
+                         end, State, Data),
     {reply, ok, State1};
 
-handle_command({put, Bucket, Metric, {Time, Value}}, _Sender, State) ->
-    State1 = do_put(Bucket, Metric, Time, Value, State),
+handle_command({put, Bucket, Metric, {Time, Value}}, _Sender, State)
+  when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
+    State1=  do_put(Bucket, Metric, Time, Value, State),
     {reply, ok, State1};
 
-handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, _Sender,
-               #state{partition=Partition, node=Node, tbl=T} = State) ->
-    BM = {Bucket,Metric},
-    State1 = case ets:lookup(T, BM) of
-                 [{BM, Start, _Time, V}] ->
-                     ets:delete(T, {Bucket,Metric}),
-                     do_write(Bucket, Metric, Start, V, State);
-                 _ ->
-                     State
-           end,
-    {D, State2} = case get_set(Bucket, State1) of
-                      {ok, {MSet, S2}} ->
-                          {ok, Data} = mstore:get(MSet, Metric, Time, Count),
-                          {Data, S2};
-                      _ ->
-                          {mmath_bin:empty(Count), State1}
-                  end,
-    {reply, {ok, ReqID, {Partition, Node}, D}, State2};
+handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
+               #state{tbl=T, io=IO, partition = Idx} = State) ->
+    BM = {Bucket, Metric},
+    case ets:lookup(T, BM) of
+        %% If our request is entirely cache we don't need to bother the IO node
+        [{BM, Start, Size, _Time, Array}]
+          when Start =< Time,
+               (Start + Size) >= (Time + Count)
+               ->
+            %% How many bytes can we skip?
+            SkipBytes = (Time - Start) * ?DATA_SIZE,
+            Data = k6_bytea:get(Array, SkipBytes, (Count * ?DATA_SIZE)),
+            {Resolution, State1} = get_resolution(Bucket, State),
+            {reply, {ok, ReqID, Idx, {Resolution, Data}}, State1};
+        %% The request is neither before, after nor entirely inside the cache
+        %% we sadly have to flush it.
+        %% This are the conditions where we have to flush the cache and then
+        %% read it from the ui server
+        [{BM, Start, Size, _Time, Array}]
+          when
+              %% The window starts before the cache but ends in it
+              (Time < Start andalso Time + Count >= Start)
+              %% The window starts inside the cahce and ends afterwards
+              orelse (Time =< Start + Size andalso Time + Count > Start + Size)
+              ->
+            Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
+            k6_bytea:delete(Array),
+            ets:delete(T, {Bucket,Metric}),
+            metric_io:write(IO, Bucket, Metric, Start, Bin),
+            metric_io:read(IO, Bucket, Metric, Time, Count, ReqID, Sender),
+            {noreply, State};
+        %% If we are here we know that there is either no cahce or the requested
+        %% window and the cache do not overlap, so we can simply serve it from the ui servers
+        _ ->
+            metric_io:read(IO, Bucket, Metric, Time, Count, ReqID, Sender),
+            {noreply, State}
+    end.
 
-handle_command(_Message, _Sender, State) ->
-    {noreply, State}.
-
-handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender,
-                       State=#state{tbl=T}) ->
-    State1 = ets:foldl(fun({{Bucket, Metric}, Start, _, V}, SAcc) ->
-                           do_write(Bucket, Metric, Start, V, SAcc)
-                   end, State, T),
+handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, Sender,
+                       State=#state{tbl=T, io = IO}) ->
+    ets:foldl(fun({{Bucket, Metric}, Start, Size, _, Array}, _) ->
+                      Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
+                      k6_bytea:delete(Array),
+                      metric_io:write(IO, Bucket, Metric, Start, Bin)
+              end, ok, T),
     ets:delete_all_objects(T),
-    Ts = gb_trees:to_list(State1#state.mstore),
-    Acc = lists:foldl(fun({Bucket, MStore}, AccL) ->
-                        F = fun(Metric, Time, V, AccIn) ->
-                                    Fun({Bucket, Metric}, {Time, V}, AccIn)
-                            end,
-                        mstore:fold(MStore, F, AccL)
-                      end, Acc0, Ts),
-    {reply, Acc, State1};
+    FinishFun =
+        fun(Acc) ->
+                riak_core_vnode:reply(Sender, Acc)
+        end,
+    case metric_io:fold(IO, Fun, Acc0) of
+        {ok, AsyncWork} ->
+            {async, {fold, AsyncWork, FinishFun}, Sender, State};
+        empty ->
+            {async, {fold, fun() -> Acc0 end, FinishFun}, Sender, State}
+    end;
 
+%% We want to forward all the other handoff commands
 handle_handoff_command(_Message, _Sender, State) ->
-    {noreply, State}.
+    {forward, State}.
 
 handoff_starting(_TargetNode, State) ->
     {true, State}.
@@ -176,206 +261,228 @@ handoff_finished(_TargetNode, State) ->
     {ok, State}.
 
 handle_handoff_data(Data, State) ->
-    {{Bucket, Metric}, {T, V}} = binary_to_term(Data),
-    State1 = do_put(Bucket, Metric, T, V, State),
+    {{Bucket, Metric}, ValList} = binary_to_term(Data),
+    true = is_binary(Bucket),
+    true = is_binary(Metric),
+    State1 = lists:foldl(fun ({T, Bin}, StateAcc) ->
+                                 do_put(Bucket, Metric, T, Bin, StateAcc, 2)
+                         end, State, ValList),
     {reply, ok, State1}.
 
 encode_handoff_item(Key, Value) ->
     term_to_binary({Key, Value}).
 
-is_empty(State = #state{tbl = T}) ->
-    R = ets:first(T) == '$end_of_table' andalso
-        calc_empty(gb_trees:iterator(State#state.mstore)),
+is_empty(State = #state{tbl = T, io=IO}) ->
+    R = ets:first(T) == '$end_of_table' andalso metric_io:empty(IO),
     {R, State}.
 
-calc_empty(I) ->
-    case gb_trees:next(I) of
-        none ->
-            true;
-        {_, MSet, I2} ->
-            gb_sets:is_empty(mstore:metrics(MSet))
-                andalso calc_empty(I2)
-    end.
-
-delete(State = #state{partition=Partition, tbl=T}) ->
+delete(State = #state{io = IO, tbl=T}) ->
     ets:delete_all_objects(T),
-    DataDir = case application:get_env(riak_core, platform_data_dir) of
-                  {ok, DD} ->
-                      DD;
-                  _ ->
-                      "data"
-              end,
-    PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
-    gb_trees:map(fun(Bucket, MSet) ->
-                         mstore:delete(MSet),
-                         file:del_dir([PartitionDir, $/, Bucket])
-                 end, State#state.mstore),
-    {ok, State#state{mstore=gb_trees:empty()}}.
+    ok = metric_io:delete(IO),
+    {ok, State}.
 
-handle_coverage({metrics, Bucket}, _KeySpaces, _Sender,
-                State = #state{partition=Partition, node=Node, tbl=T}) ->
-    State1 = ets:foldl(fun({{Bkt, Metric}, Start, _, V}, SAcc) ->
-                               do_write(Bkt, Metric, Start, V, SAcc)
-                       end, State, T),
-    ets:delete_all_objects(T),
-    {Ms, State2} = case get_set(Bucket, State1) of
-                       {ok, {M, S2}} ->
-                           {mstore:metrics(M), S2};
-                       _ ->
-                           {gb_sets:new(), State1}
-                   end,
-    Reply = {ok, undefined, {Partition, Node}, Ms},
-    {reply, Reply, State2};
+handle_coverage({metrics, Bucket}, _KS, Sender, State = #state{io = IO}) ->
+    AsyncWork = fun() ->
+                        {ok, Ms} = metric_io:metrics(IO, Bucket),
+                        Ms
+                end,
+    FinishFun = fun(Data) ->
+                        reply(Data, Sender, State)
+                end,
+    {async, {fold, AsyncWork, FinishFun}, Sender, State};
 
-handle_coverage(list, _KeySpaces, _Sender,
-                State = #state{partition=Partition, node=Node, tbl=T}) ->
-    State1 = ets:foldl(fun({{Bkt, Metric}, Start, _, V}, SAcc) ->
-                               do_write(Bkt, Metric, Start, V, SAcc)
-                       end, State, T),
-    ets:delete_all_objects(T),
-    DataDir = case application:get_env(riak_core, platform_data_dir) of
-                  {ok, DD} ->
-                      DD;
-                  _ ->
-                      "data"
-              end,
-    PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
-    {ok, Buckets} = file:list_dir(PartitionDir),
-    Buckets1 = gb_sets:from_list([list_to_binary(B) || B <- Buckets]),
-    Reply = {ok, undefined, {Partition, Node}, Buckets1},
-    {reply, Reply, State1};
+handle_coverage({metrics, Bucket, Prefix}, _KS, Sender, State = #state{io = IO}) ->
+    AsyncWork = fun() ->
+                        {ok, Ms} = metric_io:metrics(IO, Bucket, Prefix),
+                        Ms
+                end,
+    FinishFun = fun(Data) ->
+                        reply(Data, Sender, State)
+                end,
+    {async, {fold, AsyncWork, FinishFun}, Sender, State};
+
+handle_coverage(list, _KS, Sender, State = #state{io = IO}) ->
+    AsyncWork = fun() ->
+                        {ok, Bs} = metric_io:buckets(IO),
+                        Bs
+                end,
+    FinishFun = fun(Data) ->
+                        reply(Data, Sender, State)
+                end,
+    {async, {fold, AsyncWork, FinishFun}, Sender, State};
+
+handle_coverage({update_ttl, Bucket}, _KeySpaces, _Sender,
+                State = #state{partition=P, node=N,
+                               lifetimes = Lifetimes}) ->
+    LT1 = btrie:erase(Bucket, Lifetimes),
+    Reply = {ok, undefined, {P, N}, ok},
+    {reply, Reply, State#state{lifetimes = LT1}};
 
 handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
-                State = #state{partition=Partition, node=Node, tbl=T, dir=Dir}) ->
-    State1 = ets:foldl(fun({{Bkt, Metric}, Start, _, V}, SAcc) ->
-                               do_write(Bkt, Metric, Start, V, SAcc)
-                       end, State, T),
+                State = #state{partition=P, node=N, tbl=T, io = IO}) ->
+    ets:foldl(fun({{Bkt, Metric}, Start, Size, _, Array}, _)
+                    when Bkt /= Bucket ->
+                      Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
+                      k6_bytea:delete(Array),
+                      metric_io:write(IO, Bkt, Metric, Start, Bin);
+                 ({_, _, _, _, Array}, _) ->
+                      k6_bytea:delete(Array)
+              end, ok, T),
     ets:delete_all_objects(T),
-    {R, State2} = case get_set(Bucket, State1) of
-                      {ok, {MSet, S1}} ->
-                          mstore:delete(MSet),
-                          file:del_dir([Dir, $/, Bucket]),
-                          MStore = gb_trees:delete(Bucket, S1#state.mstore),
-                          {ok, S1#state{mstore = MStore}};
-                      _ ->
-                          {not_found, State}
-                  end,
-    Reply = {ok, undefined, {Partition, Node}, R},
-    {reply, Reply, State2};
+    R = metric_io:delete(IO, Bucket),
+    Reply = {ok, undefined, {P, N}, R},
+    {reply, Reply, State}.
 
-handle_coverage(_Req, _KeySpaces, _Sender, State) ->
-    {stop, not_implemented, State}.
+handle_info(tick, State = #state{}) ->
+    Timestamp = erlang:system_time(milli_seconds),
+    erlang:send_after(?TICK, self(), tick),
+    {ok, State#state{now = Timestamp}};
 
-handle_info(_Msg, State)  ->
+handle_info(vacuum, State = #state{io = IO, partition = P}) ->
+    lager:info("[vaccum] Starting vaccum for partution ~p.", [P]),
+    {ok, Bs} = metric_io:buckets(IO),
+    State1 =
+        lists:foldl(fun (Bucket, SAcc) ->
+                            case expiery(Bucket, SAcc) of
+                                {infinity, SAcc1} ->
+                                    SAcc1;
+                                {Exp, SAcc1} ->
+                                    metric_io:delete(IO, Bucket, Exp),
+                                    SAcc1
+                            end
+                    end, State, btrie:fetch_keys(Bs)),
+    lager:info("[vaccum] Finalized vaccum for partution ~p.", [P]),
+    {ok, State1};
+
+handle_info({'EXIT', IO, normal}, State = #state{io = IO}) ->
+    {ok, State};
+
+handle_info({'EXIT', IO, E}, State = #state{io = IO}) ->
+    {stop, E, State};
+
+handle_info(_, State) ->
     {ok, State}.
+
+handle_exit(IO, normal, State = #state{io = IO}) ->
+    {ok, State};
+
+handle_exit(IO, E, State = #state{io = IO}) ->
+    {stop, E, State};
 
 handle_exit(_PID, _Reason, State) ->
     {noreply, State}.
 
-terminate(_Reason, State=#state{tbl = T}) ->
-    State1 = ets:foldl(fun({{Bucket, Metric}, Start, _, V}, SAcc) ->
-                      do_write(Bucket, Metric, Start, V, SAcc)
-              end, State, T),
-    ets:delete_all_objects(T),
-    gb_trees:map(fun(_, MSet) ->
-                         mstore:close(MSet)
-                 end, State1#state.mstore),
+terminate(_Reason, #state{tbl = T, io = IO}) ->
+    ets:foldl(fun({{Bucket, Metric}, Start, Size, _, Array}, _) ->
+                      Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
+                      k6_bytea:delete(Array),
+                      metric_io:write(IO, Bucket, Metric, Start, Bin)
+              end, ok, T),
+    ets:delete(T),
+    metric_io:close(IO),
     ok.
 
-new_store(Partition, Bucket) ->
-    DataDir = case application:get_env(riak_core, platform_data_dir) of
-                  {ok, DD} ->
-                      DD;
-                  _ ->
-                      "data"
-              end,
-    PartitionDir = [DataDir | [$/ |  integer_to_list(Partition)]],
-    BucketDir = [PartitionDir, [$/ | binary_to_list(Bucket)]],
-    file:make_dir(PartitionDir),
-    file:make_dir(BucketDir),
-    CHashSize = case application:get_env(metric_vnode, chash_size) of
-                    {ok, CHS} ->
-                        CHS;
-                    _ ->
-                        8
-                end,
-    PointsPerFile = case application:get_env(metric_vnode, points_per_file) of
-                        {ok, PPF} ->
-                            PPF;
-                        _ ->
-                            ?WEEK
-                    end,
-    {ok, MSet} = mstore:new(CHashSize, PointsPerFile, BucketDir),
-    MSet.
+do_put(Bucket, Metric, Time, Value, State) ->
+    do_put(Bucket, Metric, Time, Value, State, ?MAX_Q_LEN).
 
-do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT}) ->
+do_put(Bucket, Metric, Time, Value,
+       State = #state{tbl = T, ct = CT, io = IO},
+       Sync) when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     Len = mmath_bin:length(Value),
     BM = {Bucket, Metric},
-    case ets:lookup(T, BM) of
-        [{BM, Start, Time, V}]
-          when (Time - Start) < CT ->
-            ets:update_element(T, BM,
-                               [{3, Time + Len},
-                                {4, <<V/binary, Value/binary>>}]),
-            State;
-        [{BM, Start, _Time, V}]
-          when Start == (Time + Len) ->
-            ets:update_element(T, BM,
-                               [{2, Time},
-                                {4, <<Value/binary, V/binary>>}]),
-            State;
-        [{BM, Start, Time, V}] ->
-            ets:delete(T, BM),
-            do_write(Bucket, Metric, Start, <<V/binary, Value/binary>>, State);
-        [{BM, Start, _, V}] ->
-            ets:update_element(T, BM,
-                               [{2,Time},
-                                {3, Time + Len},
-                                {4, Value}]),
-            do_write(Bucket, Metric, Start, V, State);
-        [] ->
-            ets:insert(T, {BM, Time, Time + Len, Value}),
-            State
+    case valid_ts(Time + Len, Bucket, State) of
+        {false, State1} ->
+            State1;
+        {true, State1} ->
+            case ets:lookup(T, BM) of
+                %% If the data is before the first package in the cache we just
+                %% don't cache it this way we prevent overwriting already
+                %% written data.
+                [{BM, _Start, _Size, _End, _V}]
+                  when Time < _Start ->
+                    metric_io:write(IO, Bucket, Metric, Time, Value, Sync);
+                %% When the Delta of start time and this package is greater
+                %% then the cache time we flush the cache and start a new cache
+                %% with a new package
+                [{BM, Start, Size, _End, Array}]
+                  when (Time + Len) >= _End, Len < CT ->
+                    Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
+                    k6_bytea:set(Array, 0, Value),
+                    k6_bytea:set(Array, Len * ?DATA_SIZE, <<0:(?DATA_SIZE * 8 * (CT - Len))>>),
+                    ets:update_element(T, BM, [{2, Time}, {3, Len}, {4, Time + CT}]),
+                    metric_io:write(IO, Bucket, Metric, Start, Bin, Sync);
+                %% In the case the data is already longer then the cache we
+                %% flush the cache
+                [{BM, Start, Size, _End, Array}]
+                  when (Time + Len) >= _End ->
+                    ets:delete(T, {Bucket,Metric}),
+                    Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
+                    k6_bytea:delete(Array),
+                    metric_io:write(IO, Bucket, Metric, Start, Bin, Sync),
+                    metric_io:write(IO, Bucket, Metric, Time, Value, Sync);
+                [{BM, Start, _Size, _End, Array}] ->
+                    Idx = Time - Start,
+                    k6_bytea:set(Array, Idx * ?DATA_SIZE, Value),
+                    ets:update_element(T, BM, [{3, Idx + Len}]);
+                %% We don't have a cache yet and our data is smaller then
+                %% the current cache limit
+                [] when Len < CT ->
+                    Array = k6_bytea:new(CT * ?DATA_SIZE),
+                    k6_bytea:set(Array, 0, Value),
+                    Jitter = random:uniform(CT),
+                    ets:insert(T, {BM, Time, Len, Time + Jitter, Array});
+                %% If we don't have a cache but our data is too big for the
+                %% cache we happiely write it directly
+                [] ->
+                    metric_io:write(IO, Bucket, Metric, Time, Value, Sync)
+            end,
+            State1
     end.
 
-do_write(Bucket, Metric, Time, Value, State) ->
-    {MSet, State1} = get_or_create_set(Bucket, State),
-    MSet1 = mstore:put(MSet, Metric, Time, Value),
-    Store1 = gb_trees:update(Bucket, MSet1, State1#state.mstore),
-    State1#state{mstore=Store1}.
+reply(Reply, {_, ReqID, _} = Sender, #state{node=N, partition=P}) ->
+    riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Reply}).
 
-get_set(Bucket, State=#state{mstore=Store}) ->
-    case gb_trees:lookup(Bucket, Store) of
-        {value, MSet} ->
-            {ok, {MSet, State}};
-        none ->
-            case bucket_exists(State#state.partition, Bucket) of
-                true ->
-                    MSet = new_store(State#state.partition, Bucket),
-                    Store1 = gb_trees:insert(Bucket, MSet, Store),
-                    {ok, {MSet, State#state{mstore=Store1}}};
-                _ ->
-                    {error, not_found}
-            end
+valid_ts(TS, Bucket, State) ->
+    case expiery(Bucket, State) of
+        %% TODO:
+        %% We ignore every data where the last point is older then the
+        %% lifetime this means we could still potentially write in the
+        %% past if writing baches but this is a problem for another day!
+        {Exp, State1} when is_integer(Exp),
+                         TS < Exp ->
+            {false, State1};
+        {_, State1} ->
+            {true, State1}
+    end.
+%% Return the latest point we'd ever want to save. This is more strict
+%% then the expiration we do on the data but it is strong enough for
+%% our guarantee.
+expiery(Bucket, State = #state{now = Now}) ->
+    case get_lifetime(Bucket, State) of
+        {infinity, State1} ->
+            {infinity, State1};
+        {LT, State1} ->
+            {Res, State2} = get_resolution(Bucket, State1),
+            Exp = (Now - LT) div Res,
+            {Exp, State2}
     end.
 
-get_or_create_set(Bucket, State=#state{mstore=Store}) ->
-    case get_set(Bucket, State) of
-        {ok, R} ->
-            R;
-        {error, not_found} ->
-            MSet = new_store(State#state.partition, Bucket),
-            Store1 = gb_trees:insert(Bucket, MSet, Store),
-            {MSet, State#state{mstore=Store1}}
+get_resolution(Bucket, State = #state{resolutions = Ress}) ->
+    case btrie:find(Bucket, Ress) of
+        {ok, Resolution} ->
+            {Resolution, State};
+        error ->
+            Resolution = dalmatiner_opt:resolution(Bucket),
+            Ress1 = btrie:store(Bucket, Resolution, Ress),
+            {Resolution, State#state{resolutions = Ress1}}
     end.
 
-bucket_exists(Partition, Bucket) ->
-    DataDir = case application:get_env(riak_core, platform_data_dir) of
-                  {ok, DD} ->
-                      DD;
-                  _ ->
-                      "data"
-              end,
-    PartitionDir = [DataDir | [$/ |  integer_to_list(Partition)]],
-    BucketDir = [PartitionDir, [$/ | binary_to_list(Bucket)]],
-    filelib:is_dir(BucketDir).
+get_lifetime(Bucket, State = #state{lifetimes = Lifetimes}) ->
+    case btrie:find(Bucket, Lifetimes) of
+        {ok, Resolution} ->
+            {Resolution, State};
+        error ->
+            Resolution = dalmatiner_opt:lifetime(Bucket),
+            Lifetimes1 = btrie:store(Bucket, Resolution, Lifetimes),
+            {Resolution, State#state{lifetimes = Lifetimes1}}
+    end.

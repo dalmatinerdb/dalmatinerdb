@@ -1,41 +1,5 @@
 %% -*- erlang -*-
 
-%% @doc The udp port dalmatiner_db listens to, if the number of listeners is
-%% greater then 1 the successive ports will be used as well.
-{mapping, "udp_port", "dalmatiner_db.udp_port",
- [{default, {{udp_port}} },
-  {datatype, integer}]}.
-
-%% @doc The buffer size for UDP
-{mapping, "udp_buffer", "dalmatiner_db.udp_buffer",
- [{default, 32768},
-  {datatype, bytesize}]}.
-
-%% @doc The number of udp listeners, each one gets a own port startting from
-%% udp_port.
-{mapping, "udp_listeners", "dalmatiner_db.udp_listeners",
- [{default, 1},
-  {datatype, integer}]}.
-
-%% @doc To improve performance on UDP a number of loops around the recv call
-%% are executed as fast loops, this means w/o ending sending a message for the
-%% next round of loops.
-%%
-%% The higher the number the more fast loops are executed, the downside of a
-%% high fast loop count is that only at the end of a fast loop run other queued
-%% messages are handled, also downed nodes are only detected at the end of a
-%% loop.
-{mapping, "udp_fast_loop", "dalmatiner_db.fast_loop_count",
- [{default, 1000},
-  {datatype, integer}]}.
-
-%% @doc The amount of time each udp process waits to receive data, lower numbers
-%% speed up fastloops when no data is there but might cause problems with the
-%% processes spinning idle too fast.
-{mapping, "udp_loop_wait", "dalmatiner_db.loop_wait",
- [{default, "100ms"},
-  {datatype, {duration, ms}}]}.
-
 %% @doc The tcp port dalmatiner_db listens on for the tcp API
 {mapping, "tcp_port", "dalmatiner_db.tcp_port",
  [{default, {{tcp_port}} },
@@ -46,13 +10,17 @@
  [{default, 100},
   {datatype, integer}]}.
 
-%% @doc the number of chash buckets used for each vnode's mstore backend
-{mapping, "chash_size", "metric_vnode.chash_size",
+%% @doc The number of Asyncronous worker for a vnode.
+{mapping, "async_workers", "metric_vnode.async_workers",
  [{datatype, integer},
-  {default, 8},
-  {commented, 32},
-  {validators, ["ring_size"]}
- ]}.
+  {default, 5}]}.
+
+%% @doc When handling handoffs how much should be the largest chunk be.
+%% Large chunks improve thourhgput but too large chunks will cause
+%% timeouts.
+{mapping, "handoff_max_chunk_size", "metric_vnode.handoff_chunk",
+ [{datatype, bytesize},
+  {default, "1KB"}]}.
 
 %% @doc The datapoints stored per file, default equals 1 week of data
 %% in a 1 second resolution.
@@ -67,10 +35,21 @@
  [{datatype, integer},
   {default, 120}]}.
 
+%% @doc How long data is kept by default
+{mapping, "lifetime", "metric_vnode.lifetime",
+ [{datatype, [integer, {atom, infinity}]},
+  {default, "infinity"}]}.
+
+%% @doc How often a pertition will be picked to be vacuumed.
+{mapping, "vacuum_interval", "dalmatiner_vacuum.interval",
+ [{default, "1h"},
+  {datatype, {duration, ms}}]}.
+
 %% @doc The path data gets stored into.
-{mapping, "data_dir", "riak_core.platform_data_dir",
+{mapping, "platform_data_dir", "riak_core.platform_data_dir",
  [{default, "{{platform_data_dir}}"},
   {datatype, string}]}.
+
 
 %% @doc Default ring creation size.  Make sure it is a power of 2,
 %% e.g. 16, 32, 64, 128, 256, 512 etc
@@ -79,7 +58,7 @@
 %% the manual at http://bit.ly/1ciKRkS
 {mapping, "ring_size", "riak_core.ring_creation_size",
  [{datatype, integer},
-  {default, 8},
+  {default, 64},
   {commented, 64},
   {validators, ["ring_size"]}
  ]}.
@@ -108,3 +87,25 @@
 {mapping, "w", "dalmatiner_db.w",
  [{datatype, integer},
   {default, 1}]}.
+
+%% @doc Schema directory
+{mapping, "schema_dir", "riak_core.schema_dirs",
+ [{default, "./share/schema"},
+  {datatype, string}]
+}.
+
+{translation,
+  "riak_core.schema_dirs",
+  fun(Conf) ->
+          D = cuttlefish:conf_get("schema_dir", Conf),
+          [D]
+  end
+}.
+
+%% @doc handoff.ip is the network address that Riak binds to for
+%% intra-cluster data handoff.
+{mapping, "handoff.ip", "riak_core.handoff_ip", [
+  {default, "127.0.0.1" },
+  {datatype, string},
+  {validators, ["valid_ipaddr"]}
+]}.

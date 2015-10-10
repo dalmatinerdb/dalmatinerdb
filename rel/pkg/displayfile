@@ -1,13 +1,13 @@
-     Congratulations the Howl API server is now installed on the system.
+  Congratulations the DalnatinerDB server was sucessfully installed
 .------------------------------------------------------------------------------.
 | By default the service is disabled since it's common that you will need to   |
 | do some additional configurations.                                           |
 |                                                                              |
 | Please have a look at the configuraiton files:                               |
 |                                                                              |
-|  * /opt/local/fifo-howl/etc/howl.conf                                        |
+|  * /opt/local/dalmatinerdb/etc/dalmatinerdb.conf                             |
 |                                                                              |
-| Note: To enable Howl you first need to enable the epmd service.              |
+| Note: To enable DalmatinerDB you first need to enable the epmd service.      |
 |                                                                              |
 `------------------------------------------------------------------------------'
 

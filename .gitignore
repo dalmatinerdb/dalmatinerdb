@@ -24,3 +24,6 @@ rel/pkg/packlist
 .eqc-info
 *.eqc
 apps/metric_db/include/metric_db_version.hrl
+.rebar
+_build
+TEST-*

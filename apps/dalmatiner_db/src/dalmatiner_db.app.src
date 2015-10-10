@@ -8,6 +8,11 @@
                   stdlib,
                   metric_vnode,
                   riak_core,
+                  lager,
+                  dproto,
+                  mstore,
+                  mmath,
+                  dalmatiner_vacuum,
                   ranch
                  ]},
   {mod, { dalmatiner_db_app, []}},

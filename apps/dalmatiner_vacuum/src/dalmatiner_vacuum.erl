@@ -1,33 +1,31 @@
 %%%-------------------------------------------------------------------
 %%% @author Heinz Nikolaus Gies <heinz@licenser.net>
-%%% @copyright (C) 2014, Heinz Nikolaus Gies
+%%% @copyright (C) 2015, Heinz Nikolaus Gies
 %%% @doc
 %%%
 %%% @end
-%%% Created : 13 Jun 2014 by Heinz Nikolaus Gies <heinz@licenser.net>
+%%% Created :  4 Aug 2015 by Heinz Nikolaus Gies <heinz@licenser.net>
 %%%-------------------------------------------------------------------
--module(dalmatiner_db_udp).
+-module(dalmatiner_vacuum).
 
 -behaviour(gen_server).
--include_lib("dproto/include/dproto.hrl").
--include_lib("mstore/include/mstore.hrl").
-
--define(DT_DDB_UDP_SIZE, 4501).
--define(DT_DDB_UDP_CNT, 4502).
--define(DT_DDB_UDP_LOOP, 4503).
 
 %% API
--export([start_link/1]).
+-export([start_link/0, register/0]).
+-ignore_xref([start_link/0]).
 
--ignore_xref([start_link/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
 -define(SERVER, ?MODULE).
-
--record(state, {sock, port, recbuf, cbin, nodes, n, w, fast_loop_count, wait}).
+-define(TICK, 1000*60*60).
+-record(state,
+        {
+          vnodes = queue:new() :: queue:queue(),
+          tick = ?TICK
+        }).
 
 %%%===================================================================
 %%% API
@@ -40,14 +38,12 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link(Port) ->
-    gen_server:start_link(?MODULE, [Port], []).
+start_link() ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-loop(N) ->
-    loop(self(), N).
+register() ->
+    gen_server:call(?SERVER, {register, self()}).
 
-loop(Pid, N) ->
-    gen_server:cast(Pid, {loop, N}).
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -63,16 +59,15 @@ loop(Pid, N) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([Port]) ->
-    {ok, RB} = application:get_env(dalmatiner_db, udp_buffer),
-    {ok, FLC} = application:get_env(dalmatiner_db, fast_loop_count),
-    {ok, Wait} = application:get_env(dalmatiner_db, loop_wait),
-    {ok, N} = application:get_env(dalmatiner_db, n),
-    {ok, W} = application:get_env(dalmatiner_db, w),
-    {ok, Sock} = gen_udp:open(Port, [binary, {active, false}, {recbuf, RB}]),
-    loop(0),
-    {ok, #state{sock=Sock, port=Port, recbuf=RB, n=N, w=W, fast_loop_count=FLC,
-                wait=Wait}}.
+init([]) ->
+    Tick = case application:get_env(dalmatiner_vacuum, interval) of
+                   {ok, FS} ->
+                   FS;
+               _ ->
+                   ?TICK
+           end,
+    erlang:send_after(Tick, self(), vacuum),
+    {ok, #state{tick = Tick}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -88,6 +83,12 @@ init([Port]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call({register, VNode}, _From, State = #state{vnodes = VNodes}) ->
+    lager:info("[vacuum] Adding vnode ~p.", [VNode]),
+    Ref = erlang:monitor(process, VNode),
+    VNodes1 = queue:in({Ref, VNode}, VNodes),
+    {reply, ok, State#state{vnodes = VNodes1}};
+
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -102,54 +103,9 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast({loop, 0}, State) ->
-    dyntrace:p(?DT_DDB_UDP_LOOP, State#state.port),
-    loop(State#state.fast_loop_count),
-    {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
-    Nodes = chash:nodes(chashbin:to_chash(CBin)),
-    Nodes1 = [{I, riak_core_apl:get_apl(I, State#state.n, metric)} || {I, _} <- Nodes],
-    {noreply, State#state{cbin=CBin, nodes=orddict:from_list(Nodes1)}};
-
-handle_cast({loop, N}, State = #state{sock=S, cbin=CBin, nodes=Nodes, w=W,
-                                      port=LPort}) ->
-    case gen_udp:recv(S, State#state.recbuf, State#state.wait) of
-        {ok, {_Address, _Port, D}} ->
-            dyntrace:p(?DT_DDB_UDP_SIZE, LPort, byte_size(D)),
-            case handle_data(D, W, LPort, CBin, Nodes, 0, dict:new()) of
-                ok ->
-                    handle_cast({loop, N-1}, State);
-                E ->
-                    lager:error("[udp] Fast loop cancled because of: ~p.", [E]),
-                    handle_cast({loop, 0}, State),
-                    {noreply, State}
-
-            end;
-        _ ->
-            handle_cast({loop, 0}, State),
-            {noreply, State}
-    end;
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
-
-handle_data(<<0,
-              T:?TIME_SIZE/integer,
-              _BS:?BUCKET_SS/integer, Bucket:_BS/binary,
-              _MS:?METRIC_SS/integer, Metric:_MS/binary,
-              _DS:?DATA_SS/integer, Data:_DS/binary,
-              R/binary>>,
-            W, LPort, CBin, Nodes, Cnt, Acc) when (_DS rem ?DATA_SIZE) == 0 ->
-    DocIdx = riak_core_util:chash_key({Bucket, Metric}),
-    {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
-    Acc1 = dict:append(Idx, {Bucket, Metric, T, Data}, Acc),
-    handle_data(R, W, LPort, CBin, Nodes, Cnt + 1, Acc1);
-handle_data(<<>>, W, LPort, _, Nodes, Cnt, Acc) ->
-    dyntrace:p(?DT_DDB_UDP_CNT, LPort, Cnt),
-    metric:mput(Nodes, Acc, W);
-handle_data(R, W, LPort, _, Nodes, Cnt, Acc) ->
-    dyntrace:p(?DT_DDB_UDP_CNT, LPort, Cnt),
-    lager:error("[udp] unknown content: ~p", [R]),
-    metric:mput(Nodes, Acc, W).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -161,6 +117,26 @@ handle_data(R, W, LPort, _, Nodes, Cnt, Acc) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_info({'DOWN', Ref, process, VNode, Reason},
+            State = #state{vnodes = VNodes}) ->
+    lager:info("[vacuum] Removing node ~p for reason: ~p", [VNode, Reason]),
+    VNodes1 = queue:filter(fun (_D) when _D =:= {Ref, VNode} -> false;
+                               (_) -> true
+                           end, VNodes),
+    {noreply, State#state{vnodes = VNodes1}};
+
+handle_info(vacuum, State = #state{vnodes = VNodes}) ->
+    VNodes2 = case queue:out(VNodes) of
+                  {{value, VNode = {_, Pid}}, VNodes1} ->
+                      Pid ! vacuum,
+                      queue:in(VNode, VNodes1);
+                  {empty, VNodes1} ->
+                      VNodes1
+              end,
+    erlang:send_after(?TICK, self(), vacuum),
+    {noreply, State#state{vnodes = VNodes2}};
+
+
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -175,8 +151,7 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, #state{sock = S}) ->
-    gen_udp:close(S),
+terminate(_Reason, _State) ->
     ok.
 
 %%--------------------------------------------------------------------

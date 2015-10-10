@@ -46,7 +46,7 @@ else
         echo "  -sname is not supported."
         exit 1
     fi
-    COOKIE_ARG=`grep -e '-setcookie' $RUNNER_ETC_DIR/vm.args 2> /dev/null`
+    COOKIE_ARG=`egrep '-setcookie' $RUNNER_ETC_DIR/vm.args 2> /dev/null`
     if [ -z "$COOKIE" ]; then
         echo "vm.args needs to have a -setcookie parameter."
         exit 1
@@ -71,7 +71,7 @@ NODETOOL="$ERTS_PATH/escript $ERTS_PATH/nodetool $NAME_ARG $COOKIE_ARG"
 case "$1" in
     start)
         # Make sure there is not already a node running
-        RES=`$NODETOOL ping`
+        RES=`$NODETOOL ping 2> /dev/null`
         if [ "$RES" = "pong" ]; then
             echo "Node is already running!"
             exit 1
@@ -144,7 +144,7 @@ case "$1" in
             exit 1
         fi
         case "$1" in
-            console)        BOOTFILE=dalmatinerdb ;;
+            console)        BOOTFILE=$SCRIPT ;;
             console_clean)  BOOTFILE=start_clean ;;
         esac
         # Setup beam-required vars

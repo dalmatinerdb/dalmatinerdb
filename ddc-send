@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+function num {
+    hex=$(printf "%0${2}x\n" $1)
+    case $2 in
+        4)
+            hex="${hex:2:2}${hex:0:2}"
+            ;;
+        16)
+            hex="${hex:14:2}${hex:12:2}${hex:10:2}${hex:8:2}${hex:6:2}${hex:4:2}${hex:2:2}${hex:0:2}"
+        ;;
+    esac
+    >&2 echo "convert: $1 to hex at L $2 half bytes: $hex"
+    >&2 echo "$hex" | xxd -r -p | xxd
+    echo "$hex"
+}
+
+function hex {
+    echo -n $1 | xxd -ps
+}
+
+function mk_pkg {
+    bucket=$1
+    key=$2
+    value=$3
+    >&2 echo "bucket: $bucket"
+    >&2 echo "key: $key"
+    >&2 echo "value: $value"
+    echo -n "$(num ${#bucket} 4)$(hex $bucket)$(num ${#key} 4)$(hex $key)01$(num $value 16)"
+}
+
+host=$1
+port=$2
+bucket=$3
+key=$4
+value=$5
+mk_pkg $bucket $key $value | xxd -r -p | nc -vu $host $port

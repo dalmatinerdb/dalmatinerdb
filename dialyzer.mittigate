@@ -1,0 +1,6 @@
+^riak
+^webmachine
+^meck
+riak_core_apl
+^metric_coverage.erl:3:
+^metric_worker.erl:3:

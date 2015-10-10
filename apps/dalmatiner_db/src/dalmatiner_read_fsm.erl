@@ -10,7 +10,7 @@
 -export([start_link/6, start/2, start/3, start/4]).
 
 
--export([reconcile/1, different/1, needs_repair/2, repair/4, unique/1]).
+-export([reconcile/1, different/1, needs_repair/2, repair/5, unique/1]).
 
 %% Callbacks
 -export([init/1, code_change/4, handle_event/3, handle_info/3,
@@ -28,7 +28,6 @@
                 preflist,
                 num_r=0,
                 size,
-                start,
                 timeout=?DEFAULT_TIMEOUT,
                 val,
                 vnode,
@@ -47,7 +46,7 @@
               needs_repair/2,
               prepare/2,
               reconcile/1,
-              repair/4,
+              repair/5,
               start/2,
               start/4,
               start_link/6,
@@ -79,8 +78,10 @@ start(VNodeInfo, Op, User, Val) ->
     receive
         {ReqID, ok} ->
             ok;
-        {ReqID, ok, Result} ->
-            {ok, Result}
+        {ReqID, ok, {Res, Data}} ->
+            {ok, Res, Data};
+        {ReqID, ok, Res} ->
+            {ok, Res}
     after ?DEFAULT_TIMEOUT ->
             {error, timeout}
     end.
@@ -105,7 +106,6 @@ init([ReqId, {VNode, System}, Op, From, Entity, Val]) ->
                 from=From,
                 op=Op,
                 val=Val,
-                start = now(),
                 vnode=VNode,
                 system=System,
                 entity=Entity},
@@ -131,13 +131,13 @@ execute(timeout, SD0=#state{req_id=ReqId,
     case Entity of
         undefined ->
             VNode:Op(Prelist, ReqId);
-        _ ->
+        {Bucket, {Metric, _}} ->
             case Val of
                 undefined ->
-                    VNode:Op(Prelist, ReqId, Entity);
+                    VNode:Op(Prelist, ReqId, {Bucket, Metric});
                 _ ->
 
-                    VNode:Op(Prelist, ReqId, Entity, Val)
+                    VNode:Op(Prelist, ReqId, {Bucket, Metric}, Val)
             end
     end,
     {next_state, waiting, SD0}.
@@ -186,13 +186,14 @@ wait_for_n(timeout, SD) ->
     {stop, timeout, SD}.
 
 finalize(timeout, SD=#state{
-                    vnode=VNode,
-                    replies=Replies,
-                    entity=Entity}) ->
+                        val = {Time, _},
+                        vnode=VNode,
+                        replies=Replies,
+                        entity=Entity}) ->
     MObj = merge(Replies),
     case needs_repair(MObj, Replies) of
         true ->
-            repair(VNode, Entity, MObj, Replies),
+            repair(Time, VNode, Entity, MObj, Replies),
             {stop, normal, SD};
         false ->
             {stop, normal, SD}
@@ -219,13 +220,22 @@ terminate(_Reason, _SN, _SD) ->
 %% @pure
 %%
 %% @doc Given a list of `Replies' return the merged value.
-merge(Replies) ->
-    case [Data || {_, Data} <- Replies, is_binary(Data)] of
+merge([{_, {R,_}} | _] = Replies) ->
+    case [Data || {_, {_, Data}} <- Replies, is_binary(Data)] of
         [] ->
             not_found;
         Ds ->
-            mmath_comb:merge(Ds)
-    end.
+            Ress = [Resolution || {_, {Resolution, _}} <- Replies],
+            case lists:any(different(R), Ress) of
+                true ->
+                    lager:error("[merge] Resolution mismatch: ~p /= ~p", [R, Ress]),
+                    not_found;
+                false ->
+                    {R, mmath_comb:merge(Ds)}
+            end
+    end;
+merge(_) ->
+    not_found.
 
 %% @pure
 %%
@@ -240,7 +250,7 @@ reconcile(Vals) ->
 %% @doc Given the merged object `MObj' and a list of `Replies'
 %% determine if repair is needed.
 needs_repair(MObj, Replies) ->
-    Objs = [Obj || {_,Obj} <- Replies],
+    Objs = [Obj || {_, Obj} <- Replies],
     lists:any(different(MObj), Objs).
 
 %% @pure
@@ -249,20 +259,16 @@ different(A) -> fun(B) -> A =/= B end.
 %% @impure
 %%
 %% @doc Repair any vnodes that do not have the correct object.
-repair(_, _, _, []) -> io;
+repair(_, _, _, _, []) -> ok;
 
-repair(VNode, MetAndTime, MObj, [{IdxNode,Obj}|T]) ->
+repair(Time, VNode, {Bkt, {Met, _}} = MetAndTime, MObj, [{IdxNode,Obj}|T]) ->
     case MObj == Obj of
         true ->
-            repair(VNode, MetAndTime, MObj, T);
+            repair(Time, VNode, MetAndTime, MObj, T);
         false ->
-            case Obj of
-                not_found ->
-                    VNode:repair(IdxNode, MetAndTime, MObj);
-                _ ->
-                    VNode:repair(IdxNode, MetAndTime, MObj)
-            end,
-            repair(VNode, MetAndTime, MObj, T)
+            {_, Data} = MObj,
+            VNode:repair(IdxNode, {Bkt, Met}, {Time, Data}),
+            repair(Time, VNode, MetAndTime, MObj, T)
     end.
 
 %% pure
@@ -273,4 +279,4 @@ unique(L) ->
     sets:to_list(sets:from_list(L)).
 
 mk_reqid() ->
-    erlang:phash2(erlang:now()).
+    erlang:unique_integer().

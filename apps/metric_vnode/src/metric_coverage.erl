@@ -40,14 +40,14 @@ init({From, ReqID, _}, Request) ->
     PrimaryVNodeCoverage = R,
     %% We timeout after 5s
     Timeout = 5000,
-    State = #state{replies = gb_sets:new(), r = R,
+    State = #state{replies = btrie:new(), r = R,
                    from = From, reqid = ReqID},
     {Request, VNodeSelector, NVal, PrimaryVNodeCoverage,
      metric, metric_vnode_master, Timeout, State}.
 
 process_results({ok, _ReqID, _IdxNode, Metrics},
                 State = #state{replies = Replies}) ->
-    Replies1 = gb_sets:union(Replies, Metrics),
+    Replies1 = btrie:merge(fun(_,_,_) -> t end, Replies, Metrics),
     {done, State#state{replies = Replies1}};
 
 process_results(Result, State) ->
@@ -56,7 +56,7 @@ process_results(Result, State) ->
 
 finish(clean, State = #state{replies = Replies,
                              from = From}) ->
-    From ! {ok, gb_sets:to_list(Replies)},
+    From ! {ok, btrie:fetch_keys(Replies)},
     {stop, normal, State};
 
 finish(How, State) ->
@@ -68,5 +68,4 @@ finish(How, State) ->
 %%%===================================================================
 
 mk_reqid() ->
-    {MegaSecs,Secs,MicroSecs} = erlang:now(),
-    (MegaSecs*1000000 + Secs)*1000000 + MicroSecs.
+    erlang:unique_integer().

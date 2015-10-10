@@ -1,52 +1,37 @@
-REBAR = $(shell pwd)/rebar
+REBAR = $(shell pwd)/rebar3
 
-.PHONY: deps rel stagedevrel package version all
+.PHONY: rel stagedevrel package version all tree
 
-all: cp-hooks deps compile
+all: cp-hooks compile update
+
+update:
+	$(REBAR) update
 
 cp-hooks:
 	cp hooks/* .git/hooks
 
-quick-xref:
-	$(REBAR) xref skip_deps=true
-
-quick-test:
-	$(REBAR) skip_deps=true eunit
-
 version:
-	echo "$(shell git symbolic-ref HEAD 2> /dev/null | cut -b 12-)-$(shell git log --pretty=format:'%h, %ad' -1)" > dalmatiner_db.version
+	@echo "$(shell git symbolic-ref HEAD 2> /dev/null | cut -b 12-)-$(shell git log --pretty=format:'%h, %ad' -1)" > dalmatiner_db.version
 
 version_header: version
-	echo "-define(VERSION, <<\"$(shell cat dalmatiner_db.version)\">>)." > apps/dalmatiner_db/include/dalmatiner_db_version.hrl
+	@echo "-define(VERSION, <<\"$(shell cat dalmatiner_db.version)\">>)." > apps/dalmatiner_db/include/dalmatiner_db_version.hrl
 
-compile: version_header
+compile: update version_header
 	$(REBAR) compile
-
-deps:
-	$(REBAR) get-deps
 
 clean:
 	$(REBAR) clean
 	make -C rel/pkg clean
 
-distclean: clean devclean relclean
-	$(REBAR) delete-deps
-
 test: all xref
-	$(REBAR) skip_deps=true eunit
+	$(REBAR) eunit
 
 qc:
-	$(REBAR) -C rebar_eqc.config compile skip_deps=true eunit --verbose
+	$(REBAR) as eqc eqc
 
-eqc-ci: clean all
-	$(REBAR) -D EQC_CI -C rebar_eqc_ci.config compile eunit skip_deps=true --verbose
-
-rel: all 
-	-rm -r rel/dalmatinerdb
-	$(REBAR) generate
-
-relclean:
-	rm -rf rel/dalmatinerdb
+rel: all
+	$(REBAR) update
+	$(REBAR) as prod release
 
 devrel: dev1 dev2 dev3 dev4
 
@@ -82,7 +67,7 @@ dev1 dev2 dev3 dev4: all
 	($(REBAR) generate target_dir=../dev/$@ overlay_vars=vars/$@.config)
 
 xref: all
-	$(REBAR) xref skip_deps=true
+	$(REBAR) xref
 
 ##
 ## Dialyzer
@@ -115,3 +100,11 @@ cleanplt:
 	@echo
 	sleep 5
 	rm $(COMBO_PLT)
+
+rebar.lock:
+
+tree: rebar.lock
+	rebar3 tree | grep -v '=' | sed 's/ (.*//' > tree
+
+tree-diff: tree
+	git diff test -- tree

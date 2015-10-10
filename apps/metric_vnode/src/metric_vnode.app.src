@@ -6,8 +6,15 @@
   {applications, [
                   kernel,
                   stdlib,
+                  dproto,
+                  mstore,
+                  mmath,
+                  trie,
+                  lager,
+                  dalmatiner_vacuum,
                   riak_core
                  ]},
+  {included_applications, [k6_bytea]},
   {mod, { metric_vnode_app, []}},
   {env, []}
  ]}.
