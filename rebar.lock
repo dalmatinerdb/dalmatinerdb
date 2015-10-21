@@ -55,7 +55,7 @@
   {git,"git://github.com/basho/meck.git",
        {ref,"dde759050eff19a1a80fd854d7375174b191665d"}},
   3},
- {<<"mmath">>,{pkg,<<"mmath">>,<<"0.1.15">>},0},
+ {<<"mmath">>,{pkg,<<"mmath">>,<<"0.1.16">>},0},
  {<<"mstore">>,{pkg,<<"mstore">>,<<"0.1.9">>},0},
  {<<"neotoma">>,
   {git,"git://github.com/seancribbs/neotoma.git",
