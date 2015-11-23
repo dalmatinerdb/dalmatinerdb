@@ -57,7 +57,7 @@
   3},
  {<<"mmath">>,
   {git,"https://github.com/dataloop/mmath.git",
-       {ref,"77041e84fe7e121a458c831582b3fdd2f481aa5c"}},
+       {ref,"b765f60ff1734196d056116c28e62a4b31a238cb"}},
   0},
  {<<"mstore">>,{pkg,<<"mstore">>,<<"0.1.9">>},0},
  {<<"neotoma">>,
