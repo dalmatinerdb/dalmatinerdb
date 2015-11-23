@@ -1,6 +1,6 @@
 REBAR = $(shell pwd)/rebar3
 
-.PHONY: rel stagedevrel package version all tree
+.PHONY: rel package version all tree
 
 all: cp-hooks compile update
 
@@ -47,14 +47,6 @@ docs:
 ##
 ## Developer targets
 ##
-
-stage : rel
-	$(foreach dep,$(wildcard deps/* wildcard apps/*), rm -rf rel/dalmatinerdb/lib/$(shell basename $(dep))-* && ln -sf $(abspath $(dep)) rel/dalmatinerdb/lib;)
-
-
-stagedevrel: dev1 dev2 dev3 dev4
-	$(foreach dev,$^,\
-	  $(foreach dep,$(wildcard deps/* wildcard apps/*), rm -rf dev/$(dev)/lib/$(shell basename $(dep))-* && ln -sf $(abspath $(dep)) dev/$(dev)/lib;))
 
 devrel: dev1 dev2 dev3 dev4
 
