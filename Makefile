@@ -50,13 +50,11 @@ docs:
 
 devrel: dev1 dev2 dev3 dev4
 
-
 devclean:
-	rm -rf dev
+	rm -rf _build/dev*
 
 dev1 dev2 dev3 dev4: all
-	mkdir -p dev
-	($(REBAR) generate target_dir=../dev/$@ overlay_vars=vars/$@.config)
+	$(REBAR) as $@ release
 
 xref: all
 	$(REBAR) xref
