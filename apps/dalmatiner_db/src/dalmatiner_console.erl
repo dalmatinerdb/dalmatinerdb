@@ -51,7 +51,8 @@ ttl([Buckets, TTLs]) ->
               integer_to_list(TTLs)
           catch
               _:_ ->
-                  TTLms = cuttlefish_datatypes:from_string(TTLs, {duration, ms}),
+                  TTLms = cuttlefish_datatypes:from_string(
+                            TTLs, {duration, ms}),
                   Res = dalmatiner_opt:resolution(Bucket),
                   TTLms div Res
           end,
@@ -174,15 +175,16 @@ down([Node]) ->
 
 reip([OldNode, NewNode]) ->
     try
-        %% reip is called when node is down (so riak_core_ring_manager is not running),
-        %% so it has to use the basic ring operations.
+        %% reip is called when node is down (so riak_core_ring_manager is not
+        %% running), so it has to use the basic ring operations.
         %%
         %% Do *not* convert to use riak_core_ring_manager:ring_trans.
         %%
         application:load(riak_core),
         RingStateDir = app_helper:get_env(riak_core, ring_state_dir),
         {ok, RingFile} = riak_core_ring_manager:find_latest_ringfile(),
-        BackupFN = filename:join([RingStateDir, filename:basename(RingFile)++".BAK"]),
+        BackupFN = filename:join([RingStateDir, filename:basename(RingFile)
+                                  ++ ".BAK"]),
         {ok, _} = file:copy(RingFile, BackupFN),
         io:format("Backed up existing ring file to ~p~n", [BackupFN]),
         Ring = riak_core_ring_manager:read_ringfile(RingFile),
