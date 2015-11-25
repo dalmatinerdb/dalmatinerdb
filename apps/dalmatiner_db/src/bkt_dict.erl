@@ -21,9 +21,10 @@ add(Metric, Time, Points, BD = #bkt_dict{ppf = PPF}) ->
     Splits = mstore:make_splits(Time, Count, PPF),
     insert_metric(Metric, Splits, Points, BD).
 
-flush(BD = #bkt_dict{dict = Dict, nodes = Nodes, w = W}) ->
+flush(BD = #bkt_dict{dict = Dict, w = W}) ->
+    BD1 = #bkt_dict{nodes = Nodes} = update_chash(BD),
     metric:mput(Nodes, Dict, W),
-    update_chash(BD#bkt_dict{dict = dict:new()}).
+    BD1#bkt_dict{dict = dict:new()}.
 
 
 update_chash(BD = #bkt_dict{n = N}) ->

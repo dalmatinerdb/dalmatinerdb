@@ -10,7 +10,7 @@
 -export([start_link/6, start/2, start/3, start/4]).
 
 
--export([reconcile/1, different/1, needs_repair/2, repair/5, unique/1]).
+-export([reconcile/1, different/1, needs_repair/2, unique/1]).
 
 %% Callbacks
 -export([init/1, code_change/4, handle_event/3, handle_info/3,
@@ -62,7 +62,8 @@
 %%%===================================================================
 
 start_link(ReqID, {VNode, System}, Op, From, Entity, Val) ->
-    gen_fsm:start_link(?MODULE, [ReqID, {VNode, System}, Op, From, Entity, Val], []).
+    gen_fsm:start_link(?MODULE,
+                       [ReqID, {VNode, System}, Op, From, Entity, Val], []).
 
 start(VNodeInfo, Op) ->
     start(VNodeInfo, Op, undefined).
@@ -126,18 +127,17 @@ execute(timeout, SD0=#state{req_id=ReqId,
                             entity=Entity,
                             op=Op,
                             val=Val,
-                            vnode=VNode,
                             preflist=Prelist}) ->
     case Entity of
         undefined ->
-            VNode:Op(Prelist, ReqId);
+            metric_vnode:Op(Prelist, ReqId);
         {Bucket, {Metric, _}} ->
             case Val of
                 undefined ->
-                    VNode:Op(Prelist, ReqId, {Bucket, Metric});
+                    metric_vnode:Op(Prelist, ReqId, {Bucket, Metric});
                 _ ->
 
-                    VNode:Op(Prelist, ReqId, {Bucket, Metric}, Val)
+                    metric_vnode:Op(Prelist, ReqId, {Bucket, Metric}, Val)
             end
     end,
     {next_state, waiting, SD0}.
@@ -151,22 +151,22 @@ waiting({ok, ReqID, IdxNode, Obj},
                    r=R, n=N, timeout=Timeout}) ->
     NumR = NumR0 + 1,
     Replies = [{IdxNode, Obj}|Replies0],
-    SD = SD0#state{num_r=NumR,replies=Replies},
-    if
-        NumR =:= R ->
+    SD = SD0#state{num_r=NumR, replies=Replies},
+    case NumR of
+        Min when Min >= R ->
             case merge(Replies) of
                 not_found ->
                     From ! {ReqID, ok, not_found};
                 Merged ->
                     From ! {ReqID, ok, Merged}
             end,
-            if
-                NumR =:= N ->
+            case NumR of
+                N ->
                     {next_state, finalize, SD, 0};
-                true ->
+                _ ->
                     {next_state, wait_for_n, SD, Timeout}
             end;
-        true ->
+        _ ->
             {next_state, waiting, SD}
     end.
 
@@ -187,26 +187,25 @@ wait_for_n(timeout, SD) ->
 
 finalize(timeout, SD=#state{
                         val = {Time, _},
-                        vnode=VNode,
                         replies=Replies,
                         entity=Entity}) ->
     MObj = merge(Replies),
     case needs_repair(MObj, Replies) of
         true ->
-            repair(Time, VNode, Entity, MObj, Replies),
+            repair(Time, Entity, MObj, Replies),
             {stop, normal, SD};
         false ->
             {stop, normal, SD}
     end.
 
 handle_info(_Info, _StateName, StateData) ->
-    {stop,badmsg,StateData}.
+    {stop, badmsg, StateData}.
 
 handle_event(_Event, _StateName, StateData) ->
-    {stop,badmsg,StateData}.
+    {stop, badmsg, StateData}.
 
 handle_sync_event(_Event, _From, _StateName, StateData) ->
-    {stop,badmsg,StateData}.
+    {stop, badmsg, StateData}.
 
 code_change(_OldVsn, StateName, State, _Extra) -> {ok, StateName, State}.
 
@@ -220,7 +219,7 @@ terminate(_Reason, _SN, _SD) ->
 %% @pure
 %%
 %% @doc Given a list of `Replies' return the merged value.
-merge([{_, {R,_}} | _] = Replies) ->
+merge([{_, {R, _}} | _] = Replies) ->
     case [Data || {_, {_, Data}} <- Replies, is_binary(Data)] of
         [] ->
             not_found;
@@ -228,7 +227,8 @@ merge([{_, {R,_}} | _] = Replies) ->
             Ress = [Resolution || {_, {Resolution, _}} <- Replies],
             case lists:any(different(R), Ress) of
                 true ->
-                    lager:error("[merge] Resolution mismatch: ~p /= ~p", [R, Ress]),
+                    lager:error("[merge] Resolution mismatch: ~p /= ~p",
+                                [R, Ress]),
                     not_found;
                 false ->
                     {R, mmath_comb:merge(Ds)}
@@ -259,16 +259,16 @@ different(A) -> fun(B) -> A =/= B end.
 %% @impure
 %%
 %% @doc Repair any vnodes that do not have the correct object.
-repair(_, _, _, _, []) -> ok;
+repair(_, _, _, []) -> ok;
 
-repair(Time, VNode, {Bkt, {Met, _}} = MetAndTime, MObj, [{IdxNode,Obj}|T]) ->
+repair(Time, {Bkt, {Met, _}} = MetAndTime, MObj, [{IdxNode, Obj}|T]) ->
     case MObj == Obj of
         true ->
-            repair(Time, VNode, MetAndTime, MObj, T);
+            repair(Time, MetAndTime, MObj, T);
         false ->
             {_, Data} = MObj,
-            VNode:repair(IdxNode, {Bkt, Met}, {Time, Data}),
-            repair(Time, VNode, MetAndTime, MObj, T)
+            metric_vnode:repair(IdxNode, {Bkt, Met}, {Time, Data}),
+            repair(Time, MetAndTime, MObj, T)
     end.
 
 %% pure
