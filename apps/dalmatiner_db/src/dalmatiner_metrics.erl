@@ -77,7 +77,8 @@ init([]) ->
     %% We want a high priority so we don't get scheduled back and have false
     %% reporting.
     process_flag(priority, high),
-    ets:new(?COUNTERS_MPS, [named_table, set, public, {write_concurrency, true}]),
+    ets:new(?COUNTERS_MPS,
+            [named_table, set, public, {write_concurrency, true}]),
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, W} = application:get_env(dalmatiner_db, w),
     erlang:send_after(?INTERVAL, self(), tick),
@@ -227,8 +228,10 @@ do_metrics(Prefix, Time, [{N, [{type, meter}]} | Spec], Acc) ->
     Acc5 = add_metric(Prefix1, [<<"day">>], Time, Day, Acc4),
     Acc6 = add_metric(Prefix1, [<<"mean">>], Time, Mean, Acc5),
     Acc7 = add_metric(Prefix1, [<<"one_to_five">>], Time, OneToFive, Acc6),
-    Acc8 = add_metric(Prefix1, [<<"five_to_fifteen">>], Time, FiveToFifteen, Acc7),
-    Acc9 = add_metric(Prefix1, [<<"one_to_fifteen">>], Time, OneToFifteen, Acc8),
+    Acc8 = add_metric(Prefix1,
+                      [<<"five_to_fifteen">>], Time, FiveToFifteen, Acc7),
+    Acc9 = add_metric(Prefix1,
+                      [<<"one_to_fifteen">>], Time, OneToFifteen, Acc8),
     do_metrics(Prefix, Time, Spec, Acc9).
 
 add_metric(Prefix, Name, Time, Value, Acc) when is_integer(Value) ->

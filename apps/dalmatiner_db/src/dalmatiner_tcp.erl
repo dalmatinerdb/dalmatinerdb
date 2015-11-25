@@ -150,13 +150,11 @@ stream_loop(Socket, Transport, State = #sstate{max_diff = D},
                         dproto_tcp:decode_stream(Acc1));
         {error, timeout} ->
             stream_loop(Socket, Transport, State, {incomplete, Acc});
-        {error,closed} ->
+        {error, closed} ->
             bkt_dict:flush(State#sstate.dict),
             ok;
         E ->
-            lager:error("[tcp:stream] Error: ~p~n", [E]),
-            bkt_dict:flush(State#sstate.dict),
-            ok = Transport:close(Socket)
+            error(E, Transport, Socket, State)
     end.
 
 -spec batch_loop(port(), term(), stream_state(), non_neg_integer(),
@@ -184,13 +182,11 @@ batch_loop(Socket, Transport, State, Time, {incomplete, Acc}) ->
                         dproto_tcp:decode_batch(Acc1));
         {error, timeout} ->
             batch_loop(Socket, Transport, State, Time, {incomplete, Acc});
-        {error,closed} ->
+        {error, closed} ->
             bkt_dict:flush(State#sstate.dict),
             ok;
         E ->
-            lager:error("[tcp:stream] Error: ~p~n", [E]),
-            bkt_dict:flush(State#sstate.dict),
-            ok = Transport:close(Socket)
+            error(E, Transport, Socket, State)
     end.
 
 flush(Dict) ->
@@ -206,3 +202,8 @@ drain() ->
         0 ->
             ok
     end.
+
+error(E, Transport, Socket, #sstate{dict = Dict}) ->
+    lager:error("[tcp:stream] Error: ~p~n", [E]),
+    bkt_dict:flush(Dict),
+    ok = Transport:close(Socket).
