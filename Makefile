@@ -15,3 +15,9 @@ clean:
 	$(REBAR) clean
 	make -C rel/pkg clean
 
+rel: update
+	$(REBAR) as prod compile
+	$(REBAR) as prod release
+
+package: rel
+	make -C rel/pkg package
