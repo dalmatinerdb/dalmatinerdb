@@ -132,40 +132,40 @@ handle_command({repair, Bucket, Metric, Time, Value}, _Sender,
         {true, State1} ->
             State2 =
                 case ets:lookup(T, {Bucket, Metric}) of
-                    %% If we repear ona a place before the metric, well just
+                    %% If we repair on a place before the metric, we will just
                     %% write it!
                     [{{Bucket, Metric}, Start, _Size, _Time, _Array}]
                       when Time + Count < Start ->
                         metric_io:write(State#state.io, Bucket, Metric, Time,
                                         Value),
                         State1;
-                    %% The data is entirely behind the cache, so we flush the
-                    %% cache and use the repair request as new cache
+                    %% The data is entirely ahead of the cache, so we flush the
+                    %% cache and use the repair request as new the cache.
                     [{{Bucket, Metric}, Start, Size, _Time, Array}]
-                      when Start + Size > Time ->
+                      when Start + Size < Time ->
                         Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
                         k6_bytea:delete(Array),
                         ets:delete(T, {Bucket, Metric}),
                         metric_io:write(State#state.io, Bucket, Metric, Start,
                                         Bin),
                         do_put(Bucket, Metric, Time, Value, State);
-                    %% Now it gets tricky teh repair is intersecting with the
-                    %% cache this should never happen but it probably will, so
+                    %% Now it gets tricky. The repair intersects with the
+                    %% cache - this should never happen but it probably will, so
                     %% it sucks!  There is no sane way to merge the values if
-                    %% they intersect,  however we know the following:
-                    %% 1) A repari request, based on how it is build, will never
-                    %%    contain unset values.
+                    %% they intersect, however we know the following:
+                    %% 1) A repair request, based on how it is built, will never
+                    %%    contain unset(empty) values.
                     %% 2) A cache can be an entirely empty value or contain
-                    %%    empty    segments.
-                    %% Based on that the best aproach is to flush the cache and
-                    %% then also flush the repair request. So that nothing will
-                    %% be overwritten with a empty value.
+                    %%    empty segments.
+                    %% Based on that, the best approach is to flush the cache and
+                    %% then also to flush the repair request. This ensures that
+                    %% nothing will be overwritten with a empty value.
                     %%
-                    %% - Flusing the repair once could lead to emptyies in the
-                    %%   cache overwriting non emptyies from the repair.
+                    %% - Flushing the repair once could lead to empties in the
+                    %%   cache overwriting non-empties from the repair.
                     %% - Flushing the cache and caching the repair could lead to
-                    %%   new emplties in the new caceh from the repair now
-                    %%   overwriting non empties from the privious cache.
+                    %%   new empties in the new cache from the repair now
+                    %%   overwriting non-empties from the previous cache.
                     [{{Bucket, Metric}, Start, Size, _Time, Array}] ->
                         Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
                         k6_bytea:delete(Array),
