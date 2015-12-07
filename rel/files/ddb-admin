@@ -325,7 +325,7 @@ cluster_admin()
                 exit 1
             fi
             node_up_check
-            $NODETOOL rpc fifo_console staged_join "$2"
+            $NODETOOL rpc dalmatiner_console staged_join "$2"
             ;;
         leave)
             if [ $# -eq 1 ]; then
@@ -463,7 +463,7 @@ case "$1" in
         # Make sure the local node IS running
         node_up_check
 
-        $NODETOOL rpc fifo_console join "$3"
+        $NODETOOL rpc dalmatiner_console join "$3"
         ;;
 
     leave)
@@ -482,7 +482,7 @@ case "$1" in
         # Make sure the local node is running
         node_up_check
 
-        $NODETOOL rpc fifo_console leave
+        $NODETOOL rpc dalmatiner_console leave
         ;;
 
     remove)
@@ -512,7 +512,7 @@ case "$1" in
         # Make sure the local node is running
         node_up_check
 
-        $NODETOOL rpc fifo_console remove "$3"
+        $NODETOOL rpc dalmatiner_console remove "$3"
         ;;
 
     down)
@@ -525,7 +525,7 @@ case "$1" in
         # Make sure the local node is running
         node_up_check
 
-        $NODETOOL rpc fifo_console down "$@"
+        $NODETOOL rpc dalmatiner_console down "$@"
         ;;
 
     status)
@@ -538,7 +538,7 @@ case "$1" in
         # Make sure the local node is running
         node_up_check
 
-        $NODETOOL rpc fifo_console status "$@"
+        $NODETOOL rpc dalmatiner_console status "$@"
         ;;
 
     vnode[_-]status)
@@ -551,7 +551,7 @@ case "$1" in
         # Make sure the local node is running
         node_up_check
 
-        $NODETOOL rpc fifo_console vnode_status "$@"
+        $NODETOOL rpc dalmatiner_console vnode_status "$@"
         ;;
 
     ringready)
@@ -564,7 +564,7 @@ case "$1" in
         # Make sure the local node is running
         node_up_check
 
-        $NODETOOL rpc fifo_console ringready "$@"
+        $NODETOOL rpc dalmatiner_console ringready "$@"
         ;;
 
     transfers)
@@ -616,7 +616,7 @@ case "$1" in
         # Make sure the local node is running
         node_up_check
 
-        $NODETOOL rpc fifo_console ensemble_status "$@"
+        $NODETOOL rpc dalmatiner_console ensemble_status "$@"
         ;;
 
     cluster[_-]info)
@@ -629,7 +629,7 @@ case "$1" in
         # Make sure the local node is running
         node_up_check
 
-        $NODETOOL rpc_infinity fifo_console cluster_info "$@"
+        $NODETOOL rpc_infinity dalmatiner_console cluster_info "$@"
         ;;
 
     services)
@@ -700,12 +700,12 @@ case "$1" in
         $ERTS_PATH/erl -noshell \
                        -pa $RUNNER_LIB_DIR/basho-patches \
                        $CONFIG_ARGS \
-                       -eval "fifo_console:$ACTION(['$OLDNODE', '$NEWNODE'])" \
+                       -eval "dalmatiner_console:$ACTION(['$OLDNODE', '$NEWNODE'])" \
                        -s init stop
         ;;
 
     ring)
-        run fifo_console get_ring
+        run dalmatiner_console get_ring
         ;;
 
     ## Riak command groups
