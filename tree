@@ -7,7 +7,7 @@
 ├─ dproto─0.1.12
 ├─ edown─0.7+build.151.ref2f6d4d4
 ├─ eper─0.94.0
-├─ fifo_utils─0.1.17
+├─ fifo_utils─0.1.18
 ├─ k6_bytea─1.1.4
 ├─ lager─2.1.1
 │  └─ goldrush─0.1.7
