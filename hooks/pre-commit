@@ -7,23 +7,15 @@
 #
 # To enable this hook, rename this file to "pre-commit".
 
-if [ "x$SKIP" == "x1" ]
+if [[ "x${SKIP}x" == "x1x" ]]
 then
-  exit 0
+        exit 0
 fi
 
-make xref
+make pre-commit
 RETVAL=$?
 if [ $RETVAL -ne 0 ]
 then
-  echo "XRef failed."
-  exit 1
-fi
-
-make test
-RETVAL=$?
-if [ $RETVAL -ne 0 ]
-then
-  echo "Test failed."
+  echo "checks failed."
   exit 1
 fi

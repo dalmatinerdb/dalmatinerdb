@@ -218,7 +218,7 @@ fold_fun(Metric, Time, V,
     ThisSize = mmath_bin:length(V),
     case Time - Last of
         Delta when Delta > 0,
-        Delta =< MaxDelta ->
+                   Delta =< MaxDelta ->
             AccV = <<AccE/binary, (mmath_bin:empty(Delta))/binary, V/binary>>,
             Acc#facc{
               size = Size + Delta + ThisSize,
@@ -252,21 +252,22 @@ bucket_fold_fun({BucketDir, Bucket}, {AccIn, Fun}) ->
             {Fun({Bucket, Metric}, lists:reverse(AccL), HAcc), Fun}
     end.
 
+fold_byckets_fun(PartitionDir, Buckets, Fun, Acc0) ->
+    Buckets1 = [{[PartitionDir, $/, BucketS], list_to_binary(BucketS)}
+                || BucketS <- Buckets],
+    fun() ->
+            {Out, _} = lists:foldl(fun bucket_fold_fun/2, {Acc0, Fun},
+                                   Buckets1),
+            Out
+    end.
+
 handle_call({fold, Fun, Acc0}, _From,
             State = #state{partition = Partition}) ->
     DataDir = application:get_env(riak_core, platform_data_dir, "data"),
     PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
     case file:list_dir(PartitionDir) of
         {ok, Buckets} ->
-            Buckets1 = [{[PartitionDir, $/, BucketS], list_to_binary(BucketS)}
-                        || BucketS <- Buckets],
-            AsyncWork =
-                fun() ->
-                        {Out, _} =
-                            lists:foldl(fun bucket_fold_fun/2,
-                                        {Acc0, Fun}, Buckets1),
-                        Out
-                end,
+            AsyncWork = fold_byckets_fun(PartitionDir, Buckets, Fun, Acc0),
             {reply, {ok, AsyncWork}, State};
         _ ->
             {reply, empty, State}
@@ -333,7 +334,8 @@ handle_call(buckets, _From, State = #state{partition = P}) ->
     PartitionDir = [DataDir, $/,  integer_to_list(P)],
     Buckets1 = case file:list_dir(PartitionDir) of
                    {ok, Buckets} ->
-                       btrie:from_list([{list_to_binary(B), t} || B <- Buckets]);
+                       btrie:from_list([{list_to_binary(B), t}
+                                        || B <- Buckets]);
                    _ ->
                        btrie:new()
                end,
@@ -350,13 +352,13 @@ handle_call({metrics, Bucket}, _From, State) ->
 
 handle_call({metrics, Bucket, Prefix}, _From, State) ->
     {MsR, State1} = case get_set(Bucket, State) of
-                       {ok, {{_, M}, S2}} ->
-                           Ms = mstore:metrics(M),
-                           Ms1 = btrie:fetch_keys_similar(Prefix, Ms),
-                           {btrie:from_list(Ms1), S2};
-                       _ ->
-                           {btrie:new(), State}
-                   end,
+                        {ok, {{_, M}, S2}} ->
+                            Ms = mstore:metrics(M),
+                            Ms1 = btrie:fetch_keys_similar(Prefix, Ms),
+                            {btrie:from_list(Ms1), S2};
+                        _ ->
+                            {btrie:new(), State}
+                    end,
     {reply, {ok, MsR}, State1};
 
 handle_call({write, Bucket, Metric, Time, Value}, _From, State) ->
@@ -390,12 +392,9 @@ handle_cast({read, Bucket, Metric, Time, Count, ReqID, Sender},
                 {{Resolution, Data}, S2};
             _ ->
                 lager:warning("[IO] Unknown metric: ~p/~p", [Bucket, Metric]),
-                Resolution = dalmatiner_opt:get(
-                               <<"buckets">>, Bucket, <<"resolution">>,
-                               {metric_vnode, resolution}, 1000),
-
+                Resolution = get_resolution(Bucket),
                 {{Resolution, mmath_bin:empty(Count)}, State}
-                  end,
+        end,
     riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, D}),
     {noreply, State1};
 
@@ -478,8 +477,7 @@ bucket_dir(Bucket, Partition) ->
 new_store(Partition, Bucket) when is_binary(Bucket) ->
     BucketDir = bucket_dir(Bucket, Partition),
     PointsPerFile = ppf(Bucket),
-    Resolution = dalmatiner_opt:get(<<"buckets">>, Bucket, <<"resolution">>,
-                                    {metric_vnode, resolution}, 1000),
+    Resolution = get_resolution(Bucket),
     {ok, MSet} = mstore:new(BucketDir, [{file_size, PointsPerFile}]),
     {Resolution, MSet}.
 
@@ -536,3 +534,8 @@ do_write(Bucket, Metric, Time, Value, State) ->
     MSet1 = mstore:put(MSet, Metric, Time, Value),
     Store1 = gb_trees:update(Bucket, {R, MSet1}, State1#state.mstore),
     State1#state{mstore=Store1}.
+
+get_resolution(Bucket) ->
+    dalmatiner_opt:get(
+      <<"buckets">>, Bucket, <<"resolution">>,
+      {metric_vnode, resolution}, 1000).

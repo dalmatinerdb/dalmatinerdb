@@ -63,10 +63,12 @@ repair(IdxNode, {Bucket, Metric}, {Time, Obj}) ->
 
 
 put(Preflist, ReqID, Bucket, Metric, {Time, Values}) when is_list(Values) ->
-    put(Preflist, ReqID, Bucket, Metric, {Time, << <<?INT:?TYPE_SIZE, V:?BITS/?INT_TYPE>> || V <- Values >>});
+    put(Preflist, ReqID, Bucket, Metric,
+        {Time, << <<?INT:?TYPE_SIZE, V:?BITS/?INT_TYPE>> || V <- Values >>});
 
 put(Preflist, ReqID, Bucket, Metric, {Time, Value}) when is_integer(Value) ->
-    put(Preflist, ReqID, Bucket, Metric, {Time, <<?INT:?TYPE_SIZE, Value:?BITS/?INT_TYPE>>});
+    put(Preflist, ReqID, Bucket, Metric,
+        {Time, <<?INT:?TYPE_SIZE, Value:?BITS/?INT_TYPE>>});
 
 put(Preflist, ReqID, Bucket, Metric, {Time, Value}) ->
     riak_core_vnode_master:command(Preflist,
@@ -120,58 +122,84 @@ init([Partition]) ->
            },
      [FoldWorkerPool]}.
 
+repair_update_cache(Bucket, Metric, Time, Count, Value,
+                    #state{tbl=T} = State) ->
+    case ets:lookup(T, {Bucket, Metric}) of
+        %% ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐
+        %% │Cache│     │     │     │     │     │Start│ ... │St+Si│     │
+        %% ├─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┤
+        %% │Rep. │     │Time │ ... │Ti+Co│     │     │     │     │     │
+        %% └─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┘
+        %%
+        %% If we repair on a place before the metric, we will just
+        %% write it!
+        [{{Bucket, Metric}, Start, _Size, _Time, _Array}]
+          when Time + Count < Start ->
+            metric_io:write(State#state.io, Bucket, Metric, Time,
+                            Value),
+            State;
+        %% ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐
+        %% │Cache│     │Start│ ... │St+Si│     │     │     │     │     │
+        %% ├─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┤
+        %% │Rep. │     │     │     │     │     │Time │ ... │Ti+Co│     │
+        %% └─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┘
+        %%
+        %% The data is entirely ahead of the cache, so we flush the
+        %% cache and use the repair request as new the cache.
+        [{{Bucket, Metric}, Start, Size, _Time, Array}]
+          when Start + Size < Time ->
+            Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
+            k6_bytea:delete(Array),
+            ets:delete(T, {Bucket, Metric}),
+            metric_io:write(State#state.io, Bucket, Metric, Start,
+                            Bin),
+            do_put(Bucket, Metric, Time, Value, State);
+        %% ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐
+        %% │Cache│     │     │     │Start│ ... │St+Si│     │     │     │
+        %% ├─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┤
+        %% │Rep. │     │     │     │     │Time │ ... │Ti+Co│     │     │
+        %% └─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┘
+        %%
+        %% Now it gets tricky. The repair intersects with the
+        %% cache - this should never happen but it probably will, so
+        %% it sucks!  There is no sane way to merge the values if
+        %% they intersect, however we know the following:
+        %% 1) A repair request, based on how it is built, will never
+        %%    contain unset(empty) values.
+        %% 2) A cache can be an entirely empty value or contain
+        %%    empty segments.
+        %% Based on that, the best approach is to flush the cache and
+        %% then also to flush the repair request. This ensures that
+        %% nothing will be overwritten with a empty value.
+        %%
+        %% - Flushing the repair once could lead to empties in the
+        %%   cache overwriting non-empties from the repair.
+        %% - Flushing the cache and caching the repair could lead to
+        %%   new empties in the new cache from the repair now
+        %%   overwriting non-empties from the previous cache.
+        [{{Bucket, Metric}, Start, Size, _Time, Array}] ->
+            Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
+            k6_bytea:delete(Array),
+            ets:delete(T, {Bucket, Metric}),
+            metric_io:write(State#state.io, Bucket, Metric, Start,
+                            Bin),
+            metric_io:write(State#state.io, Bucket, Metric, Time,
+                            Value),
+            State;
+        %% If we had no privious cache we can safely cache the
+        %% repair.
+        [] ->
+            do_put(Bucket, Metric, Time, Value, State)
+    end.
 
 %% Repair request are always full values not including non set values!
-handle_command({repair, Bucket, Metric, Time, Value}, _Sender,
-               #state{tbl=T} = State)
+handle_command({repair, Bucket, Metric, Time, Value}, _Sender, State)
   when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     Count = mmath_bin:length(Value),
     case valid_ts(Time + Count, Bucket, State) of
         {true, State1} ->
-            State2 = 
-                case ets:lookup(T, {Bucket, Metric}) of
-                    %% If we repear ona a place before the metric, well just write it!
-                    [{{Bucket, Metric}, Start, _Size, _Time, _Array}]
-                      when Time + Count < Start ->
-                        metric_io:write(State#state.io, Bucket, Metric, Time, Value),
-                        State1;
-                    %% The data is entirely behind the cache, so we flush the cache and use
-                    %% the repair request as new cache
-                    [{{Bucket, Metric}, Start, Size, _Time, Array}]
-                      when Start + Size > Time ->
-                        Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
-                        k6_bytea:delete(Array),
-                        ets:delete(T, {Bucket,Metric}),
-                        metric_io:write(State#state.io, Bucket, Metric, Start, Bin),
-                        do_put(Bucket, Metric, Time, Value, State);
-                    %% Now it gets tricky teh repair is intersecting with the cache
-                    %% this should never happen but it probably will, so it sucks!
-                    %% There is no sane way to merge the values if they intersect,
-                    %% however we know the following:
-                    %% 1) A repari request, based on how it is build, will never
-                    %%    contain unset values.
-                    %% 2) A cache can be an entirely empty value or contain empty
-                    %%    segments.
-                    %% Based on that the best aproach is to flush the cache and then
-                    %% also flush the repair request. So that nothing will be overwritten
-                    %% with a empty value.
-                    %%
-                    %% - Flusing the repair once could lead to emptyies in the cache
-                    %% overwriting non emptyies from the repair.
-                    %% - Flushing the cache and caching the repair could lead to new
-                    %% emplties in the new caceh from the repair now overwriting non
-                    %% empties from the privious cache.
-                    [{{Bucket, Metric}, Start, Size, _Time, Array}] ->
-                        Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
-                        k6_bytea:delete(Array),
-                        ets:delete(T, {Bucket,Metric}),
-                        metric_io:write(State#state.io, Bucket, Metric, Start, Bin),
-                        metric_io:write(State#state.io, Bucket, Metric, Time, Value),
-                        State1;
-                    %% If we had no privious cache we can safely cache the repair.
-                    [] ->
-                        do_put(Bucket, Metric, Time, Value, State)
-                end,
+            State2 = repair_update_cache(Bucket, Metric, Time, Count, Value,
+                                         State1),
             {noreply, State2};
         {false, State1} ->
             {noreply, State1}
@@ -217,12 +245,13 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
               ->
             Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
             k6_bytea:delete(Array),
-            ets:delete(T, {Bucket,Metric}),
+            ets:delete(T, {Bucket, Metric}),
             metric_io:write(IO, Bucket, Metric, Start, Bin),
             metric_io:read(IO, Bucket, Metric, Time, Count, ReqID, Sender),
             {noreply, State};
         %% If we are here we know that there is either no cahce or the requested
-        %% window and the cache do not overlap, so we can simply serve it from the ui servers
+        %% window and the cache do not overlap, so we can simply serve it from
+        %% the ui servers
         _ ->
             metric_io:read(IO, Bucket, Metric, Time, Count, ReqID, Sender),
             {noreply, State}
@@ -291,7 +320,8 @@ handle_coverage({metrics, Bucket}, _KS, Sender, State = #state{io = IO}) ->
                 end,
     {async, {fold, AsyncWork, FinishFun}, Sender, State};
 
-handle_coverage({metrics, Bucket, Prefix}, _KS, Sender, State = #state{io = IO}) ->
+handle_coverage({metrics, Bucket, Prefix}, _KS, Sender,
+                State = #state{io = IO}) ->
     AsyncWork = fun() ->
                         {ok, Ms} = metric_io:metrics(IO, Bucket, Prefix),
                         Ms
@@ -408,14 +438,16 @@ do_put(Bucket, Metric, Time, Value,
                   when (Time + Len) >= _End, Len < CT ->
                     Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
                     k6_bytea:set(Array, 0, Value),
-                    k6_bytea:set(Array, Len * ?DATA_SIZE, <<0:(?DATA_SIZE * 8 * (CT - Len))>>),
-                    ets:update_element(T, BM, [{2, Time}, {3, Len}, {4, Time + CT}]),
+                    k6_bytea:set(Array, Len * ?DATA_SIZE,
+                                 <<0:(?DATA_SIZE * 8 * (CT - Len))>>),
+                    ets:update_element(T, BM, [{2, Time}, {3, Len},
+                                               {4, Time + CT}]),
                     metric_io:write(IO, Bucket, Metric, Start, Bin, Sync);
                 %% In the case the data is already longer then the cache we
                 %% flush the cache
                 [{BM, Start, Size, _End, Array}]
                   when (Time + Len) >= _End ->
-                    ets:delete(T, {Bucket,Metric}),
+                    ets:delete(T, {Bucket, Metric}),
                     Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
                     k6_bytea:delete(Array),
                     metric_io:write(IO, Bucket, Metric, Start, Bin, Sync),
@@ -449,7 +481,7 @@ valid_ts(TS, Bucket, State) ->
         %% lifetime this means we could still potentially write in the
         %% past if writing baches but this is a problem for another day!
         {Exp, State1} when is_integer(Exp),
-                         TS < Exp ->
+                           TS < Exp ->
             {false, State1};
         {_, State1} ->
             {true, State1}

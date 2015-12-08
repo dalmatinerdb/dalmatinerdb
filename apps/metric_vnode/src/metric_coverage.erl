@@ -47,7 +47,7 @@ init({From, ReqID, _}, Request) ->
 
 process_results({ok, _ReqID, _IdxNode, Metrics},
                 State = #state{replies = Replies}) ->
-    Replies1 = btrie:merge(fun(_,_,_) -> t end, Replies, Metrics),
+    Replies1 = btrie:merge(fun(_, _, _) -> t end, Replies, Metrics),
     {done, State#state{replies = Replies1}};
 
 process_results(Result, State) ->
