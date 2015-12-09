@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# create a system user for the process, modern useradd will add the default group too
+# Assume DDB home dir as default location
+if [[ ! $(id dalmatiner 2>/dev/null) ]] ;then
+    # create a dalmatiner system account
+    /usr/sbin/useradd --system --create-home --home-dir /var/lib/ddb -s /bin/bash -g dalmatiner dalmatiner
+fi

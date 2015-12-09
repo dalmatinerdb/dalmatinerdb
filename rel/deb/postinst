@@ -1,6 +1,8 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
-addgroup --system dalmatiner
-adduser --system --home /var/lib/ddb --no-create-home --ingroup dalmatiner
-chown -R dalmatiner:dalmatiner /var/lib/ddb
-chown -R dalmatiner /var/log/ddb
+# Sort out file permissions
+if [[ $(id dalmatiner 2>/dev/null) ]] ;then
+    chown -R dalmatiner:dalmatiner /var/lib/ddb
+    chown -R dalmatiner:dalmatiner /var/log/ddb
+fi
+
