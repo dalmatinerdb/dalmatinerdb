@@ -23,6 +23,9 @@ rel: update
 package: rel
 	make -C rel/pkg package
 
+deb-clean: 
+	make -C rel/deb clean
+
 deb-prepare: update
 	$(REBAR) as deb compile
 	$(REBAR) as deb release
