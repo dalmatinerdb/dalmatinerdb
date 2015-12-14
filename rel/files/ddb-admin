@@ -386,7 +386,7 @@ cluster_admin()
             ;;
         status)
             node_up_check
-            $NODETOOL rpc riak_core_console command riak-admin cluster $@riak
+            $NODETOOL rpc riak_core_console command riak-admin cluster $@
             ;;
         partitions|partition)
             node_up_check
