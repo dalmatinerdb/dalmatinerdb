@@ -2,8 +2,8 @@
 ├─ cuttlefish─2.0.0+build.479.reff5f6fdc
 │  ├─ getopt─0.4.3
 │  └─ neotoma─1.7.2
-├─ dalmatiner_db─1
-├─ dalmatiner_vacuum─0.1.0
+├─ dalmatiner_db─0.1.1
+├─ dalmatiner_vacuum─0.1.1
 ├─ dproto─0.1.12
 ├─ edown─0.7+build.151.ref2f6d4d4
 ├─ eper─0.94.0
@@ -11,7 +11,7 @@
 ├─ k6_bytea─1.1.4
 ├─ lager─2.1.1
 │  └─ goldrush─0.1.7
-├─ metric_vnode─1
+├─ metric_vnode─0.1.1
 ├─ mmath─0.1.16
 ├─ mstore─0.1.9
 ├─ ranch─1.1.0
