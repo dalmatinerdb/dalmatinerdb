@@ -1,0 +1,6 @@
+description "Dalmatiner DB"
+start on filesystem
+stop on runlevel [06]
+respawn
+exec /usr/lib/ddb/bin/ddb console -noinput +Bd
+limit nofile 8192 16384

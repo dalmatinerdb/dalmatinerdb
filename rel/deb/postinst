@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# Sort out file permissions
+if [[ $(id dalmatiner 2>/dev/null) ]] ;then
+    chown -R dalmatiner:dalmatiner /var/lib/ddb
+    chown -R dalmatiner:dalmatiner /var/log/ddb
+fi
+
