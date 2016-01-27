@@ -31,4 +31,4 @@
 │  ├─ poolboy─0.8.1p3
 │  ├─ riak_ensemble─2.1.0+build.161.reffe1e6c2
 │  └─ riak_sysmon─2.0.0
-└─ trie─1.5.0
+└─ trie─1.5.1

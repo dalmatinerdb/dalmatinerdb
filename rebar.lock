@@ -103,4 +103,4 @@
   {git,"git://github.com/uwiger/setup.git",
        {ref,"51ee7c9f64d2bbe9dcbb58c278e8fbfd4d0ca5e2"}},
   2},
- {<<"trie">>,{pkg,<<"trie">>,<<"1.5.0">>},0}].
+ {<<"trie">>,{pkg,<<"trie">>,<<"1.5.1">>},0}].
