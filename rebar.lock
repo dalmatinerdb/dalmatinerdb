@@ -25,7 +25,7 @@
  {<<"dproto">>,{pkg,<<"dproto">>,<<"0.1.12">>},0},
  {<<"edown">>,
   {git,"https://github.com/uwiger/edown.git",
-       {ref,"2f6d4d4649d8f750e563fb470542524e05544216"}},
+       {ref,"abd9f5bbf9265a0a25640a677824386e199e91a6"}},
   0},
  {<<"eleveldb">>,
   {git,"git://github.com/basho/eleveldb.git",
@@ -36,7 +36,7 @@
   {git,"git://github.com/basho/exometer_core.git",
        {ref,"b47a5d65d9500c2b8f6ccc50e34005503589ef77"}},
   1},
- {<<"fifo_utils">>,{pkg,<<"fifo_utils">>,<<"0.1.18">>},0},
+ {<<"fifo_utils">>,{pkg,<<"fifo_utils">>,<<"0.1.19">>},0},
  {<<"folsom">>,
   {git,"git://github.com/basho/folsom.git",
        {ref,"72944523b6467c9f7add5f1c96dd5020424a2681"}},
@@ -91,4 +91,4 @@
   {git,"git://github.com/uwiger/setup.git",
        {ref,"51ee7c9f64d2bbe9dcbb58c278e8fbfd4d0ca5e2"}},
   2},
- {<<"trie">>,{pkg,<<"trie">>,<<"1.5.0">>},0}].
+ {<<"trie">>,{pkg,<<"trie">>,<<"1.5.1">>},0}].
