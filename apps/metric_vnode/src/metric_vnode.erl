@@ -40,14 +40,12 @@
           tbl,
           ct,
           io,
-          now,
           resolutions = btrie:new(),
           lifetimes  = btrie:new()
          }).
 
 -define(MASTER, metric_vnode_master).
 -define(MAX_Q_LEN, 20).
--define(TICK, 1000).
 -define(VAC, 1000*60*60*2).
 
 %% API
@@ -91,8 +89,6 @@ get(Preflist, ReqID, {Bucket, Metric}, {Time, Count}) ->
 
 init([Partition]) ->
     ok = dalmatiner_vacuum:register(),
-    erlang:send_after(?TICK, self(), tick),
-    Timestamp = erlang:system_time(milli_seconds),
     process_flag(trap_exit, true),
     random:seed(erlang:phash2([node()]),
                 erlang:monotonic_time(),
@@ -113,7 +109,6 @@ init([Partition]) ->
     FoldWorkerPool = {pool, metric_worker, WorkerPoolSize, []},
     {ok, IO} = metric_io:start_link(Partition),
     {ok, #state{
-            now = Timestamp,
             partition = Partition,
             node = node(),
             tbl = ets:new(P, [public, ordered_set]),
@@ -363,17 +358,12 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
     Reply = {ok, undefined, {P, N}, R},
     {reply, Reply, State}.
 
-handle_info(tick, State = #state{}) ->
-    Timestamp = erlang:system_time(milli_seconds),
-    erlang:send_after(?TICK, self(), tick),
-    {ok, State#state{now = Timestamp}};
-
 handle_info(vacuum, State = #state{io = IO, partition = P}) ->
     lager:info("[vaccum] Starting vaccum for partution ~p.", [P]),
     {ok, Bs} = metric_io:buckets(IO),
     State1 =
         lists:foldl(fun (Bucket, SAcc) ->
-                            case expiery(Bucket, SAcc) of
+                            case expiry(Bucket, SAcc) of
                                 {infinity, SAcc1} ->
                                     SAcc1;
                                 {Exp, SAcc1} ->
@@ -475,7 +465,7 @@ reply(Reply, {_, ReqID, _} = Sender, #state{node=N, partition=P}) ->
     riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Reply}).
 
 valid_ts(TS, Bucket, State) ->
-    case expiery(Bucket, State) of
+    case expiry(Bucket, State) of
         %% TODO:
         %% We ignore every data where the last point is older then the
         %% lifetime this means we could still potentially write in the
@@ -489,7 +479,8 @@ valid_ts(TS, Bucket, State) ->
 %% Return the latest point we'd ever want to save. This is more strict
 %% then the expiration we do on the data but it is strong enough for
 %% our guarantee.
-expiery(Bucket, State = #state{now = Now}) ->
+expiry(Bucket, State) ->
+    Now = erlang:system_time(milli_seconds),
     case get_lifetime(Bucket, State) of
         {infinity, State1} ->
             {infinity, State1};
