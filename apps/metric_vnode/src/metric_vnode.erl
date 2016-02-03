@@ -469,23 +469,24 @@ valid_ts(TS, Bucket, State) ->
         %% TODO:
         %% We ignore every data where the last point is older then the
         %% lifetime this means we could still potentially write in the
-        %% past if writing baches but this is a problem for another day!
+        %% past if writing batches but this is a problem for another day!
         {Exp, State1} when is_integer(Exp),
                            TS < Exp ->
             {false, State1};
         {_, State1} ->
             {true, State1}
     end.
+
 %% Return the latest point we'd ever want to save. This is more strict
 %% then the expiration we do on the data but it is strong enough for
 %% our guarantee.
 expiry(Bucket, State) ->
-    Now = erlang:system_time(milli_seconds),
     case get_lifetime(Bucket, State) of
         {infinity, State1} ->
             {infinity, State1};
         {LT, State1} ->
             {Res, State2} = get_resolution(Bucket, State1),
+            Now = erlang:system_time(milli_seconds),
             Exp = (Now - LT) div Res,
             {Exp, State2}
     end.
