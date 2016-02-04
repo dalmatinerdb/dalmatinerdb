@@ -40,6 +40,7 @@
           tbl,
           ct,
           io,
+          now,
           resolutions = btrie:new(),
           lifetimes  = btrie:new()
          }).
@@ -113,6 +114,7 @@ init([Partition]) ->
             node = node(),
             tbl = ets:new(P, [public, ordered_set]),
             io = IO,
+            now = timestamp(),
             ct = CT
            },
      [FoldWorkerPool]}.
@@ -361,7 +363,8 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
 handle_info(vacuum, State = #state{io = IO, partition = P}) ->
     lager:info("[vaccum] Starting vaccum for partution ~p.", [P]),
     {ok, Bs} = metric_io:buckets(IO),
-    State1 =
+    State1 = State#state{now = timestamp()},
+    State2 =
         lists:foldl(fun (Bucket, SAcc) ->
                             case expiry(Bucket, SAcc) of
                                 {infinity, SAcc1} ->
@@ -370,9 +373,9 @@ handle_info(vacuum, State = #state{io = IO, partition = P}) ->
                                     metric_io:delete(IO, Bucket, Exp),
                                     SAcc1
                             end
-                    end, State, btrie:fetch_keys(Bs)),
+                    end, State1, btrie:fetch_keys(Bs)),
     lager:info("[vaccum] Finalized vaccum for partution ~p.", [P]),
-    {ok, State1};
+    {ok, State2};
 
 handle_info({'EXIT', IO, normal}, State = #state{io = IO}) ->
     {ok, State};
@@ -463,6 +466,17 @@ do_put(Bucket, Metric, Time, Value,
 
 reply(Reply, {_, ReqID, _} = Sender, #state{node=N, partition=P}) ->
     riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Reply}).
+
+%% The timestamp is primarily used by the vacuum to remove data in accordance
+%% with the bucket lifetime. The timestamp is only updated once per 
+%% vacuum cycle, and may not accurately reflect the current system time.
+%% Although more performant than the monotonic `now()', there are nevertheless
+%% performance penalties for calling this too frequently. Also, updating the
+%% time on a self tick message may prevent the VNode being marked as idle by
+%% riak core.
+timestamp() ->
+    erlang:system_time(milli_seconds).
+
 
 valid_ts(TS, Bucket, State) ->
     case expiry(Bucket, State) of
