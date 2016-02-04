@@ -413,6 +413,9 @@ do_put(Bucket, Metric, Time, Value,
        Sync) when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     Len = mmath_bin:length(Value),
     BM = {Bucket, Metric},
+
+    %% Technically, we could still write data that falls within a range that is
+    %% to be deleted by the vacuum.  See the `timestamp()' function doc.
     case valid_ts(Time + Len, Bucket, State) of
         {false, State1} ->
             State1;
@@ -494,13 +497,12 @@ valid_ts(TS, Bucket, State) ->
 %% Return the latest point we'd ever want to save. This is more strict
 %% then the expiration we do on the data but it is strong enough for
 %% our guarantee.
-expiry(Bucket, State) ->
+expiry(Bucket, State = #state{now=Now}) ->
     case get_lifetime(Bucket, State) of
         {infinity, State1} ->
             {infinity, State1};
         {LT, State1} ->
             {Res, State2} = get_resolution(Bucket, State1),
-            Now = erlang:system_time(milli_seconds),
             Exp = (Now - LT) div Res,
             {Exp, State2}
     end.
