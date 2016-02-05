@@ -47,7 +47,6 @@
 
 -define(MASTER, metric_vnode_master).
 -define(MAX_Q_LEN, 20).
--define(TICK, 1000).
 -define(VAC, 1000*60*60*2).
 
 %% API
@@ -91,8 +90,6 @@ get(Preflist, ReqID, {Bucket, Metric}, {Time, Count}) ->
 
 init([Partition]) ->
     ok = dalmatiner_vacuum:register(),
-    erlang:send_after(?TICK, self(), tick),
-    Timestamp = erlang:system_time(milli_seconds),
     process_flag(trap_exit, true),
     random:seed(erlang:phash2([node()]),
                 erlang:monotonic_time(),
@@ -113,11 +110,11 @@ init([Partition]) ->
     FoldWorkerPool = {pool, metric_worker, WorkerPoolSize, []},
     {ok, IO} = metric_io:start_link(Partition),
     {ok, #state{
-            now = Timestamp,
             partition = Partition,
             node = node(),
             tbl = ets:new(P, [public, ordered_set]),
             io = IO,
+            now = timestamp(),
             ct = CT
            },
      [FoldWorkerPool]}.
@@ -363,26 +360,22 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
     Reply = {ok, undefined, {P, N}, R},
     {reply, Reply, State}.
 
-handle_info(tick, State = #state{}) ->
-    Timestamp = erlang:system_time(milli_seconds),
-    erlang:send_after(?TICK, self(), tick),
-    {ok, State#state{now = Timestamp}};
-
 handle_info(vacuum, State = #state{io = IO, partition = P}) ->
     lager:info("[vaccum] Starting vaccum for partution ~p.", [P]),
     {ok, Bs} = metric_io:buckets(IO),
-    State1 =
+    State1 = State#state{now = timestamp()},
+    State2 =
         lists:foldl(fun (Bucket, SAcc) ->
-                            case expiery(Bucket, SAcc) of
+                            case expiry(Bucket, SAcc) of
                                 {infinity, SAcc1} ->
                                     SAcc1;
                                 {Exp, SAcc1} ->
                                     metric_io:delete(IO, Bucket, Exp),
                                     SAcc1
                             end
-                    end, State, btrie:fetch_keys(Bs)),
+                    end, State1, btrie:fetch_keys(Bs)),
     lager:info("[vaccum] Finalized vaccum for partution ~p.", [P]),
-    {ok, State1};
+    {ok, State2};
 
 handle_info({'EXIT', IO, normal}, State = #state{io = IO}) ->
     {ok, State};
@@ -420,6 +413,9 @@ do_put(Bucket, Metric, Time, Value,
        Sync) when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     Len = mmath_bin:length(Value),
     BM = {Bucket, Metric},
+
+    %% Technically, we could still write data that falls within a range that is
+    %% to be deleted by the vacuum.  See the `timestamp()' function doc.
     case valid_ts(Time + Len, Bucket, State) of
         {false, State1} ->
             State1;
@@ -474,22 +470,34 @@ do_put(Bucket, Metric, Time, Value,
 reply(Reply, {_, ReqID, _} = Sender, #state{node=N, partition=P}) ->
     riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Reply}).
 
+%% The timestamp is primarily used by the vacuum to remove data in accordance
+%% with the bucket lifetime. The timestamp is only updated once per 
+%% vacuum cycle, and may not accurately reflect the current system time.
+%% Although more performant than the monotonic `now()', there are nevertheless
+%% performance penalties for calling this too frequently. Also, updating the
+%% time on a self tick message may prevent the VNode being marked as idle by
+%% riak core.
+timestamp() ->
+    erlang:system_time(milli_seconds).
+
+
 valid_ts(TS, Bucket, State) ->
-    case expiery(Bucket, State) of
+    case expiry(Bucket, State) of
         %% TODO:
         %% We ignore every data where the last point is older then the
         %% lifetime this means we could still potentially write in the
-        %% past if writing baches but this is a problem for another day!
+        %% past if writing batches but this is a problem for another day!
         {Exp, State1} when is_integer(Exp),
                            TS < Exp ->
             {false, State1};
         {_, State1} ->
             {true, State1}
     end.
+
 %% Return the latest point we'd ever want to save. This is more strict
 %% then the expiration we do on the data but it is strong enough for
 %% our guarantee.
-expiery(Bucket, State = #state{now = Now}) ->
+expiry(Bucket, State = #state{now=Now}) ->
     case get_lifetime(Bucket, State) of
         {infinity, State1} ->
             {infinity, State1};
