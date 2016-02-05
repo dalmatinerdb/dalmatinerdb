@@ -1,6 +1,6 @@
 {application, 'dalmatiner_vacuum',
- [{description, "An OTP application"},
-  {vsn, "0.1.0"},
+ [{description, "DalmatinerDB metric VACCUM logic"},
+  {vsn, "0.1.2"},
   {registered, []},
   {mod, {'dalmatiner_vacuum_app', []}},
   {applications,
