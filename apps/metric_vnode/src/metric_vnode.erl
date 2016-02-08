@@ -471,7 +471,7 @@ reply(Reply, {_, ReqID, _} = Sender, #state{node=N, partition=P}) ->
     riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Reply}).
 
 %% The timestamp is primarily used by the vacuum to remove data in accordance
-%% with the bucket lifetime. The timestamp is only updated once per 
+%% with the bucket lifetime. The timestamp is only updated once per
 %% vacuum cycle, and may not accurately reflect the current system time.
 %% Although more performant than the monotonic `now()', there are nevertheless
 %% performance penalties for calling this too frequently. Also, updating the
