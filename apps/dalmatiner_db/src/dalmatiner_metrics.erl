@@ -14,7 +14,7 @@
 
 
 %% API
--export([start_link/0, inc/1, inc/0]).
+-export([start_link/0, inc/2, inc/0]).
 
 -ignore_xref([start_link/0, inc/0]).
 
@@ -26,7 +26,7 @@
 -define(INTERVAL, 1000).
 -define(BUCKET, <<"dalmatinerdb">>).
 -define(COUNTERS_MPS, ddb_counters_mps).
-
+-define(COUNTERS_IOQ, ddb_counters_ioq).
 
 -record(state, {dict, prefix}).
 
@@ -44,16 +44,23 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-
 inc() ->
-    inc(1).
+    inc(1, mps).
 
-inc(N) ->
+inc(N, Kind) ->
+    case Kind of
+        mps ->
+            store_ets(N, ?COUNTERS_MPS);
+        ioq ->
+            store_ets(N, ?COUNTERS_IOQ)
+    end.
+
+store_ets(N, TabName) ->
     try
-        ets:update_counter(?COUNTERS_MPS, self(), N)
+        ets:update_counter(TabName, self(), N)
     catch
         error:badarg ->
-            ets:insert(?COUNTERS_MPS, {self(), N})
+            ets:insert(TabName, {self(), N})
     end,
     ok.
 
@@ -78,6 +85,8 @@ init([]) ->
     %% reporting.
     process_flag(priority, high),
     ets:new(?COUNTERS_MPS,
+            [named_table, set, public, {write_concurrency, true}]),
+    ets:new(?COUNTERS_IOQ,
             [named_table, set, public, {write_concurrency, true}]),
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, W} = application:get_env(dalmatiner_db, w),
@@ -139,12 +148,17 @@ handle_info(tick, State = #state{prefix = Prefix, dict = Dict}) ->
     ets:delete_all_objects(?COUNTERS_MPS),
     P = lists:sum([Cnt || {_, Cnt} <- MPS]),
 
+    IOQ = ets:tab2list(?COUNTERS_IOQ),
+    ets:delete_all_objects(?COUNTERS_IOQ),
+    P2 = lists:sum([Cnt || {_, Cnt} <- IOQ]),
+
     Dict2 = add_to_dict([Prefix, <<"mps">>], Time, P, Dict1),
-    Dict3 = do_metrics(Prefix, Time, Spec, Dict2),
-    Dict4 = bkt_dict:flush(Dict3),
+    Dict3 = add_to_dict([Prefix, <<"ioq">>], Time, P2, Dict2),
+    Dict4 = do_metrics(Prefix, Time, Spec, Dict3),
+    Dict5 = bkt_dict:flush(Dict4),
 
     erlang:send_after(?INTERVAL, self(), tick),
-    {noreply, State#state{dict = Dict4}};
+    {noreply, State#state{dict = Dict5}};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -194,7 +208,6 @@ do_metrics(Prefix, Time, [{N, [{type, spiral}]} | Spec], Acc) ->
     Acc1 = add_metric(Prefix, [K, <<"count">>], Time, Count, Acc),
     Acc2 = add_metric(Prefix, [K, <<"one">>], Time, One, Acc1),
     do_metrics(Prefix, Time, Spec, Acc2);
-
 
 do_metrics(Prefix, Time, [{N, [{type, counter}]} | Spec], Acc) ->
     Count = folsom_metrics:get_metric_value(N),
