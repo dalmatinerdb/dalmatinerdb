@@ -30,6 +30,7 @@ start(_StartType, _StartArgs) ->
     folsom_metrics:new_histogram(get, slide, 60),
     folsom_metrics:new_histogram(list_buckets, slide, 60),
     folsom_metrics:new_histogram(list_metrics, slide, 60),
+    folsom_metrics:new_histogram(io_queue_length, slide, 60),
 
     dalmatiner_db_sup:start_link().
 

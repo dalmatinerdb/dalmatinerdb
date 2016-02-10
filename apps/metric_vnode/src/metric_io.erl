@@ -50,10 +50,13 @@ write(Pid, Bucket, Metric, Time, Value) ->
     write(Pid, Bucket, Metric, Time, Value, ?MAX_Q_LEN).
 
 write(Pid, Bucket, Metric, Time, Value, MaxLen) ->
-    case erlang:process_info(Pid, message_queue_len) of
-        {message_queue_len, N} when N > MaxLen ->
+    {message_queue_len, Len} = erlang:process_info(Pid, message_queue_len),
+    folsom_metrics:notify({io_queue_length, Len}),
+
+    if
+        Len > MaxLen ->
             swrite(Pid, Bucket, Metric, Time, Value);
-        _ ->
+        true ->
             gen_server:cast(Pid, {write, Bucket, Metric, Time, Value})
     end.
 
