@@ -50,13 +50,10 @@ write(Pid, Bucket, Metric, Time, Value) ->
     write(Pid, Bucket, Metric, Time, Value, ?MAX_Q_LEN).
 
 write(Pid, Bucket, Metric, Time, Value, MaxLen) ->
-    {message_queue_len, Len} = erlang:process_info(Pid, message_queue_len),
-    dalmatiner_metrics:inc(Len, ioq),
-
-    if
-        Len > MaxLen ->
+    case erlang:process_info(Pid, message_queue_len) of
+        {message_queue_len, N} when N > MaxLen ->
             swrite(Pid, Bucket, Metric, Time, Value);
-        true ->
+        _ ->
             gen_server:cast(Pid, {write, Bucket, Metric, Time, Value})
     end.
 
