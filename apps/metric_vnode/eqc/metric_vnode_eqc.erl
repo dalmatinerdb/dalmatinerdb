@@ -74,19 +74,18 @@ overlap(Tr, Start, Vs) ->
 
 get(S, T, C) ->
     ReqID = T,
+    ReplyNode = nonode@nohost,
     Command = {get, ReqID, ?B, ?M, {T, C}},
     case ?V:handle_command(Command, {raw, ReqID, self()}, S) of
         {noreply, _S1} ->
             receive
-                {ReqID, {ok, ReqID, _, D}} ->
+                {ReqID, {ok, ReqID, {_Partition, ReplyNode}, D}} ->
                     D
             after
                 1000 ->
                     timeout
             end;
-        {reply, {ok, _, _, Reply}, _S1} ->
-            Reply;
-        {reply, {ok, Reply}, _S1} ->
+        {reply, {ok, _, {_Partition, ReplyNode}, Reply}, _S1} ->
             Reply
     end.
 

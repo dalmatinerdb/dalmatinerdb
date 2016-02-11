@@ -144,11 +144,13 @@ execute(timeout, SD0=#state{req_id=ReqId,
 
 %% @doc Wait for R replies and then respond to From (original client
 %% that called `get/2').
+%% `IdxNode' is a 2-tuple, {Partition, Node}, referring to the origin of this
+%% reply
 %% TODO: read repair...or another blog post?
 
 waiting({ok, ReqID, IdxNode, Obj},
         SD0=#state{from=From, num_r=NumR0, replies=Replies0,
-                   r=R, n=N, timeout=Timeout}) ->
+                   r=R, n=N, timeout=Timeout}) when is_tuple(IdxNode) ->
     NumR = NumR0 + 1,
     Replies = [{IdxNode, Obj}|Replies0],
     SD = SD0#state{num_r=NumR, replies=Replies},
@@ -171,12 +173,14 @@ waiting({ok, ReqID, IdxNode, Obj},
     end.
 
 wait_for_n({ok, _ReqID, IdxNode, Obj},
-           SD0=#state{n=N, num_r=NumR, replies=Replies0}) when NumR == N - 1 ->
+           SD0=#state{n=N, num_r=NumR, replies=Replies0})
+  when NumR == N - 1, is_tuple(IdxNode) ->
     Replies = [{IdxNode, Obj}|Replies0],
     {next_state, finalize, SD0#state{num_r=N, replies=Replies}, 0};
 
 wait_for_n({ok, _ReqID, IdxNode, Obj},
-           SD0=#state{num_r=NumR0, replies=Replies0, timeout=Timeout}) ->
+           SD0=#state{num_r=NumR0, replies=Replies0, timeout=Timeout})
+  when is_tuple(IdxNode) ->
     NumR = NumR0 + 1,
     Replies = [{IdxNode, Obj}|Replies0],
     {next_state, wait_for_n, SD0#state{num_r=NumR, replies=Replies}, Timeout};
