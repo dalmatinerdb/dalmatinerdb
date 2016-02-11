@@ -19,6 +19,9 @@
 %% States
 -export([prepare/2, execute/2, waiting/2, wait_for_n/2, finalize/2]).
 
+-type partition() :: chash:index_as_int().
+-type reply_src() :: {partition(), node()}.
+
 -record(state, {req_id,
                 from,
                 entity,
@@ -32,7 +35,7 @@
                 val,
                 vnode,
                 system,
-                replies=[]}).
+                replies=[] :: [reply_src()]}).
 
 -ignore_xref([
               code_change/4,
@@ -150,7 +153,7 @@ execute(timeout, SD0=#state{req_id=ReqId,
 
 waiting({ok, ReqID, IdxNode, Obj},
         SD0=#state{from=From, num_r=NumR0, replies=Replies0,
-                   r=R, n=N, timeout=Timeout}) when is_tuple(IdxNode) ->
+                   r=R, n=N, timeout=Timeout}) ->
     NumR = NumR0 + 1,
     Replies = [{IdxNode, Obj}|Replies0],
     SD = SD0#state{num_r=NumR, replies=Replies},
@@ -173,14 +176,12 @@ waiting({ok, ReqID, IdxNode, Obj},
     end.
 
 wait_for_n({ok, _ReqID, IdxNode, Obj},
-           SD0=#state{n=N, num_r=NumR, replies=Replies0})
-  when NumR == N - 1, is_tuple(IdxNode) ->
+           SD0=#state{n=N, num_r=NumR, replies=Replies0}) when NumR == N - 1 ->
     Replies = [{IdxNode, Obj}|Replies0],
     {next_state, finalize, SD0#state{num_r=N, replies=Replies}, 0};
 
 wait_for_n({ok, _ReqID, IdxNode, Obj},
-           SD0=#state{num_r=NumR0, replies=Replies0, timeout=Timeout})
-  when is_tuple(IdxNode) ->
+           SD0=#state{num_r=NumR0, replies=Replies0, timeout=Timeout}) ->
     NumR = NumR0 + 1,
     Replies = [{IdxNode, Obj}|Replies0],
     {next_state, wait_for_n, SD0#state{num_r=NumR, replies=Replies}, Timeout};
