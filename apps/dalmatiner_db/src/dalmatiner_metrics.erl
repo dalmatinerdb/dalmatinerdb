@@ -16,7 +16,7 @@
 %% API
 -export([start_link/0, inc_mps/1, inc_repairs/0, inc_repairs/1]).
 
--ignore_xref([start_link/0, inc/0]).
+-ignore_xref([start_link/0, inc/0, inc_repairs/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
