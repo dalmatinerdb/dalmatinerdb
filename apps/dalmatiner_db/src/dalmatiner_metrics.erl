@@ -14,9 +14,9 @@
 
 
 %% API
--export([start_link/0, inc/1, inc/0]).
+-export([start_link/0, inc_mps/1, inc_repairs/0, inc_repairs/1]).
 
--ignore_xref([start_link/0, inc/0]).
+-ignore_xref([start_link/0, inc/0, inc_repairs/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -26,6 +26,7 @@
 -define(INTERVAL, 1000).
 -define(BUCKET, <<"dalmatinerdb">>).
 -define(COUNTERS_MPS, ddb_counters_mps).
+-define(COUNTERS_REPAIRS, ddb_counters_repairs).
 
 
 -record(state, {dict, prefix}).
@@ -45,18 +46,25 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 
-inc() ->
-    inc(1).
+%% Increment a counter, that is stored in an ETS table so that a cumulative
+%% value can be reported for the time interval.
+inc_mps(N) ->
+    inc(N, ?COUNTERS_MPS).
 
-inc(N) ->
+inc_repairs() ->
+    inc_repairs(1).
+
+inc_repairs(N) ->
+    inc(N, ?COUNTERS_REPAIRS).
+
+inc(N, TabName) when N > 0 ->
     try
-        ets:update_counter(?COUNTERS_MPS, self(), N)
+        ets:update_counter(TabName, self(), N)
     catch
         error:badarg ->
-            ets:insert(?COUNTERS_MPS, {self(), N})
+            ets:insert(TabName, {self(), N})
     end,
     ok.
-
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -78,6 +86,8 @@ init([]) ->
     %% reporting.
     process_flag(priority, high),
     ets:new(?COUNTERS_MPS,
+            [named_table, set, public, {write_concurrency, true}]),
+    ets:new(?COUNTERS_REPAIRS,
             [named_table, set, public, {write_concurrency, true}]),
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, W} = application:get_env(dalmatiner_db, w),
@@ -135,11 +145,12 @@ handle_info(tick, State = #state{prefix = Prefix, dict = Dict}) ->
     Time = timestamp(),
     Spec = folsom_metrics:get_metrics_info(),
 
-    MPS = ets:tab2list(?COUNTERS_MPS),
-    ets:delete_all_objects(?COUNTERS_MPS),
-    P = lists:sum([Cnt || {_, Cnt} <- MPS]),
+    MPS = sum_ets(?COUNTERS_MPS),
+    Dict2 = add_to_dict([Prefix, <<"mps">>], Time, MPS, Dict1),
 
-    Dict2 = add_to_dict([Prefix, <<"mps">>], Time, P, Dict1),
+    Repairs = sum_ets(?COUNTERS_REPAIRS),
+    folsom_metrics:notify({read_repairs, Repairs}),
+
     Dict3 = do_metrics(Prefix, Time, Spec, Dict2),
     Dict4 = bkt_dict:flush(Dict3),
 
@@ -332,3 +343,8 @@ build_histogram([{n, V} | H], Prefix, Time, Acc) ->
 
 build_histogram([_ | H], Prefix, Time, Acc) ->
     build_histogram(H, Prefix, Time, Acc).
+
+sum_ets(TabName) ->
+    Xs = ets:tab2list(TabName),
+    ets:delete_all_objects(TabName),
+    lists:sum([Cnt || {_, Cnt} <- Xs]).
