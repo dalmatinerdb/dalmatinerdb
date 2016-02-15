@@ -55,7 +55,7 @@ write(Pid, Bucket, Metric, Time, Value, MaxLen) ->
     case Len of
         N when N > MaxLen ->
             swrite(Pid, Bucket, Metric, Time, Value);
-        true ->
+        _ ->
             gen_server:cast(Pid, {write, Bucket, Metric, Time, Value})
     end.
 
