@@ -51,7 +51,6 @@ write(Pid, Bucket, Metric, Time, Value) ->
 
 write(Pid, Bucket, Metric, Time, Value, MaxLen) ->
     {message_queue_len, Len} = erlang:process_info(Pid, message_queue_len),
-    folsom_metrics:notify({io_queue_length, Len}),
     case Len of
         N when N > MaxLen ->
             swrite(Pid, Bucket, Metric, Time, Value);
@@ -390,7 +389,9 @@ handle_cast({read, Bucket, Metric, Time, Count, ReqID, Sender},
     {D, State1} =
         case get_set(Bucket, State) of
             {ok, {{Resolution, MSet}, S2}} ->
-                {ok, Data} = mstore:get(MSet, Metric, Time, Count),
+                {ok, Data} = folsom_metrics:histogram_timed_update(
+                               'store-get', mstore, get,
+                               [MSet, Metric, Time, Count]),
                 {{Resolution, Data}, S2};
             _ ->
                 lager:warning("[IO] Unknown metric: ~p/~p", [Bucket, Metric]),
@@ -533,7 +534,8 @@ calc_empty(I) ->
 
 do_write(Bucket, Metric, Time, Value, State) ->
     {{R, MSet}, State1} = get_or_create_set(Bucket, State),
-    MSet1 = mstore:put(MSet, Metric, Time, Value),
+    MSet1 = folsom_metrics:histogram_timed_update(
+              'store-put', mstore, put, [MSet, Metric, Time, Value]),
     Store1 = gb_trees:update(Bucket, {R, MSet1}, State1#state.mstore),
     State1#state{mstore=Store1}.
 
