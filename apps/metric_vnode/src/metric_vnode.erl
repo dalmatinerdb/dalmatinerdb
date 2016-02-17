@@ -399,7 +399,16 @@ terminate(_Reason, #state{tbl = T, io = IO}) ->
     ets:foldl(fun({{Bucket, Metric}, Start, Size, _, Array}, _) ->
                       Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
                       k6_bytea:delete(Array),
-                      metric_io:write(IO, Bucket, Metric, Start, Bin)
+
+                      %% In some cases, the vnode terminates in response to the
+                      %% IO process crashing.  In such a case, it would be
+                      %% impossible to flush the in-memory data.
+                      case erlang:is_process_alive(IO) of
+                          true ->
+                              metric_io:write(IO, Bucket, Metric, Start, Bin);
+                          _ ->
+                              ok
+                      end
               end, ok, T),
     ets:delete(T),
     metric_io:close(IO),
