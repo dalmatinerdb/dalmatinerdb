@@ -245,7 +245,8 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
             Bin = k6_bytea:get(Array, SkipBytes, (PartCount * ?DATA_SIZE)),
             Offset = PartStart - Time,
             Part = {Offset, PartCount, Bin},
-            metric_io:read_rest(IO, Bucket, Metric, Time, Count, Part, ReqID, Sender),
+            metric_io:read_rest(
+              IO, Bucket, Metric, Time, Count, Part, ReqID, Sender),
             {noreply, State};
         %% If we are here we know that there is either no cahce or the requested
         %% window and the cache do not overlap, so we can simply serve it from

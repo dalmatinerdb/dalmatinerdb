@@ -66,7 +66,8 @@ read(Pid, Bucket, Metric, Time, Count, ReqID, Sender) ->
     gen_server:cast(Pid, {read, Bucket, Metric, Time, Count, ReqID, Sender}).
 
 read_rest(Pid, Bucket, Metric, Time, Count, Part, ReqID, Sender) ->
-    gen_server:cast(Pid, {read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender}).
+    gen_server:cast(
+      Pid, {read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender}).
 
 buckets(Pid) ->
     gen_server:call(Pid, buckets).
@@ -398,16 +399,19 @@ handle_cast({read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender},
             State = #state{node = N, partition = P}) ->
     {Data, State1} =
         case Part of
-            {Offset, PCount, Bin} when Offset =:= 0 ->
-                {{Res, D}, S} = do_read(Bucket, Metric, Time + PCount, Count - PCount, State),
+            {Offset, Len, Bin} when Offset =:= 0 ->
+                {{Res, D}, S} =
+                    do_read(Bucket, Metric, Time + Len, Count - Len, State),
                 {{Res, <<Bin/binary, D/binary>>}, S};
-            {Offset, PCount, Bin} when Offset + PCount =:= Count ->
-                {{Res, D}, S} = do_read(Bucket, Metric, Time, Count - PCount, State),
+            {Offset, Len, Bin} when Offset + Len =:= Count ->
+                {{Res, D}, S} =
+                    do_read(Bucket, Metric, Time, Count - Len, State),
                 {{Res, <<D/binary, Bin/binary>>}, S};
-            {Offset, PCount, Bin} ->
+            {Offset, Len, Bin} ->
                 {{Res, D}, S} = do_read(Bucket, Metric, Time, Count, State),
                 D1 = binary_part(D, 0, Offset * ?DATA_SIZE),
-                D2 = binary_part(D, Count * ?DATA_SIZE, (Offset + PCount - Count) * ?DATA_SIZE),
+                D2 = binary_part(D, Count * ?DATA_SIZE,
+                                 (Offset + Len - Count) * ?DATA_SIZE),
                 {{Res, <<D1/binary, Bin/binary, D2/binary>>}, S}
         end,
     riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Data}),
