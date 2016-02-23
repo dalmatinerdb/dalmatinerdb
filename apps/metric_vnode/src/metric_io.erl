@@ -10,11 +10,13 @@
 
 -behaviour(gen_server).
 
+-include_lib("mmath/include/mmath.hrl").
+
 %% API
 -export([start_link/1,
          empty/1, fold/3, delete/1, delete/2, delete/3, close/1,
          buckets/1, metrics/2, metrics/3,
-         read/7, write/5, write/6]).
+         read/7, read_rest/8, write/5, write/6]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -62,6 +64,10 @@ swrite(Pid, Bucket, Metric, Time, Value) ->
 
 read(Pid, Bucket, Metric, Time, Count, ReqID, Sender) ->
     gen_server:cast(Pid, {read, Bucket, Metric, Time, Count, ReqID, Sender}).
+
+read_rest(Pid, Bucket, Metric, Time, Count, Part, ReqID, Sender) ->
+    gen_server:cast(
+      Pid, {read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender}).
 
 buckets(Pid) ->
     gen_server:call(Pid, buckets).
@@ -385,17 +391,30 @@ handle_cast({write, Bucket, Metric, Time, Value}, State) ->
 
 handle_cast({read, Bucket, Metric, Time, Count, ReqID, Sender},
             State = #state{node = N, partition = P}) ->
-    {D, State1} =
-        case get_set(Bucket, State) of
-            {ok, {{Resolution, MSet}, S2}} ->
-                {ok, Data} = mstore:get(MSet, Metric, Time, Count),
-                {{Resolution, Data}, S2};
-            _ ->
-                lager:warning("[IO] Unknown metric: ~p/~p", [Bucket, Metric]),
-                Resolution = get_resolution(Bucket),
-                {{Resolution, mmath_bin:empty(Count)}, State}
-        end,
+    {D, State1} = do_read(Bucket, Metric, Time, Count, State),
     riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, D}),
+    {noreply, State1};
+
+handle_cast({read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender},
+            State = #state{node = N, partition = P}) ->
+    {Data, State1} =
+        case Part of
+            {Offset, Len, Bin} when Offset =:= 0 ->
+                {{Res, D}, S} =
+                    do_read(Bucket, Metric, Time + Len, Count - Len, State),
+                {{Res, <<Bin/binary, D/binary>>}, S};
+            {Offset, Len, Bin} when Offset + Len =:= Count ->
+                {{Res, D}, S} =
+                    do_read(Bucket, Metric, Time, Count - Len, State),
+                {{Res, <<D/binary, Bin/binary>>}, S};
+            {Offset, Len, Bin} ->
+                {{Res, D}, S} = do_read(Bucket, Metric, Time, Count, State),
+                D1 = binary_part(D, 0, Offset * ?DATA_SIZE),
+                D2 = binary_part(D, Count * ?DATA_SIZE,
+                                 (Offset + Len - Count) * ?DATA_SIZE),
+                {{Res, <<D1/binary, Bin/binary, D2/binary>>}, S}
+        end,
+    riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Data}),
     {noreply, State1};
 
 handle_cast(_Msg, State) ->
@@ -539,3 +558,14 @@ get_resolution(Bucket) ->
     dalmatiner_opt:get(
       <<"buckets">>, Bucket, <<"resolution">>,
       {metric_vnode, resolution}, 1000).
+
+do_read(Bucket, Metric, Time, Count, State) ->
+    case get_set(Bucket, State) of
+        {ok, {{Resolution, MSet}, S2}} ->
+            {ok, Data} = mstore:get(MSet, Metric, Time, Count),
+            {{Resolution, Data}, S2};
+        _ ->
+            lager:warning("[IO] Unknown metric: ~p/~p", [Bucket, Metric]),
+            Resolution = get_resolution(Bucket),
+            {{Resolution, mmath_bin:empty(Count)}, State}
+    end.
