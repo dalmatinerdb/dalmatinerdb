@@ -1,5 +1,4 @@
-[{<<"basho_poolboy">>,{pkg,<<"basho_poolboy">>,<<"0.8.1-p3">>},1},
- {<<"basho_stats">>,{pkg,<<"basho_stats">>,<<"1.0.3">>},1},
+[{<<"basho_stats">>,{pkg,<<"basho_stats">>,<<"1.0.3">>},1},
  {<<"bear">>,{pkg,<<"bear">>,<<"0.8.3">>},3},
  {<<"chash">>,{pkg,<<"chash">>,<<"0.1.1">>},1},
  {<<"clique">>,{pkg,<<"clique">>,<<"3.0.1">>},1},
@@ -19,6 +18,7 @@
  {<<"mstore">>,{pkg,<<"mstore">>,<<"0.1.9">>},0},
  {<<"parse_trans">>,{pkg,<<"parse_trans">>,<<"2.9.0">>},2},
  {<<"pbkdf2">>,{pkg,<<"pbkdf2">>,<<"2.0.0">>},1},
+ {<<"poolboy">>,{pkg,<<"basho_poolboy">>,<<"0.8.1-p3">>},1},
  {<<"quickrand">>,{pkg,<<"quickrand">>,<<"1.5.1">>},2},
  {<<"ranch">>,{pkg,<<"ranch">>,<<"1.1.0">>},0},
  {<<"recon">>,{pkg,<<"recon">>,<<"2.2.1">>},0},
@@ -27,4 +27,4 @@
  {<<"riak_sysmon">>,{pkg,<<"riak_sysmon">>,<<"2.1.2">>},1},
  {<<"setup">>,{pkg,<<"setup">>,<<"1.7.0">>},2},
  {<<"trie">>,{pkg,<<"trie">>,<<"1.5.1">>},0},
- {<<"uuid_erl">>,{pkg,<<"uuid_erl">>,<<"1.5.1">>},1}].
+ {<<"uuid">>,{pkg,<<"uuid_erl">>,<<"1.5.1">>},1}].
