@@ -216,7 +216,7 @@ handle_command({put, Bucket, Metric, {Time, Value}}, _Sender, State)
     {reply, ok, State1};
 
 handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
-               #state{tbl=T, io=IO, partition = Idx} = State) ->
+               #state{tbl=T, io=IO, node=N, partition=P} = State) ->
     BM = {Bucket, Metric},
     case ets:lookup(T, BM) of
         %% If our request is entirely cache we don't need to bother the IO node
@@ -228,7 +228,7 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
             SkipBytes = (Time - Start) * ?DATA_SIZE,
             Data = k6_bytea:get(Array, SkipBytes, (Count * ?DATA_SIZE)),
             {Resolution, State1} = get_resolution(Bucket, State),
-            {reply, {ok, ReqID, Idx, {Resolution, Data}}, State1};
+            {reply, {ok, ReqID, {P, N}, {Resolution, Data}}, State1};
         %% The request is neither before, after nor entirely inside the cache
         %% we have to read data, but apply cached part on top of it.
         [{BM, Start, Size, _Time, Array}]

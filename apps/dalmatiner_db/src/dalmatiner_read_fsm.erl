@@ -19,6 +19,9 @@
 %% States
 -export([prepare/2, execute/2, waiting/2, wait_for_n/2, finalize/2]).
 
+-type partition() :: chash:index_as_int().
+-type reply_src() :: {partition(), node()}.
+
 -record(state, {req_id,
                 from,
                 entity,
@@ -32,7 +35,7 @@
                 val,
                 vnode,
                 system,
-                replies=[]}).
+                replies=[] :: [reply_src()]}).
 
 -ignore_xref([
               code_change/4,
@@ -144,6 +147,8 @@ execute(timeout, SD0=#state{req_id=ReqId,
 
 %% @doc Wait for R replies and then respond to From (original client
 %% that called `get/2').
+%% `IdxNode' is a 2-tuple, {Partition, Node}, referring to the origin of this
+%% reply
 %% TODO: read repair...or another blog post?
 
 waiting({ok, ReqID, IdxNode, Obj},
