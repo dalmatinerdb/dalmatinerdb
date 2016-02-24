@@ -17,7 +17,7 @@ new(Bkt, N, W) ->
 
 add(Metric, Time, Points, BD = #bkt_dict{ppf = PPF}) ->
     Count = mmath_bin:length(Points),
-    dalmatiner_metrics:inc_mps(Count),
+    dalmatiner_metrics:inc(Count),
     Splits = mstore:make_splits(Time, Count, PPF),
     insert_metric(Metric, Splits, Points, BD).
 

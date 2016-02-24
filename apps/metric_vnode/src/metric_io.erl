@@ -552,7 +552,7 @@ calc_empty(I) ->
 do_write(Bucket, Metric, Time, Value, State) ->
     {{R, MSet}, State1} = get_or_create_set(Bucket, State),
     MSet1 = folsom_metrics:histogram_timed_update(
-              'store-put', mstore, put, [MSet, Metric, Time, Value]),
+              metric_vnode_store_put, mstore, put, [MSet, Metric, Time, Value]),
     Store1 = gb_trees:update(Bucket, {R, MSet1}, State1#state.mstore),
     State1#state{mstore=Store1}.
 
@@ -565,7 +565,7 @@ do_read(Bucket, Metric, Time, Count, State) ->
     case get_set(Bucket, State) of
         {ok, {{Resolution, MSet}, S2}} ->
             {ok, Data} = folsom_metrics:histogram_timed_update(
-                           'store-get', mstore, get,
+                           metric_vnode_store_get, mstore, get,
                            [MSet, Metric, Time, Count]),
             {{Resolution, Data}, S2};
         _ ->
