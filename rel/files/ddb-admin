@@ -538,7 +538,7 @@ case "$1" in
         # Make sure the local node is running
         node_up_check
 
-        $NODETOOL rpc fifo_console status "$@"
+        $NODETOOL rpc dalmatiner_console status "$@"
         ;;
 
     vnode[_-]status)

@@ -1,4 +1,4 @@
-VERSION=0.1.3
+VERSION=0.1.4
 COMPONENT_INTERNAL=ddb
 COMPONENT=dalmatinerdb
 DEPS="erlang" "coreutils" "sudo"
