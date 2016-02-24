@@ -133,24 +133,26 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 
-handle_info(tick, State = #state{prefix = Prefix, dict = Dict}) ->
+handle_info(tick, State = #state{prefix = _Prefix, dict = _Dict}) ->
     MPS = ets:tab2list(?COUNTERS_MPS),
     ets:delete_all_objects(?COUNTERS_MPS),
     P = lists:sum([Cnt || {_, Cnt} <- MPS]),
     folsom_metrics:notify({mps, P}),
 
-    Dict1 = bkt_dict:update_chash(Dict),
-    Time = timestamp(),
-    Spec = folsom_metrics:get_metrics_info(),
+    %% TODO: prepare confuration switch to enable/disable saving internal
+    %%       metrics
+    %% Dict1 = bkt_dict:update_chash(Dict),
+    %% Time = timestamp(),
+    %% Spec = folsom_metrics:get_metrics_info(),
 
-    Dict2 = do_metrics(Prefix, Spec,
-                       fun ({Metric, Value}, Acc) ->
-                           add_to_dict(Metric, Time, Value, Acc)
-                       end, Dict1),
-    Dict3 = bkt_dict:flush(Dict2),
+    %% Dict2 = do_metrics(Prefix, Spec,
+    %%                    fun ({Metric, Value}, Acc) ->
+    %%                        add_to_dict(Metric, Time, Value, Acc)
+    %%                    end, Dict1),
+    %% Dict3 = bkt_dict:flush(Dict2),
 
     erlang:send_after(?INTERVAL, self(), tick),
-    {noreply, State#state{dict = Dict3}};
+    {noreply, State};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -249,13 +251,13 @@ add_metric(Prefix, Name, Value, Fun, Acc) when is_float(Value) ->
     Scale = 1000*1000,
     add_metric(Prefix, Name, round(Value * Scale), Fun, Acc).
 
-add_to_dict(Metric, Time, Value, Dict) ->
-    Metric1 = dproto:metric_from_list(lists:flatten(Metric)),
-    bkt_dict:add(Metric1, Time, mmath_bin:from_list([Value]), Dict).
+%% add_to_dict(Metric, Time, Value, Dict) ->
+%%     Metric1 = dproto:metric_from_list(lists:flatten(Metric)),
+%%     bkt_dict:add(Metric1, Time, mmath_bin:from_list([Value]), Dict).
 
-timestamp() ->
-    {Meg, S, _} = os:timestamp(),
-    Meg*1000000 + S.
+%% timestamp() ->
+%%     {Meg, S, _} = os:timestamp(),
+%%     Meg*1000000 + S.
 
 metric_name(B) when is_binary(B) ->
     B;
