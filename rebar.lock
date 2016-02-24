@@ -69,7 +69,6 @@
   {git,"git://github.com/basho/poolboy.git",
        {ref,"8bb45fbc715c5f493642a1cc572ec7017d0d5fa3"}},
   1},
- {<<"quickrand">>,{pkg,<<"quickrand">>,<<"1.5.1">>},2},
  {<<"ranch">>,{pkg,<<"ranch">>,<<"1.1.0">>},0},
  {<<"recon">>,{pkg,<<"recon">>,<<"2.2.1">>},0},
  {<<"riak_core">>,
@@ -88,5 +87,4 @@
   {git,"git://github.com/uwiger/setup.git",
        {ref,"51ee7c9f64d2bbe9dcbb58c278e8fbfd4d0ca5e2"}},
   2},
- {<<"trie">>,{pkg,<<"trie">>,<<"1.5.1">>},0},
- {<<"uuid">>,{pkg,<<"uuid_erl">>,<<"1.5.1">>},1}].
+ {<<"trie">>,{pkg,<<"trie">>,<<"1.5.1">>},0}].
