@@ -14,7 +14,7 @@
 
 
 %% API
--export([start_link/0, inc/1, inc/0]).
+-export([start_link/0, inc/1, inc/0, statistics/0]).
 
 -ignore_xref([start_link/0, inc/0]).
 
@@ -57,6 +57,9 @@ inc(N) ->
     end,
     ok.
 
+statistics() ->
+    Spec = folsom_metrics:get_metrics_info(),
+    do_metrics([], Spec, fun (KeyValue, Acc) -> [KeyValue | Acc] end, []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -131,20 +134,23 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 
 handle_info(tick, State = #state{prefix = Prefix, dict = Dict}) ->
+    MPS = ets:tab2list(?COUNTERS_MPS),
+    ets:delete_all_objects(?COUNTERS_MPS),
+    P = lists:sum([Cnt || {_, Cnt} <- MPS]),
+    folsom_metrics:notify({mps, P}),
+
     Dict1 = bkt_dict:update_chash(Dict),
     Time = timestamp(),
     Spec = folsom_metrics:get_metrics_info(),
 
-    MPS = ets:tab2list(?COUNTERS_MPS),
-    ets:delete_all_objects(?COUNTERS_MPS),
-    P = lists:sum([Cnt || {_, Cnt} <- MPS]),
-
-    Dict2 = add_to_dict([Prefix, <<"mps">>], Time, P, Dict1),
-    Dict3 = do_metrics(Prefix, Time, Spec, Dict2),
-    Dict4 = bkt_dict:flush(Dict3),
+    Dict2 = do_metrics(Prefix, Spec,
+                       fun ({Metric, Value}, Acc) ->
+                           add_to_dict(Metric, Time, Value, Acc)
+                       end, Dict1),
+    Dict3 = bkt_dict:flush(Dict2),
 
     erlang:send_after(?INTERVAL, self(), tick),
-    {noreply, State#state{dict = Dict4}};
+    {noreply, State#state{dict = Dict3}};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -178,37 +184,39 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-%do_metrics(CBin, Time, Specs, Acc) ->
-do_metrics(_Prefix, _Time, [], Acc) ->
+do_metrics(_Prefix, [], _Fun, Acc) ->
     Acc;
 
-do_metrics(Prefix, Time, [{N, [{type, histogram}]} | Spec], Acc) ->
+do_metrics(Prefix, [{N, [{type, histogram}]} | Spec], Fun, Acc) ->
     Stats = folsom_metrics:get_histogram_statistics(N),
     Prefix1 = [Prefix, metric_name(N)],
-    Acc1 = build_histogram(Stats, Prefix1, Time, Acc),
-    do_metrics(Prefix, Time, Spec, Acc1);
+    Acc1 = build_histogram(Stats, Prefix1, Fun, Acc),
+    do_metrics(Prefix, Spec, Fun, Acc1);
 
-do_metrics(Prefix, Time, [{N, [{type, spiral}]} | Spec], Acc) ->
+do_metrics(Prefix, [{N, [{type, spiral}]} | Spec], Fun, Acc) ->
     [{count, Count}, {one, One}] = folsom_metrics:get_metric_value(N),
     K = metric_name(N),
-    Acc1 = add_metric(Prefix, [K, <<"count">>], Time, Count, Acc),
-    Acc2 = add_metric(Prefix, [K, <<"one">>], Time, One, Acc1),
-    do_metrics(Prefix, Time, Spec, Acc2);
+    Acc1 = add_metric(Prefix, [K, <<"count">>], Count, Fun, Acc),
+    Acc2 = add_metric(Prefix, [K, <<"one">>], One, Fun, Acc1),
+    do_metrics(Prefix, Spec, Fun, Acc2);
 
-
-do_metrics(Prefix, Time, [{N, [{type, counter}]} | Spec], Acc) ->
+do_metrics(Prefix, [{N, [{type, counter}]} | Spec], Fun, Acc) ->
     Count = folsom_metrics:get_metric_value(N),
-    Acc1 = add_metric(Prefix, N, Time, Count, Acc),
-    do_metrics(Prefix, Time, Spec, Acc1);
+    Acc1 = add_metric(Prefix, N, Count, Fun, Acc),
+    do_metrics(Prefix, Spec, Fun, Acc1);
 
-do_metrics(Prefix, Time, [{N, [{type, duration}]} | Spec], Acc) ->
+do_metrics(Prefix, [{N, [{type, gauge}]} | Spec], Fun, Acc) ->
+    Value = folsom_metrics:get_metric_value(N),
+    Acc1 = add_metric(Prefix, N, Value, Fun, Acc),
+    do_metrics(Prefix, Spec, Fun, Acc1);
+
+do_metrics(Prefix, [{N, [{type, duration}]} | Spec], Fun, Acc) ->
     Stats = folsom_metrics:get_metric_value(N),
     Prefix1 = [Prefix, metric_name(N)],
-    Acc1 = build_histogram(Stats, Prefix1, Time, Acc),
-    do_metrics(Prefix, Time, Spec, Acc1);
+    Acc1 = build_histogram(Stats, Prefix1, Fun, Acc),
+    do_metrics(Prefix, Spec, Fun, Acc1);
 
-
-do_metrics(Prefix, Time, [{N, [{type, meter}]} | Spec], Acc) ->
+do_metrics(Prefix, [{N, [{type, meter}]} | Spec], Fun, Acc) ->
     Prefix1 = [Prefix, metric_name(N)],
     [{count, Count},
      {one, One},
@@ -221,25 +229,25 @@ do_metrics(Prefix, Time, [{N, [{type, meter}]} | Spec], Acc) ->
        {five_to_fifteen, FiveToFifteen},
        {one_to_fifteen, OneToFifteen}]}]
         = folsom_metrics:get_metric_value(N),
-    Acc1 = add_metric(Prefix1, [<<"count">>], Time, Count, Acc),
-    Acc2 = add_metric(Prefix1, [<<"one">>], Time, One, Acc1),
-    Acc3 = add_metric(Prefix1, [<<"five">>], Time, Five, Acc2),
-    Acc4 = add_metric(Prefix1, [<<"fifteen">>], Time, Fifteen, Acc3),
-    Acc5 = add_metric(Prefix1, [<<"day">>], Time, Day, Acc4),
-    Acc6 = add_metric(Prefix1, [<<"mean">>], Time, Mean, Acc5),
-    Acc7 = add_metric(Prefix1, [<<"one_to_five">>], Time, OneToFive, Acc6),
+    Acc1 = add_metric(Prefix1, [<<"count">>], Count, Fun, Acc),
+    Acc2 = add_metric(Prefix1, [<<"one">>], One, Fun, Acc1),
+    Acc3 = add_metric(Prefix1, [<<"five">>], Five, Fun, Acc2),
+    Acc4 = add_metric(Prefix1, [<<"fifteen">>], Fifteen, Fun, Acc3),
+    Acc5 = add_metric(Prefix1, [<<"day">>], Day, Fun, Acc4),
+    Acc6 = add_metric(Prefix1, [<<"mean">>], Mean, Fun, Acc5),
+    Acc7 = add_metric(Prefix1, [<<"one_to_five">>], OneToFive, Fun, Acc6),
     Acc8 = add_metric(Prefix1,
-                      [<<"five_to_fifteen">>], Time, FiveToFifteen, Acc7),
+                      [<<"five_to_fifteen">>], FiveToFifteen, Fun, Acc7),
     Acc9 = add_metric(Prefix1,
-                      [<<"one_to_fifteen">>], Time, OneToFifteen, Acc8),
-    do_metrics(Prefix, Time, Spec, Acc9).
+                      [<<"one_to_fifteen">>], OneToFifteen, Fun, Acc8),
+    do_metrics(Prefix, Spec, Fun, Acc9).
 
-add_metric(Prefix, Name, Time, Value, Acc) when is_integer(Value) ->
-    add_to_dict([Prefix, metric_name(Name)], Time, Value, Acc);
+add_metric(Prefix, Name, Value, Fun, Acc) when is_integer(Value) ->
+    Fun({[Prefix, metric_name(Name)], Value}, Acc);
 
-add_metric(Prefix, Name, Time, Value, Acc) when is_float(Value) ->
+add_metric(Prefix, Name, Value, Fun, Acc) when is_float(Value) ->
     Scale = 1000*1000,
-    add_to_dict([Prefix, metric_name(Name)], Time, round(Value*Scale), Acc).
+    add_metric(Prefix, Name, round(Value * Scale), Fun, Acc).
 
 add_to_dict(Metric, Time, Value, Dict) ->
     Metric1 = dproto:metric_from_list(lists:flatten(Metric)),
@@ -272,63 +280,63 @@ a2b(A) ->
     erlang:atom_to_binary(A, utf8).
 
 % build_histogram(Stats, Prefix, Time, Acc)
-build_histogram([], _Prefix, _Time, Acc) ->
+build_histogram([], _Prefix, _Fun, Acc) ->
     Acc;
 
-build_histogram([{min, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"min">>, Time, round(V), Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{min, V} | H], Prefix, Fun, Acc) ->
+    Acc1 = add_metric(Prefix, <<"min">>, round(V), Fun, Acc),
+    build_histogram(H, Prefix, Fun, Acc1);
 
-build_histogram([{max, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"max">>, Time, round(V), Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{max, V} | H], Prefix, Fun, Acc) ->
+    Acc1 = add_metric(Prefix, <<"max">>, round(V), Fun, Acc),
+    build_histogram(H, Prefix, Fun, Acc1);
 
-build_histogram([{arithmetic_mean, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"arithmetic_mean">>, Time, round(V), Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{arithmetic_mean, V} | H], Prefix, Fun, Acc) ->
+    Acc1 = add_metric(Prefix, <<"arithmetic_mean">>, round(V), Fun, Acc),
+    build_histogram(H, Prefix, Fun, Acc1);
 
-build_histogram([{geometric_mean, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"geometric_mean">>, Time, round(V), Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{geometric_mean, V} | H], Prefix, Fun, Acc) ->
+    Acc1 = add_metric(Prefix, <<"geometric_mean">>, round(V), Fun, Acc),
+    build_histogram(H, Prefix, Fun, Acc1);
 
-build_histogram([{harmonic_mean, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"harmonic_mean">>, Time, round(V), Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{harmonic_mean, V} | H], Prefix, Fun, Acc) ->
+    Acc1 = add_metric(Prefix, <<"harmonic_mean">>, round(V), Fun, Acc),
+    build_histogram(H, Prefix, Fun, Acc1);
 
-build_histogram([{median, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"median">>, Time, round(V), Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{median, V} | H], Prefix, Fun, Acc) ->
+    Acc1 = add_metric(Prefix, <<"median">>, round(V), Fun, Acc),
+    build_histogram(H, Prefix, Fun, Acc1);
 
-build_histogram([{variance, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"variance">>, Time, round(V), Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{variance, V} | H], Prefix, Fun, Acc) ->
+    Acc1 = add_metric(Prefix, <<"variance">>, round(V), Fun, Acc),
+    build_histogram(H, Prefix, Fun, Acc1);
 
-build_histogram([{standard_deviation, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"standard_deviation">>, Time, round(V), Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{standard_deviation, V} | H], Prefix, Fun, Acc) ->
+    Acc1 = add_metric(Prefix, <<"standard_deviation">>, round(V), Fun, Acc),
+    build_histogram(H, Prefix, Fun, Acc1);
 
-build_histogram([{skewness, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"skewness">>, Time, round(V), Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{skewness, V} | H], Prefix, Fun, Acc) ->
+    Acc1 = add_metric(Prefix, <<"skewness">>, round(V), Fun, Acc),
+    build_histogram(H, Prefix, Fun, Acc1);
 
-build_histogram([{kurtosis, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"kurtosis">>, Time, round(V), Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{kurtosis, V} | H], Prefix, Fun, Acc) ->
+    Acc1 = add_metric(Prefix, <<"kurtosis">>, round(V), Fun, Acc),
+    build_histogram(H, Prefix, Fun, Acc1);
 
 build_histogram([{percentile,
                   [{50, P50}, {75, P75}, {90, P90}, {95, P95}, {99, P99},
-                   {999, P999}]} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"p50">>, Time, round(P50), Acc),
-    Acc2 = add_metric(Prefix, <<"p75">>, Time, round(P75), Acc1),
-    Acc3 = add_metric(Prefix, <<"p90">>, Time, round(P90), Acc2),
-    Acc4 = add_metric(Prefix, <<"p95">>, Time, round(P95), Acc3),
-    Acc5 = add_metric(Prefix, <<"p99">>, Time, round(P99), Acc4),
-    Acc6 = add_metric(Prefix, <<"p999">>, Time, round(P999), Acc5),
-    build_histogram(H, Prefix, Time, Acc6);
+                   {999, P999}]} | H], Prefix, Fun, Acc) ->
+    Acc1 = add_metric(Prefix, <<"p50">>, round(P50), Fun, Acc),
+    Acc2 = add_metric(Prefix, <<"p75">>, round(P75), Fun, Acc1),
+    Acc3 = add_metric(Prefix, <<"p90">>, round(P90), Fun, Acc2),
+    Acc4 = add_metric(Prefix, <<"p95">>, round(P95), Fun, Acc3),
+    Acc5 = add_metric(Prefix, <<"p99">>, round(P99), Fun, Acc4),
+    Acc6 = add_metric(Prefix, <<"p999">>, round(P999), Fun, Acc5),
+    build_histogram(H, Prefix, Fun, Acc6);
 
-build_histogram([{n, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"count">>, Time, V, Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{n, V} | H], Prefix, Fun, Acc) ->
+    Acc1 = add_metric(Prefix, <<"count">>, V, Fun, Acc),
+    build_histogram(H, Prefix, Fun, Acc1);
 
-build_histogram([_ | H], Prefix, Time, Acc) ->
-    build_histogram(H, Prefix, Time, Acc).
+build_histogram([_ | H], Prefix, Fun, Acc) ->
+    build_histogram(H, Prefix, Fun, Acc).
