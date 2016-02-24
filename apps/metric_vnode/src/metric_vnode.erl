@@ -192,7 +192,7 @@ repair_update_cache(Bucket, Metric, Time, Count, Value,
 %% Repair request are always full values not including non set values!
 handle_command({repair, Bucket, Metric, Time, Value}, _Sender, State)
   when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
-    folsom_metrics:notify({read_repairs, 1}),
+    folsom_metrics:notify({metric_vnode_read_repairs, 1}),
     Count = mmath_bin:length(Value),
     case valid_ts(Time + Count, Bucket, State) of
         {true, State1} ->
