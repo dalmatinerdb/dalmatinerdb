@@ -13,7 +13,7 @@ RUNNER_USER={{run_user}}
 
 # Make sure this script is running as the appropriate user
 if [ ! -z "$RUNNER_USER" ] && [ `whoami` != "$RUNNER_USER" ]; then
-    exec sudo -u $RUNNER_USER $0 $@
+    exec sudo -H -u $RUNNER_USER $0 $@
 fi
 
 # Make sure CWD is set to runner base dir
