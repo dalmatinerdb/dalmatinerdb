@@ -66,19 +66,13 @@ format_stats([], Acc) ->
 format_stats([{Stat, V}|T], Acc) ->
     format_stats(T, [io_lib:format("~s : ~p~n", [format_stat_key(Stat), V])|Acc]).
 
-%format_stat_key(Stat) ->
-%    format_stat_key(Stat, []).
-
 format_stat_key([]) ->
     [];
-format_stat_key([Part]) ->
-    Part;
 format_stat_key([[]|T]) ->
     format_stat_key(T);
 format_stat_key([Key|T]) when is_list(Key) ->
-    case format_stat_key(Key) of
-        [] -> format_stat_key(T);
-        Part -> [Part, <<".">>, format_stat_key(T)]
-    end;
+    format_stat_key(Key ++ T);
+format_stat_key([Key]) ->
+    Key;
 format_stat_key([Key|T]) ->
     [Key, <<".">>, format_stat_key(T)].
