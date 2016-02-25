@@ -196,8 +196,8 @@ do_metrics(Prefix, [{N, [{type, histogram} | _]} | Spec], Fun, Acc) ->
 do_metrics(Prefix, [{N, [{type, spiral} | _]} | Spec], Fun, Acc) ->
     [{count, Count}, {one, One}] = folsom_metrics:get_metric_value(N),
     K = metric_name(N),
-    Acc1 = add_metric(Prefix, [K, <<"count">>], Count, Fun, Acc),
-    Acc2 = add_metric(Prefix, [K, <<"one">>], One, Fun, Acc1),
+    Acc1 = add_metric(Prefix, {K, <<"count">>}, Count, Fun, Acc),
+    Acc2 = add_metric(Prefix, {K, <<"one">>}, One, Fun, Acc1),
     do_metrics(Prefix, Spec, Fun, Acc2);
 
 do_metrics(Prefix, [{N, [{type, counter} | _]} | Spec], Fun, Acc) ->
@@ -324,15 +324,14 @@ build_histogram([{kurtosis, V} | H], Prefix, Fun, Acc) ->
     build_histogram(H, Prefix, Fun, Acc1);
 
 build_histogram([{percentile,
-                  [{50, P50}, {75, P75}, {90, P90}, {95, P95}, {99, P99},
-                   {999, P999}]} | H], Prefix, Fun, Acc) ->
+                  [{50, P50}, {75, P75}, {95, P95}, {99, P99}, {999, P999}]
+                 } | H], Prefix, Fun, Acc) ->
     Acc1 = add_metric(Prefix, <<"p50">>, round(P50), Fun, Acc),
     Acc2 = add_metric(Prefix, <<"p75">>, round(P75), Fun, Acc1),
-    Acc3 = add_metric(Prefix, <<"p90">>, round(P90), Fun, Acc2),
-    Acc4 = add_metric(Prefix, <<"p95">>, round(P95), Fun, Acc3),
-    Acc5 = add_metric(Prefix, <<"p99">>, round(P99), Fun, Acc4),
-    Acc6 = add_metric(Prefix, <<"p999">>, round(P999), Fun, Acc5),
-    build_histogram(H, Prefix, Fun, Acc6);
+    Acc3 = add_metric(Prefix, <<"p95">>, round(P95), Fun, Acc2),
+    Acc4 = add_metric(Prefix, <<"p99">>, round(P99), Fun, Acc3),
+    Acc5 = add_metric(Prefix, <<"p999">>, round(P999), Fun, Acc4),
+    build_histogram(H, Prefix, Fun, Acc5);
 
 build_histogram([{n, V} | H], Prefix, Fun, Acc) ->
     Acc1 = add_metric(Prefix, <<"count">>, V, Fun, Acc),
