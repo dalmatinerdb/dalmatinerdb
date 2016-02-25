@@ -13,9 +13,9 @@ RUNNER_LOG_DIR={{log_path}}
 RUNNER_USER={{run_user}}
 
 # Make sure this script is running as the appropriate user
-if [ ! -z "$RUNNER_USER" ] && [ `whoami` != "$RUNNER_USER" ]; then
-    exec sudo -H -u $RUNNER_USER $0 $@
-fi
+#if [ ! -z "$RUNNER_USER" ] && [ `whoami` != "$RUNNER_USER" ]; then
+#    exec sudo -H -u $RUNNER_USER $0 $@
+#fi
 
 # Make sure CWD is set to runner base dir
 cd $RUNNER_BASE_DIR
