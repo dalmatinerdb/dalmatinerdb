@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-
-/opt/local/dalmatinerdb/bin/ddb-admin $@

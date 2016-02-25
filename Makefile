@@ -17,7 +17,6 @@ clean:
 	make -C rel/deb clean
 
 rel: update
-	$(REBAR) as prod compile
 	$(REBAR) as prod release
 
 package: rel

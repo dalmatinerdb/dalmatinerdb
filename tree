@@ -1,34 +1,33 @@
-[0m├─ cluster_info─2.0.4
-├─ cuttlefish─2.0.0+build.479.reff5f6fdc
-│  ├─ getopt─0.4.3
-│  └─ neotoma─1.7.2
-├─ dalmatiner_db─0.1.1
-├─ dalmatiner_vacuum─0.1.1
+[0m├─ dalmatiner_db─0.1.4
+├─ dalmatiner_vacuum─0.1.2
 ├─ dproto─0.1.12
-├─ edown─0.7+build.153.refabd9f5b
+├─ edown─0.7.0
 ├─ eper─0.94.0
-├─ fifo_utils─0.1.19
+├─ fifo_utils─0.1.21
+│  └─ uuid─1.5.1
+│     └─ quickrand─1.5.1
 ├─ k6_bytea─1.1.4
-├─ lager─2.1.1
+├─ lager─3.0.2
 │  └─ goldrush─0.1.7
-├─ metric_vnode─0.1.1
+├─ metric_vnode─0.1.3
 ├─ mmath─0.1.16
 ├─ mstore─0.1.9
 ├─ ranch─1.1.0
 ├─ recon─2.2.1
-├─ riak_core─fifo-0.4.4+build.1802.reffdf5dd7
+├─ riak_core─2.1.5
 │  ├─ basho_stats─1.0.3
 │  ├─ chash─0.1.1
-│  ├─ clique─0.3.2
-│  ├─ eleveldb─2.1.4
-│  ├─ exometer_core─1.0.0-basho2
-│  │  ├─ folsom─0.7.4p5
-│  │  │  ├─ bear─0.1.3p1
-│  │  │  └─ meck─0.8.2
-│  │  ├─ parse_trans─2.9
-│  │  └─ setup─1.4
+│  ├─ clique─3.0.1
+│  ├─ cuttlefish─2.0.7
+│  │  └─ getopt─0.8.2
+│  ├─ eleveldb─2.1.3
+│  ├─ exometer_core─1.0.0
+│  │  ├─ folsom─0.8.3
+│  │  │  └─ bear─0.8.3
+│  │  ├─ parse_trans─2.9.0
+│  │  └─ setup─1.7.0
 │  ├─ pbkdf2─2.0.0
-│  ├─ poolboy─0.8.1p3
-│  ├─ riak_ensemble─2.1.0+build.161.reffe1e6c2
-│  └─ riak_sysmon─2.0.0
+│  ├─ poolboy─0.8.1-p3
+│  ├─ riak_ensemble─2.1.3
+│  └─ riak_sysmon─2.1.2
 └─ trie─1.5.1
