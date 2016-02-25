@@ -1,8 +1,4 @@
-[0m├─ cluster_info─2.0.4
-├─ cuttlefish─2.0.1
-│  ├─ getopt─0.4.3
-│  └─ neotoma─1.7.2
-├─ dalmatiner_db─0.1.4
+[0m├─ dalmatiner_db─0.1.4
 ├─ dalmatiner_vacuum─0.1.2
 ├─ dproto─0.1.12
 ├─ edown─0.7.0
@@ -10,7 +6,7 @@
 ├─ fifo_utils─0.1.21
 │  └─ uuid─1.5.1
 │     └─ quickrand─1.5.1
-├─ k6_bytea─1.1.4
+├─ k6_bytea─1.1.5
 ├─ lager─3.0.2
 │  └─ goldrush─0.1.7
 ├─ metric_vnode─0.1.3
@@ -22,6 +18,8 @@
 │  ├─ basho_stats─1.0.3
 │  ├─ chash─0.1.1
 │  ├─ clique─3.0.1
+│  ├─ cuttlefish─2.0.7
+│  │  └─ getopt─0.8.2
 │  ├─ eleveldb─2.1.3
 │  ├─ exometer_core─1.0.0
 │  │  ├─ folsom─0.8.3
