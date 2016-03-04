@@ -243,8 +243,13 @@ fold_fun(Metric, Time, V,
               lacc = [{Time, V}, {T0, AccE} | AccL]}
     end.
 
-bucket_fold_fun({BucketDir, Bucket}, {AccIn, Fun}) ->
-    {ok, MStore} = mstore:open(BucketDir),
+%% The assumption that the store already exists is valid, but impractical
+%% in the case of earlier crashes in the creation of the mstore.  In such a
+%% case there is no way to self-heal the affected bucket without
+%% re-constructing the mstore using `mstore:new`, instead of `mstore:open`.
+%% Otherwise, handoffs will persistently fail for the entire affected
+%% partition. Therefore the `MStore` is supplied to this function.
+bucket_fold_fun({MStore, Bucket}, {AccIn, Fun}) ->
     Acc1 = #facc{hacc = AccIn,
                  bucket = Bucket,
                  acc_fun = Fun},
@@ -258,12 +263,14 @@ bucket_fold_fun({BucketDir, Bucket}, {AccIn, Fun}) ->
             {Fun({Bucket, Metric}, lists:reverse(AccL), HAcc), Fun}
     end.
 
-fold_byckets_fun(PartitionDir, Buckets, Fun, Acc0) ->
-    Buckets1 = [{[PartitionDir, $/, BucketS], list_to_binary(BucketS)}
-                || BucketS <- Buckets],
+fold_buckets_fun(Partition, Buckets, Fun, Acc0) ->
+    BinBuckets = [list_to_binary(X) || X <- Buckets],
+    MStoreFun = fun(Bucket) -> new_store(Partition, Bucket) end,
+    BucketStores = [{MStoreFun(Bucket), Bucket} || Bucket <- BinBuckets],
+
     fun() ->
             {Out, _} = lists:foldl(fun bucket_fold_fun/2, {Acc0, Fun},
-                                   Buckets1),
+                                   BucketStores),
             Out
     end.
 
@@ -273,7 +280,7 @@ handle_call({fold, Fun, Acc0}, _From,
     PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
     case file:list_dir(PartitionDir) of
         {ok, Buckets} ->
-            AsyncWork = fold_byckets_fun(PartitionDir, Buckets, Fun, Acc0),
+            AsyncWork = fold_buckets_fun(Partition, Buckets, Fun, Acc0),
             {reply, {ok, AsyncWork}, State};
         _ ->
             {reply, empty, State}
@@ -499,8 +506,6 @@ new_store(Partition, Bucket) when is_binary(Bucket) ->
     Resolution = get_resolution(Bucket),
     {ok, MSet} = mstore:new(BucketDir, [{file_size, PointsPerFile}]),
     {Resolution, MSet}.
-
-
 
 get_set(Bucket, State=#state{mstore=Store}) ->
     case gb_trees:lookup(Bucket, Store) of
