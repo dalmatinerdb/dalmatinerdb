@@ -248,8 +248,8 @@ fold_fun(Metric, Time, V,
 %% case there is no way to self-heal the affected bucket without
 %% re-constructing the mstore using `mstore:new`, instead of `mstore:open`.
 %% Otherwise, handoffs will persistently fail for the entire affected
-%% partition. Therefore the `MStore` is supplied to this function.
-bucket_fold_fun({MStore, Bucket}, {AccIn, Fun}) ->
+%% partition.
+bucket_fold_fun({{_Resolution, MStore}, Bucket}, {AccIn, Fun}) ->
     Acc1 = #facc{hacc = AccIn,
                  bucket = Bucket,
                  acc_fun = Fun},
