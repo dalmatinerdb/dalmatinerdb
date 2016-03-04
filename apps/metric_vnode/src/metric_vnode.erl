@@ -216,7 +216,7 @@ handle_command({put, Bucket, Metric, {Time, Value}}, _Sender, State)
     {reply, ok, State1};
 
 handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
-               #state{tbl=T, io=IO, partition = Idx} = State) ->
+               #state{tbl=T, io=IO, node=N, partition=P} = State) ->
     BM = {Bucket, Metric},
     case ets:lookup(T, BM) of
         %% If our request is entirely cache we don't need to bother the IO node
@@ -228,27 +228,29 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
             SkipBytes = (Time - Start) * ?DATA_SIZE,
             Data = k6_bytea:get(Array, SkipBytes, (Count * ?DATA_SIZE)),
             {Resolution, State1} = get_resolution(Bucket, State),
-            {reply, {ok, ReqID, Idx, {Resolution, Data}}, State1};
+            {reply, {ok, ReqID, {P, N}, {Resolution, Data}}, State1};
         %% The request is neither before, after nor entirely inside the cache
-        %% we sadly have to flush it.
-        %% This are the conditions where we have to flush the cache and then
-        %% read it from the ui server
+        %% we have to read data, but apply cached part on top of it.
         [{BM, Start, Size, _Time, Array}]
           when
               %% The window starts before the cache but ends in it
               (Time < Start andalso Time + Count >= Start)
+
               %% The window starts inside the cahce and ends afterwards
               orelse (Time =< Start + Size andalso Time + Count > Start + Size)
               ->
-            Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
-            k6_bytea:delete(Array),
-            ets:delete(T, {Bucket, Metric}),
-            metric_io:write(IO, Bucket, Metric, Start, Bin),
-            metric_io:read(IO, Bucket, Metric, Time, Count, ReqID, Sender),
+            PartStart = max(Time, Start),
+            PartCount = min(Time + Count, Start + Size) - PartStart,
+            SkipBytes = (PartStart - Start),
+            Bin = k6_bytea:get(Array, SkipBytes, (PartCount * ?DATA_SIZE)),
+            Offset = PartStart - Time,
+            Part = {Offset, PartCount, Bin},
+            metric_io:read_rest(
+              IO, Bucket, Metric, Time, Count, Part, ReqID, Sender),
             {noreply, State};
         %% If we are here we know that there is either no cahce or the requested
         %% window and the cache do not overlap, so we can simply serve it from
-        %% the ui servers
+        %% the io servers
         _ ->
             metric_io:read(IO, Bucket, Metric, Time, Count, ReqID, Sender),
             {noreply, State}
