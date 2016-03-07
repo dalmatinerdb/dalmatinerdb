@@ -25,6 +25,9 @@ start(_StartType, _StartArgs) ->
     {ok, _} = ranch:start_listener(dalmatiner_tcp, Listeners,
                                    ranch_tcp, [{port, Port}],
                                    dalmatiner_tcp, []),
+
+    folsom_metrics:new_gauge(port_count),
+    folsom_metrics:new_gauge(process_count),
     folsom_metrics:new_histogram(put, slide, 60),
     folsom_metrics:new_histogram(mput, slide, 60),
     folsom_metrics:new_histogram(get, slide, 60),

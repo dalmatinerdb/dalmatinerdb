@@ -139,6 +139,9 @@ handle_info(tick, State = #state{prefix = Prefix, dict = Dict}) ->
     ets:delete_all_objects(?COUNTERS_MPS),
     P = lists:sum([Cnt || {_, Cnt} <- MPS]),
 
+    folsom_metrics:notify({port_count, erlang:system_info(port_count)}),
+    folsom_metrics:notify({process_count, erlang:system_info(process_count)}),
+
     Dict2 = add_to_dict([Prefix, <<"mps">>], Time, P, Dict1),
     Dict3 = do_metrics(Prefix, Time, Spec, Dict2),
     Dict4 = bkt_dict:flush(Dict3),
