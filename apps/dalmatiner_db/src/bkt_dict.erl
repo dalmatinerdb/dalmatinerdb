@@ -2,7 +2,7 @@
 
 -include_lib("mmath/include/mmath.hrl").
 
--export([new/3, update_chash/1, flush/1, add/4]).
+-export([new/3, flush/1, update_chash/1, add/4]).
 
 -export_type([bkt_dict/0]).
 
