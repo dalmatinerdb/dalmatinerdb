@@ -138,6 +138,8 @@ handle_info(tick, State = #state{prefix = _Prefix, dict = _Dict}) ->
     ets:delete_all_objects(?COUNTERS_MPS),
     P = lists:sum([Cnt || {_, Cnt} <- MPS]),
     folsom_metrics:notify({mps, P}),
+    folsom_metrics:notify({port_count, erlang:system_info(port_count)}),
+    folsom_metrics:notify({process_count, erlang:system_info(process_count)}),
 
     %% TODO: prepare confuration switch to enable/disable saving internal
     %%       metrics
