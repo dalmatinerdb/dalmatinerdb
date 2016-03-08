@@ -66,10 +66,14 @@ repair() ->
 -spec repair(partition()) -> integer().
 repair(Partition) when is_list(Partition) ->
     BucketDirs = bucket_dirs(Partition),
-    BrokenStores = [B || B <- BucketDirs, integrity_check(B) =:= false],
-    NumRepairs = length(BrokenStores),
+    TaintedStores = [B || B <- BucketDirs, integrity_check(B) =:= false],
+    UntaintedStores = ordsets:subtract(ordsets:from_list(BucketDirs),
+                                       ordsets:from_list(TaintedStores)),
+
+    NumRepairs = length(TaintedStores),
     io:format("~p repairs for partition ~p~n", [NumRepairs, Partition]),
-    [repair_store(B) || B <- BrokenStores],
+    [repair_store(B) || B <- TaintedStores],
+    [reindex_store(B) || B <- UntaintedStores],
     NumRepairs.
 
 -spec integrity_check({bucket(), bucket_dir()}) -> boolean().
@@ -86,6 +90,11 @@ integrity_check({_, Dir}) ->
 repair_store({Bucket, Dir}) ->
     Opts = [{file_size, ppf(Bucket)}],
     {ok, Mstore} = mstore:new(Dir, Opts),
+    mstore:close(Mstore).
+
+-spec reindex_store({bucket(), bucket_dir()}) -> ok.
+reindex_store({_, Dir}) ->
+    {ok, Mstore} = mstore:open(Dir),
     {ok, Mstore1} = mstore:reindex(Mstore),
     mstore:close(Mstore1).
 
