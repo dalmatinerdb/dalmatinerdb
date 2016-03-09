@@ -94,9 +94,16 @@ repair_store({Bucket, Dir}) ->
 
 -spec reindex_store({bucket(), bucket_dir()}) -> ok.
 reindex_store({_, Dir}) ->
-    {ok, Mstore} = mstore:open(Dir),
-    {ok, Mstore1} = mstore:reindex(Mstore),
-    mstore:close(Mstore1).
+    try
+        {ok, Mstore} = mstore:open(Dir),
+        {ok, Mstore1} = mstore:reindex(Mstore),
+        mstore:close(Mstore1)
+    catch
+        %% Report on stores that cannot be repaired, as further investigation
+        %% would be required for such cases
+        Error:Reason -> io:format("Error [~p ~p] re-indexing ~p~n", [Dir, Error,
+                                                                     Reason])
+    end.
 
 -spec ppf(bucket()) -> pos_integer().
 ppf(Bucket) ->
