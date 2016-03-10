@@ -29,7 +29,7 @@
   0},
  {<<"mstore">>,
   {git,"https://github.com/davecromberge/mstore.git",
-       {ref,"3c014c075eb8b5d168bf8ce9d1c6c48e7cebfb12"}},
+       {ref,"82ef3bee6312ee8c65f8771ddf623be9cc988022"}},
   0},
  {<<"parse_trans">>,{pkg,<<"parse_trans">>,<<"2.9.0">>},2},
  {<<"pbkdf2">>,{pkg,<<"pbkdf2">>,<<"2.0.0">>},1},

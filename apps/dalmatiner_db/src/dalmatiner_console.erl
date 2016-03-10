@@ -4,13 +4,17 @@
          ttl/1,
          buckets/1,
          repair/0,
-         repair/1
+         repair/1,
+         integrity_check/0,
+         integrity_check/1
         ]).
 
 -ignore_xref([
               ttl/1,
               repair/0,
               repair/1,
+              integrity_check/0,
+              integrity_check/1,
               buckets/1
              ]).
 
@@ -66,24 +70,56 @@ repair() ->
 -spec repair(partition()) -> integer().
 repair(Partition) when is_list(Partition) ->
     BucketDirs = bucket_dirs(Partition),
-    TaintedStores = [B || B <- BucketDirs, integrity_check(B) =:= false],
-    UntaintedStores = ordsets:subtract(ordsets:from_list(BucketDirs),
-                                       ordsets:from_list(TaintedStores)),
-
+    TaintedStores = [B || B <- BucketDirs, missing_store(B) =:= true],
     NumRepairs = length(TaintedStores),
     io:format("~p repairs for partition ~p~n", [NumRepairs, Partition]),
     [repair_store(B) || B <- TaintedStores],
-    [reindex_store(B) || B <- UntaintedStores],
     NumRepairs.
 
--spec integrity_check({bucket(), bucket_dir()}) -> boolean().
-integrity_check({_, Dir}) ->
+-spec integrity_check() -> ok.
+integrity_check() ->
+    DataDir = application:get_env(riak_core, platform_data_dir, "data"),
+    {ok, Dirs} = file:list_dir(DataDir),
+    Partitions = [P || P <- Dirs, is_partition(P)],
+    [integrity_check(P) || P <- Partitions],
+    ok.
+
+-spec integrity_check(partition()) -> ok.
+integrity_check(Partition) when is_list(Partition) ->
+    BucketDirs = bucket_dirs(Partition),
+    [check_bkt_integrity(B) || B <- BucketDirs, missing_store(B) =:= false],
+    ok.
+
+-spec check_bkt_integrity({bucket(), bucket_dir()}) -> ok.
+check_bkt_integrity({_, Dir}) ->
+    StoreFile = [Dir | "/mstore"],
+    IdxFiles = filelib:wildcard([Dir | "/*.idx"]),
+
+    case mstore:open_mfile(StoreFile) of
+        {ok, _FileSize, _DataSize, _Set} ->
+            ok;
+        {error, invalid_file} ->
+            io:format("Invalid mstore file in dir: ~p~n", [Dir]);
+        E ->
+            io:format("Mstore file open error [~p] in dir: ~p~n", [E, Dir])
+    end,
+
+    TaintedIdxs = [I || I <- IdxFiles,
+                        mstore:read_idx(I) =:= {error, invalid_file}],
+
+    lists:foreach(fun(I) ->
+                          io:format("Invalid index file: ~p~n", [I])
+                  end, TaintedIdxs),
+    ok.
+
+-spec missing_store({bucket(), bucket_dir()}) -> boolean().
+missing_store({_, Dir}) ->
     case mstore:open(Dir) of
         {ok, _Mstore} ->
-            true;
+            false;
         _E ->
             %% io:format("Opening mstore ~p failed ~p~n", [Dir, E]),
-            false
+            true
     end.
 
 -spec repair_store({bucket(), bucket_dir()}) -> ok.
@@ -91,19 +127,6 @@ repair_store({Bucket, Dir}) ->
     Opts = [{file_size, ppf(Bucket)}],
     {ok, Mstore} = mstore:new(Dir, Opts),
     mstore:close(Mstore).
-
--spec reindex_store({bucket(), bucket_dir()}) -> ok.
-reindex_store({_, Dir}) ->
-    try
-        {ok, Mstore} = mstore:open(Dir),
-        {ok, Mstore1} = mstore:reindex(Mstore),
-        mstore:close(Mstore1)
-    catch
-        %% Report on stores that cannot be repaired, as further investigation
-        %% would be required for such cases
-        Error:Reason -> io:format("Error [~p ~p] re-indexing ~p~n", [Dir, Error,
-                                                                     Reason])
-    end.
 
 -spec ppf(bucket()) -> pos_integer().
 ppf(Bucket) ->
