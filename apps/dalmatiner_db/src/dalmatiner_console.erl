@@ -6,7 +6,8 @@
          repair/0,
          repair/1,
          integrity_check/0,
-         integrity_check/1
+         integrity_check/1,
+         reindex/1
         ]).
 
 -ignore_xref([
@@ -15,7 +16,8 @@
               repair/1,
               integrity_check/0,
               integrity_check/1,
-              buckets/1
+              buckets/1,
+              reindex/1
              ]).
 
 -define(WEEK, 604800). %% Seconds in a week.
@@ -92,8 +94,8 @@ integrity_check(Partition) when is_list(Partition) ->
 
 -spec check_bkt_integrity({bucket(), bucket_dir()}) -> ok.
 check_bkt_integrity({_, Dir}) ->
-    StoreFile = [Dir | "/mstore"],
     IdxFiles = filelib:wildcard([Dir | "/*.idx"]),
+    StoreFile = [Dir | "/mstore"],
 
     case mstore:open_mfile(StoreFile) of
         {ok, _FileSize, _DataSize, _Set} ->
@@ -104,13 +106,34 @@ check_bkt_integrity({_, Dir}) ->
             io:format("Mstore file open error [~p] in dir: ~p~n", [E, Dir])
     end,
 
+    [io:format("Invalid index file: ~p~n", [I]) || I <- IdxFiles,
+                                mstore:read_idx(I) =:= {error, invalid_file}],
+    ok.
+
+-spec reindex(bucket_dir()) -> ok.
+reindex(Dir) ->
+    IdxFiles = filelib:wildcard([Dir | "/*.idx"]),
     TaintedIdxs = [I || I <- IdxFiles,
                         mstore:read_idx(I) =:= {error, invalid_file}],
 
     lists:foreach(fun(I) ->
-                          io:format("Invalid index file: ~p~n", [I])
+                          MStore = filename:rootname(I) ++ ".mstore",
+                          file:delete(I),
+                          io:format("Removed index file: ~p~n", [I]),
+                          file:delete(MStore),
+                          io:format("Removed mstore file: ~p~n", [MStore])
                   end, TaintedIdxs),
-    ok.
+
+    try
+        {ok, Mstore} = mstore:open(Dir),
+        {ok, Mstore1} = mstore:reindex(Mstore),
+        mstore:close(Mstore1)
+    catch
+        %% Report on stores that cannot be repaired, as further investigation
+        %% would be required for such cases
+        Error:Reason -> io:format("Error [~p ~p] re-indexing ~p~n", [Dir, Error,
+                                                                     Reason])
+    end.
 
 -spec missing_store({bucket(), bucket_dir()}) -> boolean().
 missing_store({_, Dir}) ->
