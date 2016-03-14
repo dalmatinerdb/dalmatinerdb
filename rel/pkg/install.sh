@@ -20,7 +20,7 @@ case $2 in
             echo "User already exists, skipping creation."
         else
             echo Creating dalmatinerdb user ...
-            useradd -g $GROUP -d /var/db/dalmatinerdb -s /bin/false $USER
+            useradd -g $GROUP -d /data/dalmatinerdb -s /bin/false $USER
         fi
         echo Creating directories ...
         mkdir -p /data/dalmatinerdb/etc
