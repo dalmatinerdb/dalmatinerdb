@@ -38,7 +38,7 @@ case $2 in
         echo Trying to guess configuration ...
         IP=`ifconfig net0 | grep inet | $AWK '{print $2}'`
         CONFFILE=/data/dalmatinerdb/etc/dalmatinerdb.conf
-        cp /opt/local/fifo-dalmatinerdb/etc/dalmatinerdb.conf.example ${CONFFILE}.example
+        cp /opt/local/dalmatinerdb/etc/dalmatinerdb.conf.example ${CONFFILE}.example
         if [ ! -f "${CONFFILE}" ]
         then
             echo "Creating new configuration from example file."
