@@ -182,13 +182,13 @@ code_change(_OldVsn, State, _Extra) ->
 do_metrics(_Prefix, _Time, [], Acc) ->
     Acc;
 
-do_metrics(Prefix, Time, [{N, [{type, histogram}]} | Spec], Acc) ->
+do_metrics(Prefix, Time, [{N, [{type, histogram} | _]} | Spec], Acc) ->
     Stats = folsom_metrics:get_histogram_statistics(N),
     Prefix1 = [Prefix, metric_name(N)],
     Acc1 = build_histogram(Stats, Prefix1, Time, Acc),
     do_metrics(Prefix, Time, Spec, Acc1);
 
-do_metrics(Prefix, Time, [{N, [{type, spiral}]} | Spec], Acc) ->
+do_metrics(Prefix, Time, [{N, [{type, spiral} | _]} | Spec], Acc) ->
     [{count, Count}, {one, One}] = folsom_metrics:get_metric_value(N),
     K = metric_name(N),
     Acc1 = add_metric(Prefix, [K, <<"count">>], Time, Count, Acc),
@@ -196,19 +196,19 @@ do_metrics(Prefix, Time, [{N, [{type, spiral}]} | Spec], Acc) ->
     do_metrics(Prefix, Time, Spec, Acc2);
 
 
-do_metrics(Prefix, Time, [{N, [{type, counter}]} | Spec], Acc) ->
+do_metrics(Prefix, Time, [{N, [{type, counter} | _]} | Spec], Acc) ->
     Count = folsom_metrics:get_metric_value(N),
     Acc1 = add_metric(Prefix, N, Time, Count, Acc),
     do_metrics(Prefix, Time, Spec, Acc1);
 
-do_metrics(Prefix, Time, [{N, [{type, duration}]} | Spec], Acc) ->
+do_metrics(Prefix, Time, [{N, [{type, duration} | _]} | Spec], Acc) ->
     Stats = folsom_metrics:get_metric_value(N),
     Prefix1 = [Prefix, metric_name(N)],
     Acc1 = build_histogram(Stats, Prefix1, Time, Acc),
     do_metrics(Prefix, Time, Spec, Acc1);
 
 
-do_metrics(Prefix, Time, [{N, [{type, meter}]} | Spec], Acc) ->
+do_metrics(Prefix, Time, [{N, [{type, meter} | _]} | Spec], Acc) ->
     Prefix1 = [Prefix, metric_name(N)],
     [{count, Count},
      {one, One},

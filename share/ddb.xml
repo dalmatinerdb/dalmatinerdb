@@ -49,7 +49,7 @@
       <method_context>
 	<method_environment>
 	  <envvar name='PATH' value='/opt/local/gnu/bin:/opt/local/bin:/opt/local/sbin:/usr/bin:/usr/sbin'/>
-	  <envvar name='HOME' value='/var/db/dalmatinerdb'/>
+	  <envvar name='HOME' value='/data/dalmatinerdb'/>
 	</method_environment>
       </method_context>
     </exec_method>
@@ -62,7 +62,7 @@
       <method_context>
 	<method_environment>
 	  <envvar name='PATH' value='/opt/local/gnu/bin:/opt/local/bin:/opt/local/sbin:/usr/bin:/usr/sbin'/>
-	  <envvar name='HOME' value='/var/db/dalmatinerdb'/>
+	  <envvar name='HOME' value='/data/dalmatinerdb'/>
 	</method_environment>
       </method_context>
     </exec_method>
@@ -75,7 +75,7 @@
       <method_context>
 	<method_environment>
 	  <envvar name='PATH' value='/opt/local/gnu/bin:/opt/local/bin:/opt/local/sbin:/usr/bin:/usr/sbin'/>
-	  <envvar name='HOME' value='/var/db/dalmatinerdb'/>
+	  <envvar name='HOME' value='/data/dalmatinerdb'/>
 	</method_environment>
       </method_context>
     </exec_method>
