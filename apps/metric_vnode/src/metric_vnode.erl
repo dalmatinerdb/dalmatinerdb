@@ -242,7 +242,7 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
               ->
             PartStart = max(Time, Start),
             PartCount = min(Time + Count, Start + Size) - PartStart,
-            SkipBytes = (PartStart - Start),
+            SkipBytes = (PartStart - Start) * ?DATA_SIZE,
             Bin = k6_bytea:get(Array, SkipBytes, (PartCount * ?DATA_SIZE)),
             Offset = PartStart - Time,
             Part = {Offset, PartCount, Bin},
