@@ -25,6 +25,7 @@
 -define(SERVER, ?MODULE).
 -define(WEEK, 604800). %% Seconds in a week.
 -define(MAX_Q_LEN, 20).
+-define(EXTENDED_TIMEOUT, 30000).
 
 -record(state, {
           partition,
@@ -61,7 +62,8 @@ write(Pid, Bucket, Metric, Time, Value, MaxLen) ->
     end.
 
 swrite(Pid, Bucket, Metric, Time, Value) ->
-    gen_server:call(Pid, {write, Bucket, Metric, Time, Value}).
+    Req = {write, Bucket, Metric, Time, Value},
+    io_call(Pid, Req).
 
 read(Pid, Bucket, Metric, Time, Count, ReqID, Sender) ->
     gen_server:cast(Pid, {read, Bucket, Metric, Time, Count, ReqID, Sender}).
@@ -80,22 +82,27 @@ metrics(Pid, Bucket, Prefix) ->
     gen_server:call(Pid, {metrics, Bucket, Prefix}).
 
 fold(Pid, Fun, Acc0) ->
-    gen_server:call(Pid, {fold, Fun, Acc0}).
+    io_call(Pid, {fold, Fun, Acc0}).
 
 empty(Pid) ->
     gen_server:call(Pid, empty).
 
 delete(Pid) ->
-    gen_server:call(Pid, delete).
+    io_call(Pid, delete).
 
 close(Pid) ->
-    gen_server:call(Pid, close).
+    io_call(Pid, close).
 
 delete(Pid, Bucket) ->
-    gen_server:call(Pid, {delete, Bucket}).
+    io_call(Pid, {delete, Bucket}).
 
 delete(Pid, Bucket, Before) ->
-    gen_server:call(Pid, {delete, Bucket, Before}).
+    io_call(Pid, {delete, Bucket, Before}).
+
+%% @doc Extends the default timeout for a `gen_server:call' for io-intensive
+%% operations
+io_call(Pid, Req) ->
+    gen_server:call(Pid, Req, ?EXTENDED_TIMEOUT).
 
 %%%===================================================================
 %%% gen_server callbacks
