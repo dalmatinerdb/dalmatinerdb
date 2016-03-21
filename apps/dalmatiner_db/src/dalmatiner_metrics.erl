@@ -140,6 +140,7 @@ handle_info(tick, State = #state{prefix = _Prefix, dict = _Dict}) ->
     folsom_metrics:notify({mps, P}),
     folsom_metrics:notify({port_count, erlang:system_info(port_count)}),
     folsom_metrics:notify({process_count, erlang:system_info(process_count)}),
+    folsom_metrics:notify({tcp_connections, ranch_server:count_connections(dalmatiner_tcp)}),
 
     %% TODO: prepare confuration switch to enable/disable saving internal
     %%       metrics

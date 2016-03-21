@@ -32,6 +32,7 @@ start(_StartType, _StartArgs) ->
     folsom_metrics:new_gauge(mps),
     folsom_metrics:new_gauge(port_count),
     folsom_metrics:new_gauge(process_count),
+    folsom_metrics:new_gauge(tcp_connections),
     folsom_metrics:new_histogram(put, slide, 60),
     folsom_metrics:new_histogram(mput, slide, 60),
     folsom_metrics:new_histogram(get, slide, 60),
