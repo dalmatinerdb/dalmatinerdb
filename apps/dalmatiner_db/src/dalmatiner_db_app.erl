@@ -22,7 +22,8 @@ start(_StartType, _StartArgs) ->
                     _ ->
                         100
                 end,
-    MaxConnections = application:get_env(dalmatiner_db, tcp_max_connections, 1024),
+    MaxConnections = application:get_env(dalmatiner_db,
+                                         tcp_max_connections, 1024),
     {ok, _} = ranch:start_listener(dalmatiner_tcp, Listeners,
                                    ranch_tcp,
                                    [{port, Port},
