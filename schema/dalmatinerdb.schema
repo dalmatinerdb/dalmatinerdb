@@ -13,8 +13,7 @@
 %% @doc Number of allowed concurrent tcp connections.
 {mapping, "tcp_max_connections", "dalmatiner_db.tcp_max_connections",
  [{default, 1024},
-  {datatype, integer},
-  hidden]}.
+  {datatype, integer}]}.
 
 %% @doc The number of Asyncronous worker for a vnode.
 {mapping, "async_workers", "metric_vnode.async_workers",
