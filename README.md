@@ -16,7 +16,7 @@ For metrics it is enough to have a 'fixed' precisions, so storing higher than in
 While 56-bit sounds like a lot of bits, testing with real world data has shown that the ZFS compression ratio of written metrics is > 6x (unwritten metrics compress better). This means the effective size is about 11 bit per metricpoint.
 
 ## No guarantee of storage
-DalmatinerDB offers a 'best effort' on storing the metrics, the ingress transport is UDP and there is no log for writes (there is the ZIL if enabled in ZFS) or forced sync after each write. This means that if your network fails packets can get lost, if your server crashes unwritten data can be lost.
+DalmatinerDB offers a 'best effort' on storing the metrics, there is no log for writes (there is the ZIL if enabled in ZFS) or forced sync after each write. This means that if your network fails packets can get lost, if your server crashes unwritten data can be lost.
 
 The point is that losing one or two metric points in a huge series is a non-problem, the importance of a metric is often seen in aggregate and DalmatinerDB fills in the blanks with the last written value. However there is explictly no guarantee that data is written, this can be an issue if every single point of metric is of importance!
 
