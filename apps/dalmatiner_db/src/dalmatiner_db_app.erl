@@ -22,8 +22,11 @@ start(_StartType, _StartArgs) ->
                     _ ->
                         100
                 end,
+    MaxConn = application:get_env(dalmatiner_db, tcp_max_connections, 1024),
     {ok, _} = ranch:start_listener(dalmatiner_tcp, Listeners,
-                                   ranch_tcp, [{port, Port}],
+                                   ranch_tcp,
+                                   [{port, Port},
+                                    {max_connections, MaxConn}],
                                    dalmatiner_tcp, []),
     folsom_metrics:new_histogram(put, slide, 60),
     folsom_metrics:new_histogram(mput, slide, 60),
