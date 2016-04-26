@@ -1,6 +1,6 @@
-[0m├─ dalmatiner_db─0.1.4
+[0m├─ dalmatiner_db─0.1.6
 ├─ dalmatiner_vacuum─0.1.2
-├─ dproto─0.1.12
+├─ dproto─0.1.14
 ├─ edown─0.7.0
 ├─ eper─0.94.0
 ├─ fifo_utils─0.1.22
@@ -10,11 +10,11 @@
 ├─ lager─3.0.2
 │  └─ goldrush─0.1.7
 ├─ metric_vnode─0.1.3
-├─ mmath─0.1.16
-├─ mstore─0.1.9
+├─ mmath─0.2.0-alpha
+├─ mstore─0.1.11
 ├─ ranch─1.1.0
-├─ recon─2.2.1
-├─ riak_core─2.2.2
+├─ recon─2.3.1
+├─ riak_core─2.2.5
 │  ├─ basho_stats─1.0.3
 │  ├─ chash─0.1.1
 │  ├─ clique─3.0.1
