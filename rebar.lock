@@ -37,7 +37,7 @@
  {<<"recon">>,{pkg,<<"recon">>,<<"2.3.1">>},0},
  {<<"riak_core">>,
   {git,"https://github.com/project-fifo/riak_core.git",
-       {ref,"244cfa1d6c41e06a73d11c0048dbc6353841b7cd"}},
+       {ref,"51d15f5277f2c418da0e236488f28db318a43906"}},
   0},
  {<<"riak_ensemble">>,{pkg,<<"riak_ensemble">>,<<"2.1.3">>},1},
  {<<"riak_sysmon">>,{pkg,<<"riak_sysmon">>,<<"2.1.2">>},1},
