@@ -253,3 +253,34 @@
   {datatype, integer},
   hidden
 ]}.
+
+%% @doc Set the memory allocation strategy for binary multiblock carriers.
+%% DalmatinerDB has long-lived `metric-io' processes that may cause reference
+%% counted binaries to reside in memory for longer periods of time.
+%% Setting this value to something other than the default may be
+%% useful if the `recon_alloc' library indicates that there may be excessive
+%% memory fragmentation.
+%%
+%% More information: http://erlang.org/doc/man/erts_alloc.html#strategy
+%% and https://blog.heroku.com/archives/2013/11/7/logplex-down-the-rabbit-hole
+{mapping, "erlang.binary_alloc_strategy", "vm_args.+MBas", [
+  {commented, bf},
+  {datatype, {enum, [bf, aobf, aoff, aoffcbf, gf, af]}},
+  hidden
+]}.
+
+%% @doc Set the maximum multiblock carrier size (Kb). This controls how many
+%% multiblock carriers are created.
+%% Smaller values may increase the chance that mbcs are free of all blocks,
+%% allowing them to be readily released to the operating system.  However,
+%% smaller sizes may increase the frequency of slower memory allocation
+%% requests from the VM to the OS, which could negate the performance benefit
+%% of mbcs.
+%%
+%% More information: http://erlang.org/doc/man/erts_alloc.html#mseg_mbc_sizes
+{mapping, "erlang.binary_alloc_multicarrier_limit", "vm_args.+MBlmbcs", [
+  {commented, 512},
+  {datatype, integer},
+  hidden,
+  {validators, ["positive_integer"]}
+]}.
