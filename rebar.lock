@@ -23,7 +23,7 @@
  {<<"lager">>,{pkg,<<"lager">>,<<"3.0.2">>},0},
  {<<"mmath">>,
   {git,"https://github.com/DalmatinerDB/mmath.git",
-       {ref,"3da55c3088c77388ab23d2771ad59bdeeb5b1289"}},
+       {ref,"433f3e223afed130f8302221c626ae0c813e2c67"}},
   0},
  {<<"mstore">>,
   {git,"https://github.com/DalmatinerDB/mstore.git",
