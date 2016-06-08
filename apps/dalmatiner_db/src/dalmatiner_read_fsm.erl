@@ -224,23 +224,26 @@ terminate(_Reason, _SN, _SD) ->
 %% @pure
 %%
 %% @doc Given a list of `Replies' return the merged value.
-merge([{_, {R, _}} | _] = Replies) ->
+merge(Replies) ->
     case [Data || {_, {_, Data}} <- Replies, is_binary(Data)] of
         [] ->
             not_found;
         Ds ->
             Ress = [Resolution || {_, {Resolution, _}} <- Replies],
-            case lists:any(different(R), Ress) of
-                true ->
-                    lager:error("[merge] Resolution mismatch: ~p /= ~p",
-                                [R, Ress]),
-                    not_found;
-                false ->
-                    {R, mmath_comb:merge(Ds)}
-            end
-    end;
-merge(_) ->
-    not_found.
+            merge_(Ds, Ress)
+    end.
+
+merge_([DH | DT], [R | _] = Ress) ->
+    case lists:any(different(R), Ress) of
+        true ->
+            lager:error("[merge] Resolution mismatch: ~p /= ~p",
+                        [R, Ress]),
+            not_found;
+        false ->
+            Res = lists:foldl(fun mmath_bin:merge/2, DH, DT),
+            {R, Res}
+    end.
+
 
 %% @pure
 %%
