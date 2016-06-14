@@ -358,8 +358,10 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
                       k6_bytea:delete(Array)
               end, ok, T),
     ets:delete_all_objects(T),
-    R = metric_io:delete(IO, Bucket),
-    Reply = {ok, undefined, {P, N}, R},
+    _Repply = metric_io:delete(IO, Bucket),
+    R = btrie:new(),
+    R1 = btrie:store(Bucket, t, R),
+    Reply = {ok, undefined, {P, N}, R1},
     {reply, Reply, State}.
 
 handle_info(vacuum, State = #state{io = IO, partition = P}) ->
