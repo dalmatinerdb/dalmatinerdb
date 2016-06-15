@@ -254,13 +254,8 @@ fold_fun(Metric, Time, V,
               lacc = [{Time, V}, {T0, AccE} | AccL]}
     end.
 
-%% The assumption that the store already exists is valid, but impractical
-%% in the case of earlier crashes in the creation of the mstore.  In such a
-%% case there is no way to self-heal the affected bucket without
-%% re-constructing the mstore using `mstore:new`, instead of `mstore:open`.
-%% Otherwise, handoffs will persistently fail for the entire affected
-%% partition.
-bucket_fold_fun({{_Resolution, MStore}, Bucket}, {AccIn, Fun}) ->
+bucket_fold_fun({BucketDir, Bucket}, {AccIn, Fun}) ->
+    {ok, MStore} = mstore:open(BucketDir),
     Acc1 = #facc{hacc = AccIn,
                  bucket = Bucket,
                  acc_fun = Fun},
@@ -274,14 +269,12 @@ bucket_fold_fun({{_Resolution, MStore}, Bucket}, {AccIn, Fun}) ->
             {Fun({Bucket, Metric}, lists:reverse(AccL), HAcc), Fun}
     end.
 
-fold_buckets_fun(Partition, Buckets, Fun, Acc0) ->
-    BinBuckets = [list_to_binary(X) || X <- Buckets],
-    MStoreFun = fun(Bucket) -> new_store(Partition, Bucket) end,
-    BucketStores = [{MStoreFun(Bucket), Bucket} || Bucket <- BinBuckets],
-
+fold_byckets_fun(PartitionDir, Buckets, Fun, Acc0) ->
+    Buckets1 = [{[PartitionDir, $/, BucketS], list_to_binary(BucketS)}
+                || BucketS <- Buckets],
     fun() ->
             {Out, _} = lists:foldl(fun bucket_fold_fun/2, {Acc0, Fun},
-                                   BucketStores),
+                                   Buckets1),
             Out
     end.
 
@@ -301,7 +294,7 @@ handle_call(count, _From, State = #state{dir = PartitionDir}) ->
 handle_call({fold, Fun, Acc0}, _From, State = #state{dir = PartitionDir}) ->
   case file:list_dir(PartitionDir) of
         {ok, Buckets} ->
-            AsyncWork = fold_buckets_fun(PartitionDir, Buckets, Fun, Acc0),
+            AsyncWork = fold_byckets_fun(PartitionDir, Buckets, Fun, Acc0),
             {reply, {ok, AsyncWork}, State};
         _ ->
             {reply, empty, State}
