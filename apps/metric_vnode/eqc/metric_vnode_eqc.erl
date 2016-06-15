@@ -270,6 +270,10 @@ setup() ->
     meck:expect(dalmatiner_opt, get, fun( _, _, _, _, Dflt) -> Dflt end),
     meck:new(dalmatiner_vacuum, [passthrough]),
     meck:expect(dalmatiner_vacuum, register, fun() ->ok end),
+    meck:new(folsom_metrics),
+    meck:expect(folsom_metrics, notify, fun(_) -> ok end),
+    meck:expect(folsom_metrics, histogram_timed_update,
+                fun(_, Mod, Fn, Args) -> apply(Mod, Fn, Args) end),
     ok.
 
 cleanup() ->

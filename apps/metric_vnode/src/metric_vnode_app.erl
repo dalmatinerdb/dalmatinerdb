@@ -10,6 +10,12 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
+
+    %% Set up metrics reported in this app
+    folsom_metrics:new_histogram(metric_vnode_store_put, slide, 60),
+    folsom_metrics:new_histogram(metric_vnode_store_get, slide, 60),
+    folsom_metrics:new_spiral(metric_vnode_read_repairs),
+
     case metric_vnode_sup:start_link() of
         {ok, Pid} ->
             ok = riak_core:register([{vnode_module, metric_vnode}]),
