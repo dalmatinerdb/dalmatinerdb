@@ -473,9 +473,7 @@ code_change(_OldVsn, State, _Extra) ->
 -spec ppf(binary()) -> pos_integer().
 
 ppf(Bucket) ->
-    case dalmatiner_opt:get(<<"buckets">>, Bucket,
-                            <<"points_per_file">>,
-                            {metric_vnode, points_per_file}, ?WEEK) of
+    case dalmatiner_opt:ppf(Bucket) of
         PPF when is_integer(PPF), PPF > 0 ->
             PPF;
         _ ->
@@ -495,7 +493,7 @@ bucket_dir(Bucket, Partition) ->
 new_store(Partition, Bucket) when is_binary(Bucket) ->
     BucketDir = bucket_dir(Bucket, Partition),
     PointsPerFile = ppf(Bucket),
-    Resolution = get_resolution(Bucket),
+    Resolution = dalmatiner_opt:resolution(Bucket),
     {ok, MSet} = mstore:new(BucketDir, [{file_size, PointsPerFile}]),
     {Resolution, MSet}.
 
@@ -553,11 +551,6 @@ do_write(Bucket, Metric, Time, Value, State) ->
     Store1 = gb_trees:update(Bucket, {R, MSet1}, State1#state.mstore),
     State1#state{mstore=Store1}.
 
-get_resolution(Bucket) ->
-    dalmatiner_opt:get(
-      <<"buckets">>, Bucket, <<"resolution">>,
-      {metric_vnode, resolution}, 1000).
-
 do_read(Bucket, Metric, Time, Count, State) ->
     case get_set(Bucket, State) of
         {ok, {{Resolution, MSet}, S2}} ->
@@ -565,6 +558,6 @@ do_read(Bucket, Metric, Time, Count, State) ->
             {{Resolution, Data}, S2};
         _ ->
             lager:warning("[IO] Unknown metric: ~p/~p", [Bucket, Metric]),
-            Resolution = get_resolution(Bucket),
+            Resolution = dalmatiner_opt:resolution(Bucket),
             {{Resolution, mmath_bin:empty(Count)}, State}
     end.

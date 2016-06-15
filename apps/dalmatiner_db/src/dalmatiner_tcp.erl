@@ -45,10 +45,6 @@ loop(Socket, Transport, State) ->
                     {ok, Bs} = metric:list(),
                     Transport:send(Socket, dproto_tcp:encode_metrics(Bs)),
                     loop(Socket, Transport, State);
-%%                {resolution, Bucket} ->
-%%                    Resolution = dalmatiner_opt:resolution(Bucket),
-%%                    Transport:send(Socket, <<Resolution:64/integer>>),
-%%                    loop(Socket, Transport, State);
                 {list, Bucket} ->
                     {ok, Ms} = metric:list(Bucket),
                     Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
@@ -60,8 +56,16 @@ loop(Socket, Transport, State) ->
                     {ok, Ms} = metric:list(Bucket, Prefix),
                     Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
                     loop(Socket, Transport, State);
+                {info, Bucket} ->
+                    {ok, {Res, PPF, TTL}} = metric:bucket_info(Bucket),
+                    InfoBin = dproto_tcp:encode_bucket_info(Res, PPF, TTL),
+                    Transport:send(Socket, InfoBin),
+                    loop(Socket, Transport, State);
                 {get, B, M, T, C} ->
                     do_send(Socket, Transport, B, M, T, C),
+                    loop(Socket, Transport, State);
+                {ttl, Bucket, TTL} ->
+                    ok = metric:update_ttl(Bucket, TTL),
                     loop(Socket, Transport, State);
                 {stream, Bucket, Delay} ->
                     lager:info("[tcp] Entering stream mode for bucket '~s' "
