@@ -301,8 +301,13 @@ encode_handoff_item(Key, Value) ->
     term_to_binary({Key, Value}).
 
 is_empty(State = #state{tbl = T, io=IO}) ->
-    R = ets:first(T) == '$end_of_table' andalso metric_io:empty(IO),
-    {R, State}.
+    case ets:first(T) == '$end_of_table' andalso metric_io:empty(IO) of
+        true ->
+            {true, state};
+        false ->
+            Count = metric_io:count(IO),
+            {false, {Count, objects}, State}
+    end.
 
 delete(State = #state{io = IO, tbl=T}) ->
     ets:delete_all_objects(T),

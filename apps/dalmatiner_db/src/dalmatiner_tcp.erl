@@ -53,6 +53,9 @@ loop(Socket, Transport, State) ->
                     {ok, Ms} = metric:list(Bucket),
                     Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
                     loop(Socket, Transport, State);
+                {delete, Bucket} ->
+                    metric:delete(Bucket),
+                    loop(Socket, Transport, State);
                 {list, Bucket, Prefix} ->
                     {ok, Ms} = metric:list(Bucket, Prefix),
                     Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
