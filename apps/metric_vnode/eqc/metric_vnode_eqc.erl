@@ -266,4 +266,5 @@ cleanup() ->
     meck:unload(riak_core_metadata),
     meck:unload(dalmatiner_opt),
     meck:unload(dalmatiner_vacuum),
+    meck:unload(folsom_metrics),
     ok.
