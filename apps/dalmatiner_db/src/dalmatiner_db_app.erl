@@ -34,9 +34,6 @@ start(_StartType, _StartArgs) ->
     folsom_metrics:new_histogram(get, slide, 60),
     folsom_metrics:new_histogram(list_buckets, slide, 60),
     folsom_metrics:new_histogram(list_metrics, slide, 60),
-    folsom_metrics:new_histogram(metric_vnode_store_put, slide, 60),
-    folsom_metrics:new_histogram(metric_vnode_store_get, slide, 60),
-    folsom_metrics:new_spiral(metric_vnode_read_repairs),
 
     dalmatiner_db_sup:start_link().
 
