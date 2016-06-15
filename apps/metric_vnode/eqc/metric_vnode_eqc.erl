@@ -143,7 +143,10 @@ prop_is_empty() ->
                    os:cmd("rm -r data"),
                    os:cmd("mkdir data"),
                    {S, T} = eval(D),
-                   {Empty, _S1} = metric_vnode:is_empty(S),
+                   Empty = case metric_vnode:is_empty(S) of
+                               {Res, _S1} -> Res;
+                               {Res, _Cnt, _S1} -> Res
+                           end,
                    TreeEmpty = gb_trees:is_empty(T),
                    if
                        Empty == TreeEmpty ->
@@ -165,7 +168,10 @@ prop_empty_after_delete() ->
                    os:cmd("mkdir data"),
                    {S, _T} = eval(D),
                    {ok, S1} = metric_vnode:delete(S),
-                   {Empty, _S3} = metric_vnode:is_empty(S1),
+                   Empty = case metric_vnode:is_empty(S1) of
+                               {Res, _S2} -> Res;
+                               {Res, _Cnt, _S2} -> Res
+                           end,
                    metric_vnode:terminate(normal, S),
                    Empty == true
                end)).
