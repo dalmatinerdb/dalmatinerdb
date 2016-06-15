@@ -241,13 +241,16 @@ add_metric(Prefix, Name, Time, Value, Acc) when is_float(Value) ->
     Scale = 1000*1000,
     add_to_dict([Prefix, metric_name(Name)], Time, round(Value*Scale), Acc).
 
-add_to_dict(Metric, Time, Value, Dict) ->
-    Metric1 = dproto:metric_from_list(lists:flatten(Metric)),
-    bkt_dict:add(Metric1, Time, mmath_bin:from_list([Value]), Dict).
+-spec add_to_dict([binary() | [binary()]], integer(), integer(),
+                  bkt_dict:bkt_dict()) ->
+                         bkt_dict:bkt_dict().
+add_to_dict(MetricL, Time, Value, Dict) when is_integer(Value) ->
+    Metric = dproto:metric_from_list(lists:flatten(MetricL)),
+    Data = mmath_bin:from_list([Value]),
+    bkt_dict:add(Metric, Time, Data, Dict).
 
 timestamp() ->
-    {Meg, S, _} = os:timestamp(),
-    Meg*1000000 + S.
+    os:system_time(seconds).
 
 metric_name(B) when is_binary(B) ->
     B;

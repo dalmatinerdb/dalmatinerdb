@@ -5,6 +5,7 @@
          mput/3,
          get/4,
          get/5,
+         delete/1,
          list/0,
          list/1,
          list/2,
@@ -59,6 +60,10 @@ list() ->
 list(Bucket) ->
     folsom_metrics:histogram_timed_update(
       list_metrics, metric_coverage, start, [{metrics, Bucket}]).
+
+delete(Bucket) ->
+    folsom_metrics:histogram_timed_update(
+      list_metrics, metric_coverage, start, [{delete, Bucket}]).
 
 list(Bucket, Prefix) ->
     folsom_metrics:histogram_timed_update(

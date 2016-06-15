@@ -10,23 +10,31 @@
 
 -type bkt_dict() :: #bkt_dict{}.
 
+-spec new(binary(), pos_integer(), pos_integer()) ->
+                 bkt_dict().
 new(Bkt, N, W) ->
     PPF = dalmatiner_opt:ppf(Bkt),
     Dict = dict:new(),
     update_chash(#bkt_dict{bucket = Bkt, ppf = PPF, dict = Dict, n = N, w = W}).
 
+-spec add(binary(), pos_integer(), binary(), bkt_dict()) ->
+                 bkt_dict().
 add(Metric, Time, Points, BD = #bkt_dict{ppf = PPF}) ->
     Count = mmath_bin:length(Points),
     dalmatiner_metrics:inc(Count),
     Splits = mstore:make_splits(Time, Count, PPF),
     insert_metric(Metric, Splits, Points, BD).
 
+-spec flush(bkt_dict()) ->
+                 bkt_dict().
 flush(BD = #bkt_dict{dict = Dict, w = W}) ->
     BD1 = #bkt_dict{nodes = Nodes} = update_chash(BD),
     metric:mput(Nodes, Dict, W),
     BD1#bkt_dict{dict = dict:new()}.
 
 
+-spec update_chash(bkt_dict()) ->
+                 bkt_dict().
 update_chash(BD = #bkt_dict{n = N}) ->
     {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
     Nodes1 = chash:nodes(chashbin:to_chash(CBin)),

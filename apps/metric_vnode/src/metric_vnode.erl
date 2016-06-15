@@ -301,8 +301,13 @@ encode_handoff_item(Key, Value) ->
     term_to_binary({Key, Value}).
 
 is_empty(State = #state{tbl = T, io=IO}) ->
-    R = ets:first(T) == '$end_of_table' andalso metric_io:empty(IO),
-    {R, State}.
+    case ets:first(T) == '$end_of_table' andalso metric_io:empty(IO) of
+        true ->
+            {true, state};
+        false ->
+            Count = metric_io:count(IO),
+            {false, {Count, objects}, State}
+    end.
 
 delete(State = #state{io = IO, tbl=T}) ->
     ets:delete_all_objects(T),
@@ -358,8 +363,10 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
                       k6_bytea:delete(Array)
               end, ok, T),
     ets:delete_all_objects(T),
-    R = metric_io:delete(IO, Bucket),
-    Reply = {ok, undefined, {P, N}, R},
+    _Repply = metric_io:delete(IO, Bucket),
+    R = btrie:new(),
+    R1 = btrie:store(Bucket, t, R),
+    Reply = {ok, undefined, {P, N}, R1},
     {reply, Reply, State}.
 
 handle_info(vacuum, State = #state{io = IO, partition = P}) ->
