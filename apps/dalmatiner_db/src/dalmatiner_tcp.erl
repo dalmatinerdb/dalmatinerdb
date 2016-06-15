@@ -45,9 +45,16 @@ loop(Socket, Transport, State) ->
                     {ok, Bs} = metric:list(),
                     Transport:send(Socket, dproto_tcp:encode_metrics(Bs)),
                     loop(Socket, Transport, State);
+%%                {resolution, Bucket} ->
+%%                    Resolution = dalmatiner_opt:resolution(Bucket),
+%%                    Transport:send(Socket, <<Resolution:64/integer>>),
+%%                    loop(Socket, Transport, State);
                 {list, Bucket} ->
                     {ok, Ms} = metric:list(Bucket),
                     Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
+                    loop(Socket, Transport, State);
+                {delete, Bucket} ->
+                    metric:delete(Bucket),
                     loop(Socket, Transport, State);
                 {list, Bucket, Prefix} ->
                     {ok, Ms} = metric:list(Bucket, Prefix),

@@ -13,8 +13,7 @@
 %% @doc Number of allowed concurrent tcp connections.
 {mapping, "tcp_max_connections", "dalmatiner_db.tcp_max_connections",
  [{default, 1024},
-  {datatype, integer},
-  hidden]}.
+  {datatype, integer}]}.
 
 %% @doc The number of Asyncronous worker for a vnode.
 {mapping, "async_workers", "metric_vnode.async_workers",
@@ -41,7 +40,9 @@
  [{datatype, integer},
   {default, 120}]}.
 
-%% @doc How long data is kept by default
+%% @doc How long data is kept by default, measured either in points
+%% or infinity for not deleting old data. This can be changed on a
+%% per bucket level using ddb-admin
 {mapping, "lifetime", "metric_vnode.lifetime",
  [{datatype, [integer, {atom, infinity}]},
   {default, "infinity"}]}.
@@ -75,7 +76,7 @@
  end}.
 
 %% @doc The number of copies of the data that is keeped.
-%% For good consistency N  < (R + W) should be true.
+%% For good consistency N > (R + W) should be true.
 {mapping, "n", "dalmatiner_db.n",
  [{datatype, integer},
   {default, 1}]}.

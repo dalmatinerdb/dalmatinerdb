@@ -13,7 +13,7 @@
 -include_lib("mmath/include/mmath.hrl").
 
 %% API
--export([start_link/1,
+-export([start_link/1, count/1,
          empty/1, fold/3, delete/1, delete/2, delete/3, close/1,
          buckets/1, metrics/2, metrics/3,
          read/7, read_rest/8, write/5, write/6]).
@@ -71,6 +71,9 @@ read(Pid, Bucket, Metric, Time, Count, ReqID, Sender) ->
 read_rest(Pid, Bucket, Metric, Time, Count, Part, ReqID, Sender) ->
     gen_server:cast(
       Pid, {read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender}).
+
+count(Pid) ->
+    gen_server:call(Pid, count).
 
 buckets(Pid) ->
     gen_server:call(Pid, buckets).
@@ -282,13 +285,23 @@ fold_buckets_fun(Partition, Buckets, Fun, Acc0) ->
             Out
     end.
 
-handle_call({fold, Fun, Acc0}, _From,
-            State = #state{partition = Partition}) ->
-    DataDir = application:get_env(riak_core, platform_data_dir, "data"),
-    PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
+handle_call(count, _From, State = #state{dir = PartitionDir}) ->
     case file:list_dir(PartitionDir) of
         {ok, Buckets} ->
-            AsyncWork = fold_buckets_fun(Partition, Buckets, Fun, Acc0),
+            Buckets1 = [[PartitionDir, $/, BucketS] || BucketS <- Buckets],
+            Count = lists:foldl(fun(Bucket, Acc) ->
+                                   Acc + mstore:count(Bucket)
+                                   end, 0, Buckets1),
+
+            {reply, Count, State};
+        _ ->
+            {reply, 0, State}
+    end;
+
+handle_call({fold, Fun, Acc0}, _From, State = #state{dir = PartitionDir}) ->
+  case file:list_dir(PartitionDir) of
+        {ok, Buckets} ->
+            AsyncWork = fold_buckets_fun(PartitionDir, Buckets, Fun, Acc0),
             {reply, {ok, AsyncWork}, State};
         _ ->
             {reply, empty, State}
@@ -298,14 +311,7 @@ handle_call(empty, _From, State) ->
     R = calc_empty(gb_trees:iterator(State#state.mstore)),
     {reply, R, State};
 
-handle_call(delete, _From, State = #state{partition = Partition}) ->
-    DataDir = case application:get_env(riak_core, platform_data_dir) of
-                  {ok, DD} ->
-                      DD;
-                  _ ->
-                      "data"
-              end,
-    PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
+handle_call(delete, _From, State = #state{dir = PartitionDir}) ->
     gb_trees:map(fun(Bucket, {_, MSet}) ->
                          mstore:delete(MSet),
                          file:del_dir([PartitionDir, $/, Bucket])
@@ -345,14 +351,7 @@ handle_call({delete, Bucket, Before}, _From, State) ->
                   end,
     {reply, R, State1};
 
-handle_call(buckets, _From, State = #state{partition = P}) ->
-    DataDir = case application:get_env(riak_core, platform_data_dir) of
-                  {ok, DD} ->
-                      DD;
-                  _ ->
-                      "data"
-              end,
-    PartitionDir = [DataDir, $/,  integer_to_list(P)],
+handle_call(buckets, _From, State = #state{dir = PartitionDir}) ->
     Buckets1 = case file:list_dir(PartitionDir) of
                    {ok, Buckets} ->
                        btrie:from_list([{list_to_binary(B), t}
