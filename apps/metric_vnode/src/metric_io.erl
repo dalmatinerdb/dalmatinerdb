@@ -480,8 +480,6 @@ new_store(Partition, Bucket) when is_binary(Bucket) ->
     {ok, MSet} = mstore:new(BucketDir, [{file_size, PointsPerFile}]),
     {Resolution, MSet}.
 
-
-
 get_set(Bucket, State=#state{mstore=Store}) ->
     case gb_trees:lookup(Bucket, Store) of
         {value, MSet} ->
