@@ -303,7 +303,7 @@ encode_handoff_item(Key, Value) ->
 is_empty(State = #state{tbl = T, io=IO}) ->
     case ets:first(T) == '$end_of_table' andalso metric_io:empty(IO) of
         true ->
-            {true, state};
+            {true, State};
         false ->
             Count = metric_io:count(IO),
             {false, {Count, objects}, State}
