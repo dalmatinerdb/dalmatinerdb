@@ -485,6 +485,8 @@ new_store(Partition, Bucket) when is_binary(Bucket) ->
     BucketDir = bucket_dir(Bucket, Partition),
     PointsPerFile = ppf(Bucket),
     Resolution = dalmatiner_opt:resolution(Bucket),
+    lager:debug("[metric_io:~p] Opening ~s@~p",
+                [Partition, Bucket, PointsPerFile]),
     {ok, MSet} = mstore:new(BucketDir, [{file_size, PointsPerFile}]),
     {Resolution, MSet}.
 
