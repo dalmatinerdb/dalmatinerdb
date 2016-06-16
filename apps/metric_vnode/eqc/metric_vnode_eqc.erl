@@ -231,8 +231,7 @@ prop_handoff() ->
 
                    ?WHENFAIL(io:format(user, "L: ~p /= ~p~n"
                                        "M: ~p /= ~p~n",
-                                       [Lc1, L1, gb_sets:to_list(MsC),
-                                        gb_sets:to_list(Ms)]),
+                                       [Lc1, L1, MsC, Ms]),
                              Lc1 == L1 andalso
                              fetch_keys(MsC) == fetch_keys(Ms) andalso
                              length(List1) == Len andalso
@@ -267,7 +266,9 @@ setup() ->
     meck:expect(riak_core_metadata, get, fun(_, _) -> undefined end),
     meck:expect(riak_core_metadata, put, fun(_, _, _) -> ok end),
     meck:new(dalmatiner_opt, [passthrough]),
-    meck:expect(dalmatiner_opt, get, fun( _, _, _, _, Dflt) -> Dflt end),
+    meck:expect(dalmatiner_opt, resolution, fun(_) -> 1000 end),
+    meck:expect(dalmatiner_opt, ppf, fun(_) -> 1000 end),
+    meck:expect(dalmatiner_opt, lifetime, fun(_) -> infinity end),
     meck:new(dalmatiner_vacuum, [passthrough]),
     meck:expect(dalmatiner_vacuum, register, fun() ->ok end),
     meck:new(folsom_metrics),

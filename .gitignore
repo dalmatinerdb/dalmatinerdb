@@ -28,3 +28,4 @@ apps/metric_db/include/metric_db_version.hrl
 _build
 TEST-*
 _checkouts
+.rebar3

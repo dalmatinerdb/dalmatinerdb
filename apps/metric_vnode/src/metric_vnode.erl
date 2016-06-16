@@ -529,10 +529,10 @@ get_resolution(Bucket, State = #state{resolutions = Ress}) ->
 
 get_lifetime(Bucket, State = #state{lifetimes = Lifetimes}) ->
     case btrie:find(Bucket, Lifetimes) of
-        {ok, Resolution} ->
-            {Resolution, State};
+        {ok, TTL} ->
+            {TTL, State};
         error ->
-            Resolution = dalmatiner_opt:lifetime(Bucket),
-            Lifetimes1 = btrie:store(Bucket, Resolution, Lifetimes),
-            {Resolution, State#state{lifetimes = Lifetimes1}}
+            TTL = dalmatiner_opt:lifetime(Bucket),
+            Lifetimes1 = btrie:store(Bucket, TTL, Lifetimes),
+            {TTL, State#state{lifetimes = Lifetimes1}}
     end.
