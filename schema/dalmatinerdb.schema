@@ -47,6 +47,13 @@
  [{datatype, [integer, {atom, infinity}]},
   {default, "infinity"}]}.
 
+%% @doc Maximum number of files kept open per mstore, settings
+%% over two have no effect, settings below 0 eqal to 0.
+{mapping, "mstore.max_files", "metric_vnode.max_files", [
+  {default, 2},
+  {datatype, integer}
+]}.
+
 %% @doc How often a pertition will be picked to be vacuumed.
 {mapping, "vacuum_interval", "dalmatiner_vacuum.interval",
  [{default, "1h"},
@@ -115,11 +122,4 @@
   {default, "127.0.0.1" },
   {datatype, string},
   {validators, ["valid_ipaddr"]}
-]}.
-
-%% @doc Maximum number of files kept open per mstore, settings
-%% over two have no effect, settings below 0 eqal to 0.
-{mapping, "mstore.max_files", "dalmatiner_db.max_files", [
-  {default, 2},
-  {datatype, integer}
 ]}.
