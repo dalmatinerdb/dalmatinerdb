@@ -461,16 +461,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
--spec ppf(binary()) -> pos_integer().
-
-ppf(Bucket) ->
-    case dalmatiner_opt:ppf(Bucket) of
-        PPF when is_integer(PPF), PPF > 0 ->
-            PPF;
-        _ ->
-            ?WEEK
-    end.
-
 -spec bucket_dir(binary(), non_neg_integer()) -> string().
 
 bucket_dir(Bucket, Partition) ->
@@ -483,7 +473,7 @@ bucket_dir(Bucket, Partition) ->
 
 new_store(Partition, Bucket) when is_binary(Bucket) ->
     BucketDir = bucket_dir(Bucket, Partition),
-    PointsPerFile = ppf(Bucket),
+    PointsPerFile = dalmatiner_opt:ppf(Bucket),
     Resolution = dalmatiner_opt:resolution(Bucket),
     lager:debug("[metric_io:~p] Opening ~s@~p",
                 [Partition, Bucket, PointsPerFile]),
