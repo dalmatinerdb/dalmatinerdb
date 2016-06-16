@@ -31,6 +31,7 @@ delay_tcp_anouncement([S | R]) ->
     riak_core:wait_for_service(S),
     delay_tcp_anouncement(R);
 delay_tcp_anouncement([]) ->
+    dalmatiner_metrics:start(),
     lager:info("[ddb] Enabling TCP listener."),
     Port = case application:get_env(dalmatiner_db, tcp_port) of
                {ok, P} ->
