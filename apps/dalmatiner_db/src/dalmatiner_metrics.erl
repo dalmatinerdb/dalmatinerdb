@@ -14,9 +14,9 @@
 
 
 %% API
--export([start_link/0, inc/1, inc/0]).
+-export([start_link/0, inc/1, inc/0, start/0, stop/0]).
 
--ignore_xref([start_link/0, inc/0]).
+-ignore_xref([start_link/0, inc/0, start/0, stop/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -28,7 +28,7 @@
 -define(COUNTERS_MPS, ddb_counters_mps).
 
 
--record(state, {dict, prefix}).
+-record(state, {running = false, dict, prefix}).
 
 %%%===================================================================
 %%% API
@@ -44,6 +44,11 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+start() ->
+    gen_server:call(?SERVER, start).
+
+stop() ->
+    gen_server:call(?SERVER, stop).
 
 inc() ->
     inc(1).
@@ -81,7 +86,6 @@ init([]) ->
             [named_table, set, public, {write_concurrency, true}]),
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, W} = application:get_env(dalmatiner_db, w),
-    erlang:send_after(?INTERVAL, self(), tick),
     lager:info("[metrics] Initializing metric watcher with N: ~p, W: ~p at an "
                "interval of ~pms.", [N, W, ?INTERVAL]),
     Dict = bkt_dict:new(?BUCKET, N, W),
@@ -102,6 +106,14 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call(start, _From, State = #state{running = false}) ->
+    erlang:send_after(?INTERVAL, self(), tick),
+    Reply = ok,
+    {reply, Reply, State#state{running = true}};
+handle_call(stop, _From, State = #state{running = true}) ->
+    Reply = ok,
+    {reply, Reply, State#state{running = false}};
+
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -130,7 +142,8 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 
-handle_info(tick, State = #state{prefix = Prefix, dict = Dict}) ->
+handle_info(tick,
+            State = #state{running = true, prefix = Prefix, dict = Dict}) ->
     Dict1 = bkt_dict:update_chash(Dict),
     Time = timestamp(),
     Spec = folsom_metrics:get_metrics_info(),
