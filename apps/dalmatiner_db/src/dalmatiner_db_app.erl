@@ -10,7 +10,6 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-
     folsom_metrics:new_histogram(put, slide, 60),
     folsom_metrics:new_histogram(mput, slide, 60),
     folsom_metrics:new_histogram(get, slide, 60),
