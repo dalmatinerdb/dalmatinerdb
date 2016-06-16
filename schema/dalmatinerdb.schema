@@ -116,3 +116,10 @@
   {datatype, string},
   {validators, ["valid_ipaddr"]}
 ]}.
+
+%% @doc Maximum number of files kept open per mstore, settings
+%% over two have no effect, settings below 0 eqal to 0.
+{mapping, "mstore.max_files", "dalmatiner_db.max_files", [
+  {default, 2},
+  {datatype, integer}
+]}.
