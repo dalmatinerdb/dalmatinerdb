@@ -27,7 +27,7 @@ stop(_State) ->
     ok.
 
 delay_tcp_anouncement() ->
-    riak_core:wait_for_application(metric),
+    riak_core:wait_for_application(dalmatiner_db),
     Services = riak_core_node_watcher:services(),
     delay_tcp_anouncement(Services).
 
