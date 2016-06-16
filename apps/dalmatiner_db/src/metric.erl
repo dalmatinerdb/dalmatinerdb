@@ -50,7 +50,7 @@ get(Bucket, Metric, PPF, Time, Count) when
        {Time, Count}]).
 
 update_ttl(Bucket, TTL) ->
-    dalmatiner_opt:set([<<"buckets">>, Bucket, <<"lifetime">>], TTL),
+    dalmatiner_opt:set_lifetime(Bucket, TTL),
     metric_coverage:start({update_ttl, Bucket}).
 
 list() ->
@@ -62,8 +62,10 @@ list(Bucket) ->
       list_metrics, metric_coverage, start, [{metrics, Bucket}]).
 
 delete(Bucket) ->
-    folsom_metrics:histogram_timed_update(
-      list_metrics, metric_coverage, start, [{delete, Bucket}]).
+    R = folsom_metrics:histogram_timed_update(
+      list_metrics, metric_coverage, start, [{delete, Bucket}]),
+    dalmatiner_opt:delete(Bucket),
+    R.
 
 list(Bucket, Prefix) ->
     folsom_metrics:histogram_timed_update(

@@ -166,6 +166,8 @@ init([Partition]) ->
           bucket,
           acc_fun,
           last,
+          file_size,
+          current_file = undefined,
           max_delta = 300,
           fold_size = 82800
         }).
@@ -173,7 +175,8 @@ init([Partition]) ->
 
 fold_fun(Metric, Time, V,
          Acc =
-             #facc{metric = Metric2,
+             #facc{file_size = FileSize,
+                   metric = Metric2,
                    lacc = []}) when
       Metric =/= Metric2 ->
     Size = mmath_bin:length(V),
@@ -181,6 +184,7 @@ fold_fun(Metric, Time, V,
       metric = Metric,
       last = Time + Size,
       size = Size,
+      current_file = Time div FileSize,
       lacc = [{Time, V}]};
 fold_fun(Metric, Time, V,
          Acc =
@@ -188,33 +192,19 @@ fold_fun(Metric, Time, V,
                    bucket = Bucket,
                    lacc = AccL,
                    acc_fun = Fun,
+                   file_size = FileSize,
+                   current_file = CurrentFile,
                    hacc = AccIn}) when
-      Metric =/= Metric2 ->
+      Metric =/= Metric2;
+      CurrentFile =/= Time div FileSize ->
     Size = mmath_bin:length(V),
     AccOut = Fun({Bucket, Metric2}, lists:reverse(AccL), AccIn),
     Acc#facc{
       metric = Metric,
       last = Time + Size,
       size = Size,
+      current_file = Time div FileSize,
       hacc = AccOut,
-      lacc = [{Time, V}]};
-
-fold_fun(Metric, Time, V,
-         Acc =
-             #facc{metric = Metric,
-                   bucket = Bucket,
-                   size = _Size,
-                   lacc = AccL,
-                   acc_fun = Fun,
-                   hacc = AccIn,
-                   fold_size = _FoldSize}) when
-      _Size > _FoldSize ->
-    AccOut = Fun({Bucket, Metric}, lists:reverse(AccL), AccIn),
-    Size = mmath_bin:length(V),
-    Acc#facc{
-      size = Size,
-      hacc = AccOut,
-      last = Time + Size,
       lacc = [{Time, V}]};
 
 fold_fun(Metric, Time, V,
@@ -250,6 +240,7 @@ bucket_fold_fun({BucketDir, Bucket}, {AccIn, Fun}) ->
     {ok, MStore} = mstore:open(BucketDir),
     Acc1 = #facc{hacc = AccIn,
                  bucket = Bucket,
+                 file_size = mstore:file_size(MStore),
                  acc_fun = Fun},
     AccOut = mstore:fold(MStore, fun fold_fun/4, Acc1),
     mstore:close(MStore),
