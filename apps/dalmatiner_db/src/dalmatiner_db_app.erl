@@ -10,7 +10,6 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-
     folsom_metrics:new_gauge(mps),
     folsom_metrics:new_gauge(port_count),
     folsom_metrics:new_gauge(process_count),
