@@ -17,7 +17,7 @@
  {<<"k6_bytea">>,{pkg,<<"k6_bytea">>,<<"1.1.5">>},0},
  {<<"lager">>,{pkg,<<"lager">>,<<"3.0.2">>},0},
  {<<"mmath">>,{pkg,<<"mmath">>,<<"0.2.0-alpha8">>},0},
- {<<"mstore">>,{pkg,<<"mstore">>,<<"0.1.14">>},0},
+ {<<"mstore">>,{pkg,<<"mstore">>,<<"0.1.15">>},0},
  {<<"parse_trans">>,{pkg,<<"parse_trans">>,<<"2.9.0">>},2},
  {<<"pbkdf2">>,{pkg,<<"pbkdf2">>,<<"2.0.0">>},1},
  {<<"poolboy">>,{pkg,<<"basho_poolboy">>,<<"0.8.1-p3">>},1},
