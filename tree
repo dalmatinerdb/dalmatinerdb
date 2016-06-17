@@ -11,7 +11,7 @@
 │  └─ goldrush─0.1.7
 ├─ metric_vnode─0.1.3
 ├─ mmath─0.2.0-alpha7
-├─ mstore─0.1.14
+├─ mstore─0.1.15
 ├─ ranch─1.1.0
 ├─ recon─2.3.1
 ├─ riak_core─2.2.5+p1
