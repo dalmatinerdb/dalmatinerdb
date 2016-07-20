@@ -4,7 +4,7 @@
  {<<"chash">>,{pkg,<<"chash">>,<<"0.1.1">>},1},
  {<<"clique">>,{pkg,<<"clique">>,<<"3.0.1">>},1},
  {<<"cuttlefish">>,{pkg,<<"cuttlefish">>,<<"2.0.7">>},1},
- {<<"dproto">>,{pkg,<<"dproto">>,<<"0.1.18">>},0},
+ {<<"dproto">>,{pkg,<<"dproto">>,<<"0.1.19">>},0},
  {<<"edown">>,{pkg,<<"edown">>,<<"0.7.0">>},0},
  {<<"eleveldb">>,{pkg,<<"eleveldb">>,<<"2.1.3">>},1},
  {<<"eper">>,{pkg,<<"eper">>,<<"0.94.0">>},0},

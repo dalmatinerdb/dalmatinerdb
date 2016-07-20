@@ -26,12 +26,14 @@
 -define(WEEK, 604800). %% Seconds in a week.
 -define(MAX_Q_LEN, 20).
 
+-type resolution() :: pos_integer().
+
 -record(state, {
-          partition,
+          partition :: non_neg_integer(),
           node,
           mstore=gb_trees:empty(),
           dir,
-          fold_size
+          fold_size :: pos_integer()
          }).
 
 %%%===================================================================
@@ -252,7 +254,7 @@ bucket_fold_fun({BucketDir, Bucket}, {AccIn, Fun}) ->
             {Fun({Bucket, Metric}, lists:reverse(AccL), HAcc), Fun}
     end.
 
-fold_byckets_fun(PartitionDir, Buckets, Fun, Acc0) ->
+fold_buckets_fun(PartitionDir, Buckets, Fun, Acc0) ->
     Buckets1 = [{[PartitionDir, $/, BucketS], list_to_binary(BucketS)}
                 || BucketS <- Buckets],
     fun() ->
@@ -277,7 +279,7 @@ handle_call(count, _From, State = #state{dir = PartitionDir}) ->
 handle_call({fold, Fun, Acc0}, _From, State = #state{dir = PartitionDir}) ->
   case file:list_dir(PartitionDir) of
         {ok, Buckets} ->
-            AsyncWork = fold_byckets_fun(PartitionDir, Buckets, Fun, Acc0),
+            AsyncWork = fold_buckets_fun(PartitionDir, Buckets, Fun, Acc0),
             {reply, {ok, AsyncWork}, State};
         _ ->
             {reply, empty, State}
@@ -470,6 +472,8 @@ bucket_dir(Bucket, Partition) ->
     file:make_dir(PartitionDir),
     file:make_dir(BucketDir),
     BucketDir.
+
+-spec new_store(non_neg_integer(), binary()) -> {resolution(), mstore:mstore()}.
 
 new_store(Partition, Bucket) when is_binary(Bucket) ->
     BucketDir = bucket_dir(Bucket, Partition),

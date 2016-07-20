@@ -18,7 +18,6 @@
          max_diff = 1 :: pos_integer(),
          dict :: bkt_dict:bkt_dict()}).
 
-
 -type state() :: #state{}.
 
 -type stream_state() :: #sstate{}.
@@ -76,7 +75,20 @@ loop(Socket, Transport, State) ->
                                         dict = bkt_dict:new(Bucket,
                                                             State#state.n,
                                                             State#state.w)},
+                                {incomplete, <<>>});
+                {stream, Bucket, Delay, Resolution} ->
+                    lager:info("[tcp] Entering stream mode for bucket '~s' "
+                               "with max delay: ~p and resolution: ~pms",
+                               [Bucket, Delay, Resolution]),
+                    ok = dalmatiner_opt:set_resolution(Bucket, Resolution),
+                    ok = Transport:setopts(Socket, [{packet, 0}]),
+                    stream_loop(Socket, Transport,
+                                #sstate{max_diff = Delay,
+                                        dict = bkt_dict:new(Bucket,
+                                                            State#state.n,
+                                                            State#state.w)},
                                 {incomplete, <<>>})
+
             end;
         {error, timeout} ->
             loop(Socket, Transport, State);
@@ -86,6 +98,11 @@ loop(Socket, Transport, State) ->
             lager:error("[tcp:loop] Error: ~p~n", [E]),
             ok = Transport:close(Socket)
     end.
+
+%%%===================================================================
+%%% Internal Functions
+%%%===================================================================
+
 do_send(Socket, Transport, B, M, T, C) ->
     PPF = dalmatiner_opt:ppf(B),
     [{T0, C0} | Splits] = mstore:make_splits(T, C, PPF),
