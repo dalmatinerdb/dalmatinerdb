@@ -1,40 +1,46 @@
 -module(dalmatiner_opt).
 
--define(WEEK, 604800). %% Seconds in a week.
-
 -export([resolution/1, lifetime/1, ppf/1, set_resolution/2,
          set_lifetime/2, delete/1]).
+
 -ignore_xref([set_resolution/2]).
 
+-define(WEEK, 604800). %% Seconds in a week.
+-define(ENV_KEY, metric_vnode).
+-define(PREFIX, <<"buckets">>).
+-define(RESOLUTION, <<"resolution">>).
+-define(LIFETIME, <<"lifetime">>).
+-define(PPF, <<"points_per_file">>).
+
 resolution(Bucket) when is_binary(Bucket) ->
-    get(<<"buckets">>, <<"resolution">>, Bucket, {metric_vnode, resolution},
-        1000).
+    get(?PREFIX, ?RESOLUTION, Bucket, {?ENV_KEY, resolution}, 1000).
 
 set_resolution(Bucket, Resolution)
   when is_binary(Bucket),
        is_integer(Resolution),
        Resolution > 0 ->
-    set(<<"buckets">>, <<"resolution">>, Bucket, Resolution).
-delete_resolution(Bucket) when is_binary(Bucket) ->
-    riak_core_metadata:delete({<<"buckets">>, <<"resolution">>}, Bucket).
+
+    %% Resolution cannot be changed after bucket creation, existing bucket
+    %% resolution has to match what is supplied. Therefore a coverage query is
+    %% not required once a value is set, as in the case of TTL.
+    case riak_core_metadata:get({?PREFIX, ?RESOLUTION}, Bucket) of
+        undefined ->
+            set(?PREFIX, ?RESOLUTION, Bucket, Resolution);
+        Resolution ->
+            ok
+    end.
 
 lifetime(Bucket) when is_binary(Bucket) ->
-    get(<<"buckets">>, <<"lifetime">>, Bucket, {metric_vnode, lifetime},
+    get(?PREFIX, ?LIFETIME, Bucket, {?ENV_KEY, lifetime},
         infinity).
 
 set_lifetime(Bucket, TTL) when is_binary(Bucket), is_integer(TTL), TTL > 0 ->
-    set(<<"buckets">>, <<"lifetime">>, Bucket, TTL);
+    set(?PREFIX, ?LIFETIME, Bucket, TTL);
 set_lifetime(Bucket, infinity) when is_binary(Bucket) ->
-    set(<<"buckets">>, <<"lifetime">>, Bucket, infinity).
-
-delete_lifetime(Bucket) when is_binary(Bucket) ->
-    riak_core_metadata:delete({<<"buckets">>, <<"lifetime">>}, Bucket).
+    set(?PREFIX, ?LIFETIME, Bucket, infinity).
 
 ppf(Bucket) when is_binary(Bucket) ->
-    get(<<"buckets">>, <<"points_per_file">>, Bucket,
-        {metric_vnode, points_per_file}, ?WEEK).
-delete_ppf(Bucket) when is_binary(Bucket) ->
-    riak_core_metadata:delete({<<"buckets">>, <<"points_per_file">>}, Bucket).
+    get(?PREFIX, ?PPF, Bucket, {?ENV_KEY, points_per_file}, ?WEEK).
 
 delete(Bucket) ->
     delete_ppf(Bucket),
@@ -71,6 +77,14 @@ get_dflt(Prefix, SubPrefix, Key, {EnvApp, EnvKey}, Dflt) ->
             V
     end.
 
-
 set(Prefix, SubPrefix, Key, Val) ->
     riak_core_metadata:put({Prefix, SubPrefix}, Key, Val).
+
+delete_resolution(Bucket) when is_binary(Bucket) ->
+    riak_core_metadata:delete({?PREFIX, ?RESOLUTION}, Bucket).
+
+delete_lifetime(Bucket) when is_binary(Bucket) ->
+    riak_core_metadata:delete({?PREFIX, ?LIFETIME}, Bucket).
+
+delete_ppf(Bucket) when is_binary(Bucket) ->
+    riak_core_metadata:delete({?PREFIX, ?PPF}, Bucket).

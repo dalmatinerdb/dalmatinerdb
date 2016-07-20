@@ -6,7 +6,14 @@
 
 -export_type([bkt_dict/0]).
 
--record(bkt_dict, {bucket, ppf, dict, n, w, nodes, cbin}).
+-record(bkt_dict, {
+         bucket :: binary(),
+         ppf :: pos_integer(),
+         dict,
+         n :: pos_integer(),
+         w :: pos_integer(),
+         nodes,
+         cbin}).
 
 -type bkt_dict() :: #bkt_dict{}.
 

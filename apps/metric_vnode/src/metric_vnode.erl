@@ -370,7 +370,7 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
     {reply, Reply, State}.
 
 handle_info(vacuum, State = #state{io = IO, partition = P}) ->
-    lager:info("[vaccum] Starting vaccum for partution ~p.", [P]),
+    lager:info("[vacuum] Starting vacuum for partution ~p.", [P]),
     {ok, Bs} = metric_io:buckets(IO),
     State1 = State#state{now = timestamp()},
     State2 =
@@ -383,7 +383,7 @@ handle_info(vacuum, State = #state{io = IO, partition = P}) ->
                                     SAcc1
                             end
                     end, State1, btrie:fetch_keys(Bs)),
-    lager:info("[vaccum] Finalized vaccum for partution ~p.", [P]),
+    lager:info("[vacuum] Finalized vacuum for partution ~p.", [P]),
     {ok, State2};
 
 handle_info({'EXIT', IO, normal}, State = #state{io = IO}) ->
@@ -469,7 +469,7 @@ do_put(Bucket, Metric, Time, Value,
                     Jitter = random:uniform(CT),
                     ets:insert(T, {BM, Time, Len, Time + Jitter, Array});
                 %% If we don't have a cache but our data is too big for the
-                %% cache we happiely write it directly
+                %% cache we happily write it directly
                 [] ->
                     metric_io:write(IO, Bucket, Metric, Time, Value, Sync)
             end,
