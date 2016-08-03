@@ -18,8 +18,8 @@
 │  ├─ basho_stats─1.0.3
 │  ├─ blume─0.1.0
 │  ├─ chash─0.1.1
-│  ├─ clique─3.0.1
-│  ├─ cuttlefish─2.0.7
+│  ├─ clique─0.3.6
+│  ├─ cuttlefish─2.0.8
 │  │  └─ getopt─0.8.2
 │  ├─ eleveldb─2.2.19
 │  ├─ erocksdb─0.4.1
