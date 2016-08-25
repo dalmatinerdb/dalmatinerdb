@@ -14,9 +14,18 @@ version_header: version
 clean:
 	$(REBAR) clean
 	make -C rel/pkg clean
+	make -C rel/deb clean
 
 rel: update
 	$(REBAR) as prod release
 
 package: rel
 	make -C rel/pkg package
+
+deb-clean: 
+	make -C rel/deb clean
+
+deb-prepare: update
+	$(REBAR) as deb compile
+	$(REBAR) as deb release
+	make -C rel/deb prepare
