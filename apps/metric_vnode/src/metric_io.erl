@@ -563,8 +563,8 @@ do_write(Bucket, Metric, Time, Value, State) ->
     {{_, R, MSet}, State1} = get_or_create_set(Bucket, State),
     MSet1 = mstore:put(MSet, Metric, Time, Value),
     LastWritten = erlang:system_time(),
-    Store1 = gb_trees:update(Bucket, {LastWritten, R, MSet1},
-                             State1#state.mstores),
+    Store1 = gb_trees:enter(Bucket, {LastWritten, R, MSet1},
+                            State1#state.mstores),
     State1#state{mstores = Store1}.
 
 -spec do_read(binary(), binary(), non_neg_integer(), pos_integer(), state()) ->
