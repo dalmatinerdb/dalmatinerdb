@@ -13,7 +13,7 @@
 ├─ mmath─0.2.7
 ├─ mstore─0.1.17
 ├─ ranch─1.1.0
-├─ recon─2.3.1
+├─ recon─2.3.2
 ├─ riak_core─2.2.6
 │  ├─ basho_stats─1.0.3
 │  ├─ blume─0.1.0
@@ -32,4 +32,5 @@
 │  ├─ poolboy─0.8.1-p3
 │  ├─ riak_ensemble─2.2.0
 │  └─ riak_sysmon─2.1.2
+├─ snappy─1.1.1
 └─ trie─1.5.1
