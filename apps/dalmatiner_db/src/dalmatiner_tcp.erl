@@ -86,29 +86,39 @@ loop(Socket, Transport, State) ->
             lager:error("[tcp:loop] Error: ~p~n", [E]),
             ok = Transport:close(Socket)
     end.
+
+-dialyzer({nowarn_function, do_send/6}).
 do_send(Socket, Transport, B, M, T, C) ->
     PPF = dalmatiner_opt:ppf(B),
     [{T0, C0} | Splits] = mstore:make_splits(T, C, PPF),
-    {ok, Resolution, Points} = metric:get(B, M, PPF, T0, C0),
+    {ok, _Resolution, Points} = metric:get(B, M, PPF, T0, C0),
     %% Set the socket to no package control so we can do that ourselfs.
-    Transport:setopts(Socket, [{packet, 0}]),
     %% TODO: make this math for configureable length
     %% 8 (resolution + points)
-    Size = 8 + (C * 8),
-    Padding = mmath_bin:empty(C0 - mmath_bin:length(Points)),
-    Transport:send(Socket, <<Size:32/integer, Resolution:64/integer,
-                             Points/binary, Padding/binary>>),
+    send_part(Socket, Transport, C0, Points),
     send_parts(Socket, Transport, PPF, B, M, Splits).
 
+-dialyzer({nowarn_function, send_parts/6}).
 send_parts(Socket, Transport, _PPF, _B, _M, []) ->
     %% Reset the socket to 4 byte packages
-    Transport:setopts(Socket, [{packet, 4}]);
+    Transport:send(Socket, <<0>>);
 
 send_parts(Socket, Transport, PPF, B, M, [{T, C} | Splits]) ->
     {ok, _Resolution, Points} = metric:get(B, M, PPF, T, C),
-    Padding = mmath_bin:empty(C - mmath_bin:length(Points)),
-    Transport:send(Socket, <<Points/binary, Padding/binary>>),
+    send_part(Socket, Transport, C, Points),
     send_parts(Socket, Transport, PPF, B, M, Splits).
+
+%% Got to ignore this 'cause snappy isn't using propper warnings
+-dialyzer({nowarn_function, send_part/4}).
+send_part(Socket, Transport, C, Points) when is_integer(C),
+                                              is_binary(Points)->
+    {ok, Compressed} = snappy:compress(Points),
+    case C - mmath_bin:length(Points) of
+        0 ->
+            Transport:send(Socket, <<1, Compressed/binary>>);
+        Padding ->
+            Transport:send(Socket, <<2, Padding:64/integer, Compressed/binary>>)
+    end.
 
 -spec stream_loop(port(), term(), stream_state(),
                   {dproto_tcp:stream_message(), binary()}) ->
