@@ -288,7 +288,9 @@ handoff_cancelled(State) ->
 handoff_finished(_TargetNode, State) ->
     {ok, State}.
 
-handle_handoff_data(Data, State) ->
+-dialyzer({no_return, handle_handoff_data/2}).
+handle_handoff_data(Compressed, State) ->
+    {ok, Data} = snappy:decompress(Compressed),
     {{Bucket, Metric}, ValList} = binary_to_term(Data),
     true = is_binary(Bucket),
     true = is_binary(Metric),
@@ -297,8 +299,10 @@ handle_handoff_data(Data, State) ->
                          end, State, ValList),
     {reply, ok, State1}.
 
+-dialyzer({no_return, encode_handoff_item/2}).
 encode_handoff_item(Key, Value) ->
-    term_to_binary({Key, Value}).
+    {ok, R} = snappy:compress(term_to_binary({Key, Value})),
+    R.
 
 is_empty(State = #state{tbl = T, io=IO}) ->
     case ets:first(T) == '$end_of_table' andalso metric_io:empty(IO) of
