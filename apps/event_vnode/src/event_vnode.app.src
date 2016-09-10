@@ -1,0 +1,18 @@
+{application, event_vnode,
+ [
+  {description, "DalmatinerDB event storage VNode"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  dproto,
+                  estore,
+                  trie,
+                  lager,
+                  dalmatiner_vacuum,
+                  riak_core
+                 ]},
+  {mod, { event_vnode_app, []}},
+  {env, []}
+ ]}.

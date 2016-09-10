@@ -8,6 +8,7 @@
                   stdlib,
                   fifo_utils,
                   metric_vnode,
+                  event_vnode,
                   riak_core,
                   lager,
                   dproto,
