@@ -7,6 +7,7 @@
                   kernel,
                   stdlib,
                   fifo_utils,
+                  dalmatiner_opt,
                   metric_vnode,
                   event_vnode,
                   riak_core,

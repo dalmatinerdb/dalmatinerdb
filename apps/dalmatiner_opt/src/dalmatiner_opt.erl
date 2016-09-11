@@ -2,7 +2,7 @@
 
 -define(WEEK, 604800). %% Seconds in a week.
 
--export([resolution/1, lifetime/1, ppf/1, ppf/2, set_ppf/2, set_resolution/2,
+-export([resolution/1, lifetime/1, ppf/1, set_ppf/2, set_resolution/2,
          set_lifetime/2, delete/1]).
 -ignore_xref([set_resolution/2]).
 

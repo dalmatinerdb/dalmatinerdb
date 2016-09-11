@@ -3,25 +3,26 @@
 -export([
          append/2,
          get/4,
-         get/3
+         get/3,
+         split/1
         ]).
 
 -ignore_xref([update_ttl/2, get/4, put/4]).
 append(_Bucket, []) ->
     ok;
-append(Bucket, [{T, _} = E | Events]) ->
+append(Bucket, [{T, E} | Events]) ->
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, W} = application:get_env(dalmatiner_db, w),
     Split = split(Bucket),
-    append(N, W, Split, Bucket, Events, T div Split, [E]).
+    append(N, W, Split, Bucket, Events, T div Split, [{T, id(), E}]).
 
 append(N, W, _Split, Bucket, [], C, Acc) ->
     do_append(N, W, Bucket, C, Acc);
 
-append(N, W, Split, Bucket, [{T, _} = E | Es], C, Acc)
+append(N, W, Split, Bucket, [{T, E} | Es], C, Acc)
   when T div Split =:= C ->
-    append(N, W, Split, Bucket, Es, C, [E | Acc]);
-append(N, W, Split, Bucket, [{T, _} = E | Es], C, Acc) ->
+    append(N, W, Split, Bucket, Es, C, [{T, id(), E} | Acc]);
+append(N, W, Split, Bucket, [{T, E} | Es], C, Acc) ->
     %% If we have to write over multiple VNodes
     %% We do it asyncronously for all but the 'last'
     %% one. This way we do get some back bpressure but
@@ -29,7 +30,7 @@ append(N, W, Split, Bucket, [{T, _} = E | Es], C, Acc) ->
     spawn(fun() ->
                   do_append(N, W, Bucket, C, Acc)
          end),
-    append(N, W, Split, Bucket, Es, T div Split, [E]).
+    append(N, W, Split, Bucket, Es, T div Split, [{T, id(), E}]).
 
 
 do_append(N, W, Bucket, C, Events) ->
@@ -69,3 +70,7 @@ split(Bucket) ->
     PPF = dalmatiner_opt:ppf(Bucket),
     Res = dalmatiner_opt:resolution(Bucket),
     erlang:convert_time_unit(PPF * Res, milli_seconds, nano_seconds).
+
+%% TODO: we might want something quicker then this!
+id() ->
+    crypto:hash(sha, term_to_binary({erlang:unique_integer(), node(), self()})).

@@ -47,10 +47,10 @@
 start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
-repair(IdxNode, {Bucket, Event}, {Time, Obj}) ->
+repair(IdxNode, Bucket, Events) ->
     riak_core_vnode_master:command(
       IdxNode,
-      {repair, Bucket, Event, Time, Obj},
+      {put, Bucket, Events},
       ignore,
       ?MASTER).
 

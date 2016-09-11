@@ -364,7 +364,9 @@ handle_coverage({update_ttl, Bucket}, _KeySpaces, _Sender,
                 State = #state{partition=P, node=N,
                                lifetimes = Lifetimes}) ->
     LT1 = btrie:erase(Bucket, Lifetimes),
-    Reply = {ok, undefined, {P, N}, ok},
+    R = btrie:new(),
+    R1 = btrie:store(Bucket, t, R),
+    Reply = {ok, undefined, {P, N}, R1},
     {reply, Reply, State#state{lifetimes = LT1}};
 
 handle_coverage({delete, Bucket}, _KeySpaces, _Sender,

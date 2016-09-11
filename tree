@@ -1,11 +1,14 @@
 [0m├─ dalmatiner_db─0.2.0
+├─ dalmatiner_opt─0.1.0
 ├─ dalmatiner_vacuum─0.1.2
-├─ dproto─0.1.20
+├─ dproto─0.1.22
 ├─ edown─0.8.1
 ├─ eper─0.94.0
+├─ estore─0.1.0
+├─ event_vnode─0.1.0
 ├─ fifo_utils─0.1.22
 │  └─ uuid─1.5.1
-│     └─ quickrand─1.5.2-rc1
+│     └─ quickrand─1.5.2
 ├─ k6_bytea─1.1.5
 ├─ lager─3.2.1
 │  └─ goldrush─0.1.8
@@ -33,4 +36,4 @@
 │  ├─ riak_ensemble─2.2.0
 │  └─ riak_sysmon─2.1.2
 ├─ snappy─1.1.1
-└─ trie─1.5.1
+└─ trie─1.5.2

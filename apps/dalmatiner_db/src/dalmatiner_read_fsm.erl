@@ -20,7 +20,7 @@
 -export([prepare/2, execute/2, waiting/2, wait_for_n/2, finalize/2]).
 
 -type partition() :: chash:index_as_int().
--type reply_src() :: {partition(), node()}.
+-type reply_src() :: {partition(), term()}.
 
 -record(state, {req_id,
                 from,
@@ -163,7 +163,7 @@ waiting({ok, ReqID, IdxNode, Obj},
         SD0=#state{from=From, num_r=NumR0, replies=Replies0,
                    r=R, n=N, timeout=Timeout}) ->
     NumR = NumR0 + 1,
-    Replies = [{IdxNode, Obj}|Replies0],
+    Replies = [{IdxNode, Obj} | Replies0],
     SD = SD0#state{num_r=NumR, replies=Replies},
     case NumR of
         Min when Min >= R ->
@@ -199,8 +199,12 @@ wait_for_n(timeout, SD) ->
     {stop, timeout, SD}.
 
 %% TODO: We need to read-repair events
-finalize(timeout, SD=#state{system = event}) ->
+finalize(timeout, SD=#state{system = event,
+                            replies = Replies,
+                            entity = {Bucket, _Time}}) ->
+    repair_events(Bucket, Replies),
     {stop, normal, SD};
+
 finalize(timeout, SD=#state{
                         val = {Time, _},
                         replies=Replies,
@@ -238,7 +242,35 @@ merge(#state{system = metric}, Metrics) ->
     merge_metrics(Metrics).
 
 merge_events(Events) ->
-    lists:usort(lists:flatten([ E || {_, E} <- Events])).
+    Merged = lists:foldl(fun({_, O}, Set) ->
+                                 sets:union(Set, O)
+                         end, sets:new(), Events),
+    lists:sort(sets:to_list(Merged)).
+
+repair_events(Bucket, Events) ->
+    Merged = lists:foldl(fun({_, O}, Set) ->
+                                 sets:union(Set, O)
+                         end, sets:new(), Events),
+    case needs_repair(Merged, Events) of
+        true ->
+            repair_events(Bucket, Merged, Events);
+        false ->
+            ok
+    end.
+
+repair_events(_Bucket, _Merged, []) ->
+    ok;
+repair_events(Bucket, Merged, [{IdxNode, Es} | R]) ->
+    Missing = sets:subtract(Merged, Es),
+    case sets:size(Missing) of
+        0 ->
+            ok;
+        _ ->
+            L = lists:sort(sets:to_list(Missing)),
+            event_vnode:repair(IdxNode, Bucket, L)
+    end,
+    repair_events(Bucket, Merged, R).
+
 %% @pure
 %%
 %% @doc Given a list of `Replies' return the merged value.
