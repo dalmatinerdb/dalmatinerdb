@@ -16,7 +16,7 @@ clean:
 	make -C rel/pkg clean
 	make -C rel/deb clean
 
-rel: update
+rel: dummy
 	$(REBAR) as prod release
 
 package: rel
@@ -25,7 +25,10 @@ package: rel
 deb-clean: 
 	make -C rel/deb clean
 
-deb-prepare: update
+deb-prepare:
 	$(REBAR) as deb compile
 	$(REBAR) as deb release
 	make -C rel/deb prepare
+
+dummy:
+	true

@@ -2,7 +2,7 @@
 
 -define(WEEK, 604800). %% Seconds in a week.
 
--export([resolution/1, lifetime/1, ppf/1, set_resolution/2,
+-export([resolution/1, lifetime/1, ppf/1, set_ppf/2, set_resolution/2,
          set_lifetime/2, delete/1]).
 -ignore_xref([set_resolution/2]).
 
@@ -30,9 +30,15 @@ set_lifetime(Bucket, infinity) when is_binary(Bucket) ->
 delete_lifetime(Bucket) when is_binary(Bucket) ->
     riak_core_metadata:delete({<<"buckets">>, <<"lifetime">>}, Bucket).
 
+set_ppf(Bucket, PPF) ->
+    set(<<"buckets">>, <<"points_per_file">>, Bucket, PPF).
+
 ppf(Bucket) when is_binary(Bucket) ->
+    ppf(Bucket, ?WEEK).
+
+ppf(Bucket, Dflt) when is_binary(Bucket) ->
     get(<<"buckets">>, <<"points_per_file">>, Bucket,
-        {metric_vnode, points_per_file}, ?WEEK).
+        {metric_vnode, points_per_file}, Dflt).
 delete_ppf(Bucket) when is_binary(Bucket) ->
     riak_core_metadata:delete({<<"buckets">>, <<"points_per_file">>}, Bucket).
 

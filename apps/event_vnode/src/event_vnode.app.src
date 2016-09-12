@@ -1,20 +1,18 @@
-{application, metric_vnode,
+{application, event_vnode,
  [
-  {description, "DalmatinerDB metric storage VNode"},
-  {vsn, "0.1.3"},
+  {description, "DalmatinerDB event storage VNode"},
+  {vsn, "0.1.0"},
   {registered, []},
   {applications, [
                   kernel,
                   stdlib,
                   dalmatiner_opt,
-                  mstore,
-                  mmath,
+                  estore,
                   trie,
                   lager,
                   dalmatiner_vacuum,
                   riak_core
                  ]},
-  {included_applications, [k6_bytea]},
-  {mod, { metric_vnode_app, []}},
+  {mod, { event_vnode_app, []}},
   {env, []}
  ]}.

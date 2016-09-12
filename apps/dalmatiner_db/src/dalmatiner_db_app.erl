@@ -11,8 +11,10 @@
 
 start(_StartType, _StartArgs) ->
     folsom_metrics:new_histogram(put, slide, 60),
+    folsom_metrics:new_histogram({event, put}, slide, 60),
     folsom_metrics:new_histogram(mput, slide, 60),
     folsom_metrics:new_histogram(get, slide, 60),
+    folsom_metrics:new_histogram({event, get}, slide, 60),
     folsom_metrics:new_histogram(list_buckets, slide, 60),
     folsom_metrics:new_histogram(list_metrics, slide, 60),
     spawn(fun delay_tcp_anouncement/0),
