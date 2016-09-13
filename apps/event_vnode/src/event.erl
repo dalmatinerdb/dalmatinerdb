@@ -30,7 +30,7 @@ append(N, W, Split, Bucket, [{T, E} | Es], C, Acc) ->
     spawn(fun() ->
                   do_append(N, W, Bucket, C, Acc)
          end),
-    append(N, W, Split, Bucket, Es, T div Split, [{T, id(), E}]).
+    append(N, W, Split, Bucket, Es, T div Split, [{T, estore:eid(), E}]).
 
 
 do_append(N, W, Bucket, C, Events) ->

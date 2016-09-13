@@ -36,7 +36,7 @@ init(Ref, Socket, Transport, _Opts = []) ->
     loop(Socket, Transport, State).
 
 -spec loop(port(), term(), state()) -> ok.
-
+-dialyzer({nowarn_function, loop/3}).
 loop(Socket, Transport, State) ->
     case Transport:recv(Socket, 0, 5000) of
         {ok, Data} ->
@@ -235,7 +235,7 @@ error(E, Transport, Socket, #sstate{dict = Dict}) ->
     lager:error("[tcp:stream] Error: ~p~n", [E]),
     bkt_dict:flush(Dict),
     ok = Transport:close(Socket).
-
+-dialyzer({nowarn_function, get_events/5}).
 get_events(_Bucket, [], Socket, Transport, State) ->
     Transport:send(Socket, dproto_tcp:encode(events_end)),
     loop(Socket, Transport, State);
