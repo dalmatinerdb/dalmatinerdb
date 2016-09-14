@@ -1,19 +1,22 @@
 {application, dalmatiner_db,
  [
   {description, "DalmatinerDB cluster logic"},
-  {vsn, "0.1.6"},
+  {vsn, "0.2.0"},
   {registered, []},
   {applications, [
                   kernel,
                   stdlib,
                   fifo_utils,
+                  dalmatiner_opt,
                   metric_vnode,
+                  event_vnode,
                   riak_core,
                   lager,
                   dproto,
                   mstore,
                   mmath,
                   dalmatiner_vacuum,
+                  snappy,
                   ranch
                  ]},
   {mod, { dalmatiner_db_app, []}},

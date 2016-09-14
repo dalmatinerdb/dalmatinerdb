@@ -1,0 +1,15 @@
+{application, dalmatiner_opt,
+ [{description, "Options for dalmatinerdb"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.

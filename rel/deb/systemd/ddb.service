@@ -1,0 +1,12 @@
+[Unit]
+Description=DalmatinerDB
+After=network.target
+
+[Service]
+User=dalmatiner
+LimitNOFILE=262144
+# override in /etc/systemd/system/ddb.d/override.conf
+ExecStart=/usr/lib/ddb/bin/ddb console -noinput +Bd
+
+[Install]
+WantedBy=multi-user.target

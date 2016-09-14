@@ -10,6 +10,11 @@
  [{default, 100},
   {datatype, integer}]}.
 
+%% @doc Number of allowed concurrent tcp connections.
+{mapping, "tcp_max_connections", "dalmatiner_db.tcp_max_connections",
+ [{default, 1024},
+  {datatype, integer}]}.
+
 %% @doc The number of Asyncronous worker for a vnode.
 {mapping, "async_workers", "metric_vnode.async_workers",
  [{datatype, integer},
@@ -35,10 +40,19 @@
  [{datatype, integer},
   {default, 120}]}.
 
-%% @doc How long data is kept by default
+%% @doc How long data is kept by default, measured either in points
+%% or infinity for not deleting old data. This can be changed on a
+%% per bucket level using ddb-admin
 {mapping, "lifetime", "metric_vnode.lifetime",
  [{datatype, [integer, {atom, infinity}]},
   {default, "infinity"}]}.
+
+%% @doc Maximum number of files kept open per mstore, settings
+%% over two have no effect, settings below 0 eqal to 0.
+{mapping, "mstore.max_files", "metric_vnode.max_files", [
+  {default, 2},
+  {datatype, integer}
+]}.
 
 %% @doc How often a pertition will be picked to be vacuumed.
 {mapping, "vacuum_interval", "dalmatiner_vacuum.interval",
@@ -50,6 +64,11 @@
  [{default, "{{platform_data_dir}}"},
   {datatype, string}]}.
 
+%% @doc The path data gets stored into.
+{mapping, "run_user_home", "setup.home",
+ [{default, "{{run_user_home}}"},
+  hidden,
+  {datatype, string}]}.
 
 %% @doc Default ring creation size.  Make sure it is a power of 2,
 %% e.g. 16, 32, 64, 128, 256, 512 etc
@@ -69,7 +88,7 @@
  end}.
 
 %% @doc The number of copies of the data that is keeped.
-%% For good consistency N  < (R + W) should be true.
+%% For good consistency N > (R + W) should be true.
 {mapping, "n", "dalmatiner_db.n",
  [{datatype, integer},
   {default, 1}]}.

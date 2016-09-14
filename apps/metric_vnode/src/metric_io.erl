@@ -13,7 +13,7 @@
 -include_lib("mmath/include/mmath.hrl").
 
 %% API
--export([start_link/1,
+-export([start_link/1, count/1,
          empty/1, fold/3, delete/1, delete/2, delete/3, close/1,
          buckets/1, metrics/2, metrics/3,
          read/7, read_rest/8, write/5, write/6]).
@@ -26,13 +26,19 @@
 -define(WEEK, 604800). %% Seconds in a week.
 -define(MAX_Q_LEN, 20).
 
+-type entry() :: {non_neg_integer(), pos_integer(), mstore:mstore()}.
+
 -record(state, {
           partition,
           node,
-          mstore=gb_trees:empty(),
+          mstores = gb_trees:empty() :: gb_trees:tree(binary(), entry()),
+          closed_mstores = gb_trees:empty() :: gb_trees:tree(binary(), entry()),
           dir,
-          fold_size
+          fold_size,
+          max_open_stores
          }).
+
+-type state() :: #state{}.
 
 %%%===================================================================
 %%% API
@@ -68,6 +74,9 @@ read(Pid, Bucket, Metric, Time, Count, ReqID, Sender) ->
 read_rest(Pid, Bucket, Metric, Time, Count, Part, ReqID, Sender) ->
     gen_server:cast(
       Pid, {read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender}).
+
+count(Pid) ->
+    gen_server:call(Pid, count).
 
 buckets(Pid) ->
     gen_server:call(Pid, buckets).
@@ -163,6 +172,8 @@ init([Partition]) ->
           bucket,
           acc_fun,
           last,
+          file_size,
+          current_file = undefined,
           max_delta = 300,
           fold_size = 82800
         }).
@@ -170,7 +181,8 @@ init([Partition]) ->
 
 fold_fun(Metric, Time, V,
          Acc =
-             #facc{metric = Metric2,
+             #facc{file_size = FileSize,
+                   metric = Metric2,
                    lacc = []}) when
       Metric =/= Metric2 ->
     Size = mmath_bin:length(V),
@@ -178,6 +190,7 @@ fold_fun(Metric, Time, V,
       metric = Metric,
       last = Time + Size,
       size = Size,
+      current_file = Time div FileSize,
       lacc = [{Time, V}]};
 fold_fun(Metric, Time, V,
          Acc =
@@ -185,33 +198,19 @@ fold_fun(Metric, Time, V,
                    bucket = Bucket,
                    lacc = AccL,
                    acc_fun = Fun,
+                   file_size = FileSize,
+                   current_file = CurrentFile,
                    hacc = AccIn}) when
-      Metric =/= Metric2 ->
+      Metric =/= Metric2;
+      CurrentFile =/= Time div FileSize ->
     Size = mmath_bin:length(V),
     AccOut = Fun({Bucket, Metric2}, lists:reverse(AccL), AccIn),
     Acc#facc{
       metric = Metric,
       last = Time + Size,
       size = Size,
+      current_file = Time div FileSize,
       hacc = AccOut,
-      lacc = [{Time, V}]};
-
-fold_fun(Metric, Time, V,
-         Acc =
-             #facc{metric = Metric,
-                   bucket = Bucket,
-                   size = _Size,
-                   lacc = AccL,
-                   acc_fun = Fun,
-                   hacc = AccIn,
-                   fold_size = _FoldSize}) when
-      _Size > _FoldSize ->
-    AccOut = Fun({Bucket, Metric}, lists:reverse(AccL), AccIn),
-    Size = mmath_bin:length(V),
-    Acc#facc{
-      size = Size,
-      hacc = AccOut,
-      last = Time + Size,
       lacc = [{Time, V}]};
 
 fold_fun(Metric, Time, V,
@@ -247,6 +246,7 @@ bucket_fold_fun({BucketDir, Bucket}, {AccIn, Fun}) ->
     {ok, MStore} = mstore:open(BucketDir),
     Acc1 = #facc{hacc = AccIn,
                  bucket = Bucket,
+                 file_size = mstore:file_size(MStore),
                  acc_fun = Fun},
     AccOut = mstore:fold(MStore, fun fold_fun/4, Acc1),
     mstore:close(MStore),
@@ -267,11 +267,21 @@ fold_byckets_fun(PartitionDir, Buckets, Fun, Acc0) ->
             Out
     end.
 
-handle_call({fold, Fun, Acc0}, _From,
-            State = #state{partition = Partition}) ->
-    DataDir = application:get_env(riak_core, platform_data_dir, "data"),
-    PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
+handle_call(count, _From, State = #state{dir = PartitionDir}) ->
     case file:list_dir(PartitionDir) of
+        {ok, Buckets} ->
+            Buckets1 = [[PartitionDir, $/, BucketS] || BucketS <- Buckets],
+            Count = lists:foldl(fun(Bucket, Acc) ->
+                                   Acc + mstore:count(Bucket)
+                                   end, 0, Buckets1),
+
+            {reply, Count, State};
+        _ ->
+            {reply, 0, State}
+    end;
+
+handle_call({fold, Fun, Acc0}, _From, State = #state{dir = PartitionDir}) ->
+  case file:list_dir(PartitionDir) of
         {ok, Buckets} ->
             AsyncWork = fold_byckets_fun(PartitionDir, Buckets, Fun, Acc0),
             {reply, {ok, AsyncWork}, State};
@@ -280,39 +290,41 @@ handle_call({fold, Fun, Acc0}, _From,
     end;
 
 handle_call(empty, _From, State) ->
-    R = calc_empty(gb_trees:iterator(State#state.mstore)),
+    R = calc_empty(gb_trees:iterator(State#state.mstores)) andalso
+        calc_empty(gb_trees:iterator(State#state.closed_mstores)),
     {reply, R, State};
 
-handle_call(delete, _From, State = #state{partition = Partition}) ->
-    DataDir = case application:get_env(riak_core, platform_data_dir) of
-                  {ok, DD} ->
-                      DD;
-                  _ ->
-                      "data"
-              end,
-    PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
-    gb_trees:map(fun(Bucket, {_, MSet}) ->
+handle_call(delete, _From, State = #state{dir = PartitionDir}) ->
+    gb_trees:map(fun(Bucket, {_, _, MSet}) ->
                          mstore:delete(MSet),
                          file:del_dir([PartitionDir, $/, Bucket])
-                 end, State#state.mstore),
-    {reply, ok, State#state{mstore=gb_trees:empty()}};
+                 end, State#state.mstores),
+    gb_trees:map(fun(Bucket, {_, _, MSet}) ->
+                         mstore:delete(MSet),
+                         file:del_dir([PartitionDir, $/, Bucket])
+                 end, State#state.closed_mstores),
+    {reply, ok, State#state{mstores = gb_trees:empty(),
+                            closed_mstores = gb_trees:empty()}};
 
 handle_call(close, _From, State) ->
-    gb_trees:map(fun(_, {_, MSet}) ->
+    gb_trees:map(fun(_, {_, _, MSet}) ->
                          mstore:close(MSet)
-                 end, State#state.mstore),
-    State1 = State#state{mstore=gb_trees:empty()},
+                 end, State#state.mstores),
+    State1 = State#state{mstores = gb_trees:empty(),
+                         closed_mstores = gb_trees:empty()},
     {reply, ok, State1};
-%%{stop, normal, State1};
 
 handle_call({delete, Bucket}, _From,
             State = #state{dir = Dir}) ->
     {R, State1} = case get_set(Bucket, State) of
-                      {ok, {{_, MSet}, S1}} ->
+                      {ok, {{_, _, MSet}, S1}} ->
                           mstore:delete(MSet),
                           file:del_dir([Dir, $/, Bucket]),
-                          MStore = gb_trees:delete(Bucket, S1#state.mstore),
-                          {ok, S1#state{mstore = MStore}};
+                          MStore = gb_trees:delete(Bucket, S1#state.mstores),
+                          CMStore = gb_trees:delete(
+                                       Bucket, S1#state.closed_mstores),
+                          {ok, S1#state{mstores = MStore,
+                                        closed_mstores = CMStore}};
                       _ ->
                           {not_found, State}
                   end,
@@ -320,24 +332,17 @@ handle_call({delete, Bucket}, _From,
 
 handle_call({delete, Bucket, Before}, _From, State) ->
     {R, State1} = case get_set(Bucket, State) of
-                      {ok, {{Res, MSet}, S1}} ->
+                      {ok, {{LastWritten, Res, MSet}, S1}} ->
                           {ok, MSet1} = mstore:delete(MSet, Before),
-                          V = {Res, MSet1},
-                          MStore = gb_trees:enter(Bucket, V, S1#state.mstore),
-                          {ok, S1#state{mstore = MStore}};
+                          V = {LastWritten, Res, MSet1},
+                          MStore = gb_trees:enter(Bucket, V, S1#state.mstores),
+                          {ok, S1#state{mstores = MStore}};
                       _ ->
                           {not_found, State}
                   end,
     {reply, R, State1};
 
-handle_call(buckets, _From, State = #state{partition = P}) ->
-    DataDir = case application:get_env(riak_core, platform_data_dir) of
-                  {ok, DD} ->
-                      DD;
-                  _ ->
-                      "data"
-              end,
-    PartitionDir = [DataDir, $/,  integer_to_list(P)],
+handle_call(buckets, _From, State = #state{dir = PartitionDir}) ->
     Buckets1 = case file:list_dir(PartitionDir) of
                    {ok, Buckets} ->
                        btrie:from_list([{list_to_binary(B), t}
@@ -349,7 +354,7 @@ handle_call(buckets, _From, State = #state{partition = P}) ->
 
 handle_call({metrics, Bucket}, _From, State) ->
     {Ms, State1} = case get_set(Bucket, State) of
-                       {ok, {{_, M}, S2}} ->
+                       {ok, {{_, _, M}, S2}} ->
                            {mstore:metrics(M), S2};
                        _ ->
                            {btrie:new(), State}
@@ -358,7 +363,7 @@ handle_call({metrics, Bucket}, _From, State) ->
 
 handle_call({metrics, Bucket, Prefix}, _From, State) ->
     {MsR, State1} = case get_set(Bucket, State) of
-                        {ok, {{_, M}, S2}} ->
+                        {ok, {{_, _, M}, S2}} ->
                             Ms = mstore:metrics(M),
                             Ms1 = btrie:fetch_keys_similar(Prefix, Ms),
                             {btrie:from_list(Ms1), S2};
@@ -430,11 +435,11 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info({'EXIT', _From, _Reason}, State = #state{mstore = MStore}) ->
-    gb_trees:map(fun(_, {_, MSet}) ->
+handle_info({'EXIT', _From, _Reason}, State = #state{mstores = MStore}) ->
+    gb_trees:map(fun(_, {_, _, MSet}) ->
                          mstore:close(MSet)
                  end, MStore),
-    {stop, normal, State#state{mstore=gb_trees:empty()}};
+    {stop, normal, State#state{mstores = gb_trees:empty()}};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -450,8 +455,8 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, #state{mstore = MStore}) ->
-    gb_trees:map(fun(_, {_, MSet}) ->
+terminate(_Reason, #state{mstores = MStore}) ->
+    gb_trees:map(fun(_, {_, _, MSet}) ->
                          mstore:close(MSet)
                  end, MStore),
     ok.
@@ -471,18 +476,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
--spec ppf(binary()) -> pos_integer().
-
-ppf(Bucket) ->
-    case dalmatiner_opt:get(<<"buckets">>, Bucket,
-                            <<"points_per_file">>,
-                            {metric_vnode, points_per_file}, ?WEEK) of
-        PPF when is_integer(PPF), PPF > 0 ->
-            PPF;
-        _ ->
-            ?WEEK
-    end.
-
 -spec bucket_dir(binary(), non_neg_integer()) -> string().
 
 bucket_dir(Bucket, Partition) ->
@@ -493,16 +486,31 @@ bucket_dir(Bucket, Partition) ->
     file:make_dir(BucketDir),
     BucketDir.
 
+-spec new_store(non_neg_integer(), binary()) ->
+                       entry().
 new_store(Partition, Bucket) when is_binary(Bucket) ->
     BucketDir = bucket_dir(Bucket, Partition),
-    PointsPerFile = ppf(Bucket),
-    Resolution = get_resolution(Bucket),
-    {ok, MSet} = mstore:new(BucketDir, [{file_size, PointsPerFile}]),
-    {Resolution, MSet}.
+    PointsPerFile = dalmatiner_opt:ppf(Bucket),
+    Resolution = dalmatiner_opt:resolution(Bucket),
+    MaxOpenFiles = application:get_env(metric_vnode, max_files, 2),
+    lager:debug("[metric_io:~p] Opening ~s@~p",
+                [Partition, Bucket, PointsPerFile]),
+    {ok, MSet} = mstore:new(BucketDir, [{file_size, PointsPerFile},
+                                        {max_files, MaxOpenFiles}]),
+    {0, Resolution, MSet}.
 
+-spec get_set(binary(), state()) ->
+                     {ok, {entry(), state()}} |
+                     {error, not_found}.
+get_set(Bucket, State=#state{mstores = Store}) ->
+    case gb_trees:lookup(Bucket, Store) of
+        {value, MSet} ->
+            {ok, {MSet, State}};
+        none ->
+            get_closed_set(Bucket, State)
+    end.
 
-
-get_set(Bucket, State=#state{mstore=Store}) ->
+get_closed_set(Bucket, State=#state{closed_mstores = Store}) ->
     case gb_trees:lookup(Bucket, Store) of
         {value, MSet} ->
             {ok, {MSet, State}};
@@ -511,20 +519,21 @@ get_set(Bucket, State=#state{mstore=Store}) ->
                 true ->
                     R = new_store(State#state.partition, Bucket),
                     Store1 = gb_trees:insert(Bucket, R, Store),
-                    {ok, {R, State#state{mstore=Store1}}};
+                    {ok, {R, State#state{closed_mstores = Store1}}};
                 _ ->
                     {error, not_found}
             end
     end.
-
-get_or_create_set(Bucket, State=#state{mstore=Store}) ->
+-spec get_or_create_set(binary(), state()) ->
+                               {entry(), state()}.
+get_or_create_set(Bucket, State=#state{mstores = Store}) ->
     case get_set(Bucket, State) of
         {ok, R} ->
             R;
         {error, not_found} ->
             MSet = new_store(State#state.partition, Bucket),
             Store1 = gb_trees:insert(Bucket, MSet, Store),
-            {MSet, State#state{mstore=Store1}}
+            {MSet, State#state{mstores = Store1}}
     end.
 
 bucket_exists(Partition, Bucket) ->
@@ -543,29 +552,31 @@ calc_empty(I) ->
     case gb_trees:next(I) of
         none ->
             true;
-        {_, {_, MSet}, I2} ->
+        {_, {_, _, MSet}, I2} ->
             btrie:size(mstore:metrics(MSet)) =:= 0
                 andalso calc_empty(I2)
     end.
 
+-spec do_write(binary(), binary(), pos_integer(), binary(), state()) ->
+                      state().
 do_write(Bucket, Metric, Time, Value, State) ->
-    {{R, MSet}, State1} = get_or_create_set(Bucket, State),
+    {{_, R, MSet}, State1} = get_or_create_set(Bucket, State),
     MSet1 = mstore:put(MSet, Metric, Time, Value),
-    Store1 = gb_trees:update(Bucket, {R, MSet1}, State1#state.mstore),
-    State1#state{mstore=Store1}.
+    LastWritten = erlang:system_time(),
+    Store1 = gb_trees:enter(Bucket, {LastWritten, R, MSet1},
+                            State1#state.mstores),
+    State1#state{mstores = Store1}.
 
-get_resolution(Bucket) ->
-    dalmatiner_opt:get(
-      <<"buckets">>, Bucket, <<"resolution">>,
-      {metric_vnode, resolution}, 1000).
-
-do_read(Bucket, Metric, Time, Count, State) ->
+-spec do_read(binary(), binary(), non_neg_integer(), pos_integer(), state()) ->
+                      {{pos_integer(), bitstring()}, state()}.
+do_read(Bucket, Metric, Time, Count, State = #state{})
+  when is_binary(Bucket), is_binary(Metric), is_integer(Count) ->
     case get_set(Bucket, State) of
-        {ok, {{Resolution, MSet}, S2}} ->
+        {ok, {{_LastWritten, Resolution, MSet}, S2}} ->
             {ok, Data} = mstore:get(MSet, Metric, Time, Count),
             {{Resolution, Data}, S2};
         _ ->
             lager:warning("[IO] Unknown metric: ~p/~p", [Bucket, Metric]),
-            Resolution = get_resolution(Bucket),
+            Resolution = dalmatiner_opt:resolution(Bucket),
             {{Resolution, mmath_bin:empty(Count)}, State}
     end.

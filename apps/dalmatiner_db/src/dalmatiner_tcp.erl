@@ -36,7 +36,7 @@ init(Ref, Socket, Transport, _Opts = []) ->
     loop(Socket, Transport, State).
 
 -spec loop(port(), term(), state()) -> ok.
-
+-dialyzer({nowarn_function, loop/3}).
 loop(Socket, Transport, State) ->
     case Transport:recv(Socket, 0, 5000) of
         {ok, Data} ->
@@ -49,13 +49,31 @@ loop(Socket, Transport, State) ->
                     {ok, Ms} = metric:list(Bucket),
                     Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
                     loop(Socket, Transport, State);
+                {delete, Bucket} ->
+                    metric:delete(Bucket),
+                    loop(Socket, Transport, State);
                 {list, Bucket, Prefix} ->
                     {ok, Ms} = metric:list(Bucket, Prefix),
                     Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
                     loop(Socket, Transport, State);
+                {info, Bucket} ->
+                    {ok, {Res, PPF, TTL}} = metric:bucket_info(Bucket),
+                    InfoBin = dproto_tcp:encode_bucket_info(Res, PPF, TTL),
+                    Transport:send(Socket, InfoBin),
+                    loop(Socket, Transport, State);
                 {get, B, M, T, C} ->
                     do_send(Socket, Transport, B, M, T, C),
                     loop(Socket, Transport, State);
+                {ttl, Bucket, TTL} ->
+                    ok = metric:update_ttl(Bucket, TTL),
+                    loop(Socket, Transport, State);
+                {events, Bucket, Es} ->
+                    event:append(Bucket, Es),
+                    loop(Socket, Transport, State);
+                {get_events, Bucket, Start, End} ->
+                    Size = event:split(Bucket),
+                    Splits = estore:make_splits(Start, End, Size),
+                    get_events(Bucket, Splits, Socket, Transport, State);
                 {stream, Bucket, Delay} ->
                     lager:info("[tcp] Entering stream mode for bucket '~s' "
                                "and a max delay of: ~p", [Bucket, Delay]),
@@ -75,29 +93,39 @@ loop(Socket, Transport, State) ->
             lager:error("[tcp:loop] Error: ~p~n", [E]),
             ok = Transport:close(Socket)
     end.
+
+-dialyzer({nowarn_function, do_send/6}).
 do_send(Socket, Transport, B, M, T, C) ->
     PPF = dalmatiner_opt:ppf(B),
     [{T0, C0} | Splits] = mstore:make_splits(T, C, PPF),
-    {ok, Resolution, Points} = metric:get(B, M, PPF, T0, C0),
+    {ok, _Resolution, Points} = metric:get(B, M, PPF, T0, C0),
     %% Set the socket to no package control so we can do that ourselfs.
-    Transport:setopts(Socket, [{packet, 0}]),
     %% TODO: make this math for configureable length
     %% 8 (resolution + points)
-    Size = 8 + (C * 8),
-    Padding = mmath_bin:empty(C0 - mmath_bin:length(Points)),
-    Transport:send(Socket, <<Size:32/integer, Resolution:64/integer,
-                             Points/binary, Padding/binary>>),
+    send_part(Socket, Transport, C0, Points),
     send_parts(Socket, Transport, PPF, B, M, Splits).
 
+-dialyzer({nowarn_function, send_parts/6}).
 send_parts(Socket, Transport, _PPF, _B, _M, []) ->
     %% Reset the socket to 4 byte packages
-    Transport:setopts(Socket, [{packet, 4}]);
+    Transport:send(Socket, <<0>>);
 
 send_parts(Socket, Transport, PPF, B, M, [{T, C} | Splits]) ->
     {ok, _Resolution, Points} = metric:get(B, M, PPF, T, C),
-    Padding = mmath_bin:empty(C - mmath_bin:length(Points)),
-    Transport:send(Socket, <<Points/binary, Padding/binary>>),
+    send_part(Socket, Transport, C, Points),
     send_parts(Socket, Transport, PPF, B, M, Splits).
+
+%% Got to ignore this 'cause snappy isn't using propper warnings
+-dialyzer({nowarn_function, send_part/4}).
+send_part(Socket, Transport, C, Points) when is_integer(C),
+                                              is_binary(Points)->
+    {ok, Compressed} = snappy:compress(Points),
+    case C - mmath_bin:length(Points) of
+        0 ->
+            Transport:send(Socket, <<1, Compressed/binary>>);
+        Padding ->
+            Transport:send(Socket, <<2, Padding:64/integer, Compressed/binary>>)
+    end.
 
 -spec stream_loop(port(), term(), stream_state(),
                   {dproto_tcp:stream_message(), binary()}) ->
@@ -207,3 +235,14 @@ error(E, Transport, Socket, #sstate{dict = Dict}) ->
     lager:error("[tcp:stream] Error: ~p~n", [E]),
     bkt_dict:flush(Dict),
     ok = Transport:close(Socket).
+-dialyzer({nowarn_function, get_events/5}).
+get_events(_Bucket, [], Socket, Transport, State) ->
+    Transport:send(Socket, dproto_tcp:encode(events_end)),
+    loop(Socket, Transport, State);
+
+get_events(Bucket, [{Start, End} | R], Socket, Transport, State) ->
+    {ok, Es} = event:get(Bucket, Start, End),
+    Es1 = [{T, E} || {T, _, E} <- Es],
+    Transport:send(Socket, dproto_tcp:encode({events, Es1})),
+    get_events(Bucket, R, Socket, Transport, State).
+

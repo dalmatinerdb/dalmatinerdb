@@ -26,7 +26,7 @@ start(Request) ->
             ok;
         {ok, Result} ->
             {ok, Result}
-    after 10000 ->
+    after 60000 ->
             {error, timeout}
     end.
 
@@ -39,7 +39,7 @@ init({From, ReqID, _}, Request) ->
     %% Same as R value here, TODO: Make this dynamic
     PrimaryVNodeCoverage = R,
     %% We timeout after 5s
-    Timeout = 5000,
+    Timeout = 55000,
     State = #state{replies = btrie:new(), r = R,
                    from = From, reqid = ReqID},
     {Request, VNodeSelector, NVal, PrimaryVNodeCoverage,

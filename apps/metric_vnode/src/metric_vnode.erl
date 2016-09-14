@@ -241,7 +241,7 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
               ->
             PartStart = max(Time, Start),
             PartCount = min(Time + Count, Start + Size) - PartStart,
-            SkipBytes = (PartStart - Start),
+            SkipBytes = (PartStart - Start) * ?DATA_SIZE,
             Bin = k6_bytea:get(Array, SkipBytes, (PartCount * ?DATA_SIZE)),
             Offset = PartStart - Time,
             Part = {Offset, PartCount, Bin},
@@ -288,7 +288,15 @@ handoff_cancelled(State) ->
 handoff_finished(_TargetNode, State) ->
     {ok, State}.
 
-handle_handoff_data(Data, State) ->
+-dialyzer({no_return, handle_handoff_data/2}).
+handle_handoff_data(Compressed, State) ->
+    Data = case riak_core_capability:get({ddb, handoff}) of
+               snappy ->
+                   {ok, Decompressed} = snappy:decompress(Compressed),
+                   Decompressed;
+               _ ->
+                   Compressed
+           end,
     {{Bucket, Metric}, ValList} = binary_to_term(Data),
     true = is_binary(Bucket),
     true = is_binary(Metric),
@@ -297,12 +305,24 @@ handle_handoff_data(Data, State) ->
                          end, State, ValList),
     {reply, ok, State1}.
 
+-dialyzer({no_return, encode_handoff_item/2}).
 encode_handoff_item(Key, Value) ->
-    term_to_binary({Key, Value}).
+    case riak_core_capability:get({ddb, handoff}) of
+        snappy ->
+            {ok, R} = snappy:compress(term_to_binary({Key, Value})),
+            R;
+        _ ->
+            term_to_binary({Key, Value})
+    end.
 
 is_empty(State = #state{tbl = T, io=IO}) ->
-    R = ets:first(T) == '$end_of_table' andalso metric_io:empty(IO),
-    {R, State}.
+    case ets:first(T) == '$end_of_table' andalso metric_io:empty(IO) of
+        true ->
+            {true, State};
+        false ->
+            Count = metric_io:count(IO),
+            {false, {Count, objects}, State}
+    end.
 
 delete(State = #state{io = IO, tbl=T}) ->
     ets:delete_all_objects(T),
@@ -344,7 +364,9 @@ handle_coverage({update_ttl, Bucket}, _KeySpaces, _Sender,
                 State = #state{partition=P, node=N,
                                lifetimes = Lifetimes}) ->
     LT1 = btrie:erase(Bucket, Lifetimes),
-    Reply = {ok, undefined, {P, N}, ok},
+    R = btrie:new(),
+    R1 = btrie:store(Bucket, t, R),
+    Reply = {ok, undefined, {P, N}, R1},
     {reply, Reply, State#state{lifetimes = LT1}};
 
 handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
@@ -358,8 +380,10 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
                       k6_bytea:delete(Array)
               end, ok, T),
     ets:delete_all_objects(T),
-    R = metric_io:delete(IO, Bucket),
-    Reply = {ok, undefined, {P, N}, R},
+    _Repply = metric_io:delete(IO, Bucket),
+    R = btrie:new(),
+    R1 = btrie:store(Bucket, t, R),
+    Reply = {ok, undefined, {P, N}, R1},
     {reply, Reply, State}.
 
 handle_info(vacuum, State = #state{io = IO, partition = P}) ->
@@ -521,10 +545,10 @@ get_resolution(Bucket, State = #state{resolutions = Ress}) ->
 
 get_lifetime(Bucket, State = #state{lifetimes = Lifetimes}) ->
     case btrie:find(Bucket, Lifetimes) of
-        {ok, Resolution} ->
-            {Resolution, State};
+        {ok, TTL} ->
+            {TTL, State};
         error ->
-            Resolution = dalmatiner_opt:lifetime(Bucket),
-            Lifetimes1 = btrie:store(Bucket, Resolution, Lifetimes),
-            {Resolution, State#state{lifetimes = Lifetimes1}}
+            TTL = dalmatiner_opt:lifetime(Bucket),
+            Lifetimes1 = btrie:store(Bucket, TTL, Lifetimes),
+            {TTL, State#state{lifetimes = Lifetimes1}}
     end.

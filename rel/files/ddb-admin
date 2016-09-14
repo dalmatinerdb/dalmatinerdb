@@ -14,7 +14,7 @@ RUNNER_USER={{run_user}}
 
 # Make sure this script is running as the appropriate user
 if [ ! -z "$RUNNER_USER" ] && [ `whoami` != "$RUNNER_USER" ]; then
-    exec sudo -u $RUNNER_USER $0 $@
+    exec sudo -H -u $RUNNER_USER $0 $@
 fi
 
 # Make sure CWD is set to runner base dir
@@ -437,13 +437,21 @@ Status and information commands:
 
 # Check the first argument for instructions
 case "$1" in
-    ttl)
-        shift
-        $NODETOOL rpc dalmatiner_console ttl $@
-        ;;
     buckets)
         shift
-        $NODETOOL rpc dalmatiner_console buckets $@
+        case "$1" in
+            list)
+                shift
+                $NODETOOL rpc dalmatiner_console buckets $@
+                ;;
+            create)
+                shift
+                $NODETOOL rpc dalmatiner_console create $@
+                ;;
+            *)
+                echo "possible sub options are 'list' or 'create'"
+                ;;
+        esac
         ;;
     ## KV related
 
@@ -754,11 +762,13 @@ case "$1" in
         echo "                 services | wait-for-service | member-status |"
         echo "                 ring-status }"
         echo
-        echo " buckets              - List all buckets"
-        echo " ttl <bucket>         - Show the TTL of a bucket"
-        echo " ttl <bucket> <TTL>   - Set the lifetime of a bucket, either in the"
-        echo "                        buckets native time b using a simple number or"
-        echo "                        in relative time by using a suffix like 'w' 's' 'h'."
+        echo " buckets list         - List all buckets"
+        echo " buckets create <bucket> <res>"
+        echo "                <ppf> [<TTL>] - List all buckets"
+        echo " ttl <bucket>                 - Show the TTL of a bucket"
+        echo " ttl <bucket> <TTL>           - Set the lifetime of a bucket, either in the"
+        echo "                                buckets native time b using a simple number or"
+        echo "                                in relative time by using a suffix like 'w' 's' 'h'."
         exit 1
         ;;
 esac
