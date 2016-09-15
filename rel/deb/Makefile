@@ -4,24 +4,9 @@ COMPONENT = ddb
 
 .PHONY: prepare package
 
-package: clean prepare
-#	We keep actuall packaging in jenkins for now
-#	dpkg-deb -b stage ddb_$(VERSION)
-
-stage/DEBIAN/conffiles: conffiles
-	mkdir -p stage/DEBIAN
-	cp conffiles stage/DEBIAN
-
-stage/DEBIAN/control: control
-	mkdir -p stage/DEBIAN
-	cat control | sed "s/{{VERSION}}/${VERSION}/" > stage/DEBIAN/control
-
-stage/etc/init/ddb.conf: upstart.conf
-	mkdir -p stage/etc/init
-	cp upstart.conf stage/etc/init/ddb.conf
-
 prepare:
 	mkdir -p stage/etc
+	mkdir -p stage/etc/systemd/system
 	mkdir -p stage/usr/bin
 	mkdir -p stage/usr/lib/ddb/lib
 	mkdir -p stage/usr/share/ddb
@@ -33,6 +18,7 @@ prepare:
 	tar -cC ../../_build/deb/rel/ddb/lib --exclude c_src --exclude src . | tar -xC stage/usr/lib/ddb/lib
 	cp -r ../../_build/deb/rel/ddb/releases stage/usr/lib/ddb/
 	cp -r ../../_build/deb/rel/ddb/share stage/usr/lib/ddb/
+	cp -r systemd/ddb.service stage/etc/systemd/system/ddb.service
 
 clean:
 	rm -rf ./stage

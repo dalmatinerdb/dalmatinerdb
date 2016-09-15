@@ -20,7 +20,7 @@
 -export([prepare/2, execute/2, waiting/2, wait_for_n/2, finalize/2]).
 
 -type partition() :: chash:index_as_int().
--type reply_src() :: {partition(), node()}.
+-type reply_src() :: {partition(), term()}.
 
 -record(state, {req_id,
                 from,
@@ -141,6 +141,14 @@ execute(timeout, SD0=#state{req_id=ReqId,
                 _ ->
 
                     metric_vnode:Op(Prelist, ReqId, {Bucket, Metric}, Val)
+            end;
+        {Bucket, _Time} ->
+            case Val of
+                undefined ->
+                    event_vnode:Op(Prelist, ReqId, Bucket);
+                _ ->
+
+                    event_vnode:Op(Prelist, ReqId, Bucket, Val)
             end
     end,
     {next_state, waiting, SD0}.
@@ -155,11 +163,11 @@ waiting({ok, ReqID, IdxNode, Obj},
         SD0=#state{from=From, num_r=NumR0, replies=Replies0,
                    r=R, n=N, timeout=Timeout}) ->
     NumR = NumR0 + 1,
-    Replies = [{IdxNode, Obj}|Replies0],
+    Replies = [{IdxNode, Obj} | Replies0],
     SD = SD0#state{num_r=NumR, replies=Replies},
     case NumR of
         Min when Min >= R ->
-            case merge(Replies) of
+            case merge(SD0, Replies) of
                 not_found ->
                     From ! {ReqID, ok, not_found};
                 Merged ->
@@ -190,11 +198,18 @@ wait_for_n({ok, _ReqID, IdxNode, Obj},
 wait_for_n(timeout, SD) ->
     {stop, timeout, SD}.
 
+%% TODO: We need to read-repair events
+finalize(timeout, SD=#state{system = event,
+                            replies = Replies,
+                            entity = {Bucket, _Time}}) ->
+    repair_events(Bucket, Replies),
+    {stop, normal, SD};
+
 finalize(timeout, SD=#state{
                         val = {Time, _},
                         replies=Replies,
                         entity=Entity}) ->
-    MObj = merge(Replies),
+    MObj = merge(SD, Replies),
     case needs_repair(MObj, Replies) of
         true ->
             repair(Time, Entity, MObj, Replies),
@@ -221,10 +236,45 @@ terminate(_Reason, _SN, _SD) ->
 %%% Internal Functions
 %%%===================================================================
 
+merge(#state{system = event}, Events) ->
+    merge_events(Events);
+merge(#state{system = metric}, Metrics) ->
+    merge_metrics(Metrics).
+
+merge_events(Events) ->
+    Merged = lists:foldl(fun({_, O}, Set) ->
+                                 sets:union(Set, O)
+                         end, sets:new(), Events),
+    lists:sort(sets:to_list(Merged)).
+
+repair_events(Bucket, Events) ->
+    Merged = lists:foldl(fun({_, O}, Set) ->
+                                 sets:union(Set, O)
+                         end, sets:new(), Events),
+    case needs_repair(Merged, Events) of
+        true ->
+            repair_events(Bucket, Merged, Events);
+        false ->
+            ok
+    end.
+
+repair_events(_Bucket, _Merged, []) ->
+    ok;
+repair_events(Bucket, Merged, [{IdxNode, Es} | R]) ->
+    Missing = sets:subtract(Merged, Es),
+    case sets:size(Missing) of
+        0 ->
+            ok;
+        _ ->
+            L = lists:sort(sets:to_list(Missing)),
+            event_vnode:repair(IdxNode, Bucket, L)
+    end,
+    repair_events(Bucket, Merged, R).
+
 %% @pure
 %%
 %% @doc Given a list of `Replies' return the merged value.
-merge(Replies) ->
+merge_metrics(Replies) ->
     case [Data || {_, {_, Data}} <- Replies, is_binary(Data)] of
         [] ->
             not_found;
@@ -251,7 +301,7 @@ merge_([DH | DT], [R | _] = Ress) ->
 -spec reconcile([A :: ordsets:ordset()]) -> A :: ordsets:ordset().
 
 reconcile(Vals) ->
-    merge(Vals).
+    merge_metrics(Vals).
 
 %% @pure
 %%

@@ -1,9 +1,9 @@
 Package: dalmatinerdb
 Version: {{VERSION}}
-License: unknown
-Vendor: dataloop
-Maintainer: packages@dataloop.io
+License: MIT
+Vendor: project-fifo
+Maintainer: heinz@licenser.net
 Section: default
 Priority: extra
-Homepage: http://www.dataloop.io
+Homepage: https://dalmatiner.io
 Description: Dalamtinerdb database
