@@ -387,7 +387,7 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
     {reply, Reply, State}.
 
 handle_info(vacuum, State = #state{io = IO, partition = P}) ->
-    lager:info("[vaccum] Starting vaccum for partution ~p.", [P]),
+    lager:info("[vaccum] Starting vaccum for partition ~p.", [P]),
     {ok, Bs} = metric_io:buckets(IO),
     State1 = State#state{now = timestamp()},
     State2 =

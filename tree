@@ -4,7 +4,7 @@
 ├─ dproto─0.1.23
 ├─ edown─0.8.1
 ├─ eper─0.94.0
-├─ estore─0.1.1
+├─ estore─0.1.5
 ├─ event_vnode─0.1.0
 ├─ fifo_utils─0.1.22
 │  └─ uuid─1.5.1
