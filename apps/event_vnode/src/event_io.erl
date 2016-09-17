@@ -214,9 +214,8 @@ handle_call({fold, Fun, Acc0}, _From, State = #state{dir = PartitionDir}) ->
     end;
 
 handle_call(delete, _From, State = #state{dir = PartitionDir}) ->
-    gb_trees:map(fun(Bucket, _EStore) ->
-                         lager:error("Can't delete event buckets yet"),
-                         %%estore:delete(EStore),
+    gb_trees:map(fun(Bucket, EStore) ->
+                         estore:delete(EStore),
                          file:del_dir([PartitionDir, $/, Bucket])
                  end, State#state.estores),
     {reply, ok, State#state{estores = gb_trees:empty()}};
