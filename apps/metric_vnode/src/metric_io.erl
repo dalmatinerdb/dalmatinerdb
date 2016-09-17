@@ -302,14 +302,30 @@ handle_call(empty, _From, State) ->
     {reply, R, State};
 
 handle_call(delete, _From, State = #state{dir = PartitionDir}) ->
+    lager:warning("[metric] deleting io node: ~s.", [PartitionDir]),
     gb_trees:map(fun(Bucket, {_, _, MSet}) ->
+                         lager:warning("[metric] deleting bucket: ~s.",
+                                       [Bucket]),
                          mstore:delete(MSet),
                          file:del_dir([PartitionDir, $/, Bucket])
                  end, State#state.mstores),
     gb_trees:map(fun(Bucket, {_, _, MSet}) ->
+                         lager:warning("[metric] deleting bucket: ~s.",
+                                       [Bucket]),
                          mstore:delete(MSet),
                          file:del_dir([PartitionDir, $/, Bucket])
                  end, State#state.closed_mstores),
+    case list_buckets(State) of
+        {ok, Buckets} ->
+            [begin
+                 lager:warning("[metric] deleting bucket: ~s.",
+                               [B]),
+                 {ok, Store} = estore:open([PartitionDir, $/, B]),
+                 estore:delete(Store)
+             end || B <- Buckets];
+        _ ->
+            ok
+    end,
     {reply, ok, State#state{mstores = gb_trees:empty(),
                             closed_mstores = gb_trees:empty()}};
 
@@ -587,3 +603,6 @@ do_read(Bucket, Metric, Time, Count, State = #state{})
             Resolution = dalmatiner_opt:resolution(Bucket),
             {{Resolution, mmath_bin:empty(Count)}, State}
     end.
+
+list_buckets(#state{dir = PartitionDir}) ->
+    file:list_dir(PartitionDir).

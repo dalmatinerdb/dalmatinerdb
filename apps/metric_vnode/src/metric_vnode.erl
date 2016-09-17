@@ -324,7 +324,8 @@ is_empty(State = #state{tbl = T, io=IO}) ->
             {false, {Count, objects}, State}
     end.
 
-delete(State = #state{io = IO, tbl=T}) ->
+delete(State = #state{io = IO, tbl = T, partition = P}) ->
+    lager:warning("[metric:~p] deleting vnode.", [P]),
     ets:delete_all_objects(T),
     ok = metric_io:delete(IO),
     {ok, State}.

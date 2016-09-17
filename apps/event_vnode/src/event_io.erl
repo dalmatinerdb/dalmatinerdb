@@ -221,10 +221,24 @@ handle_call({fold, Fun, Acc0}, _From, State = #state{dir = PartitionDir}) ->
     end;
 
 handle_call(delete, _From, State = #state{dir = PartitionDir}) ->
+    lager:warning("[event] deleting io node: ~s.", [PartitionDir]),
     gb_trees:map(fun(Bucket, EStore) ->
+                         lager:warning("[event] deleting bucket: ~s.",
+                                       [Bucket]),
                          estore:delete(EStore),
                          file:del_dir([PartitionDir, $/, Bucket])
                  end, State#state.estores),
+    case list_buckets(State) of
+        {ok, Buckets} ->
+            [begin
+                 lager:warning("[event] deleting bucket: ~s.",
+                               [B]),
+                 {ok, Store} = estore:open([PartitionDir, $/, B]),
+                 estore:delete(Store)
+             end || B <- Buckets];
+        _ ->
+            ok
+    end,
     {reply, ok, State#state{estores = gb_trees:empty()}};
 
 handle_call(close, _From, State) ->

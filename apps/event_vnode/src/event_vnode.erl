@@ -174,7 +174,8 @@ is_empty(State = #state{io=IO}) ->
             {false, {Count, objects}, State}
     end.
 
-delete(State = #state{io = IO}) ->
+delete(State = #state{io = IO, partition = P}) ->
+    lager:warning("[event:~p] deleting vnode.", [P]),
     ok = event_io:delete(IO),
     {ok, State}.
 
