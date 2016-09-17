@@ -111,15 +111,15 @@ init([Partition]) ->
                       DD;
                   _ ->
                       "data"
-              end ++ "/events",
+              end,
     FoldSize = case application:get_env(event_vnode, handoff_chunk) of
                    {ok, FS} ->
                        FS;
                    _ ->
                        10*1024
                end,
-    PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
-
+    PartitionDir = [DataDir, "/events/",  integer_to_list(Partition)],
+    lager:info("[event] Opening IO node in ~s", [PartitionDir]),
     {ok, #state{ partition = Partition,
                  node = node(),
                  dir = PartitionDir,
@@ -347,7 +347,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 bucket_dir(Bucket, Partition) ->
     DataDir = application:get_env(riak_core, platform_data_dir, "data"),
-    PartitionDir = DataDir ++ [$/, integer_to_list(Partition)],
+    PartitionDir = DataDir ++ ["/events/", integer_to_list(Partition)],
     BucketDir = PartitionDir ++ [$/, binary_to_list(Bucket)],
     file:make_dir(PartitionDir),
     file:make_dir(BucketDir),
