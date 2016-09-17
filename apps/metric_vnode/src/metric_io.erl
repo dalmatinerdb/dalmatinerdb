@@ -243,6 +243,7 @@ fold_fun(Metric, Time, V,
     end.
 
 bucket_fold_fun({BucketDir, Bucket}, {AccIn, Fun}) ->
+    lager:debug("[metric] Folding: ~s", [BucketDir]),
     {ok, MStore} = mstore:open(BucketDir),
     Acc1 = #facc{hacc = AccIn,
                  bucket = Bucket,
