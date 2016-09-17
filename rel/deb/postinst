@@ -7,4 +7,11 @@ if [[ $(id dalmatiner 2>/dev/null) ]] ;then
 fi
 
 CONFFILE=/etc/ddb/dalmatinerdb.conf
-cp ${CONFFILE}.example ${CONFFILE}
+
+if [ ! -f "${CONFFILE}" ]
+then
+    echo "Creating new configuration from example file."
+    cp ${CONFFILE}.example ${CONFFILE}
+else
+    echo "Please update your configuration according to the update manual!"
+fi
