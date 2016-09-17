@@ -118,7 +118,11 @@ init([Partition]) ->
                    _ ->
                        10*1024
                end,
-    PartitionDir = [DataDir, "/events/",  integer_to_list(Partition)],
+    file:make_dir(DataDir),
+    EventsDir = [DataDir, "/events"],
+    file:make_dir(EventsDir),
+    PartitionDir = [EventsDir, $/,  integer_to_list(Partition)],
+    file:make_dir(PartitionDir),
     lager:info("[event] Opening IO node in ~s", [PartitionDir]),
     {ok, #state{ partition = Partition,
                  node = node(),
