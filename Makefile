@@ -1,4 +1,4 @@
-
+APP=dalmatiner_db
 .PHONY: all tree
 
 all: version compile
