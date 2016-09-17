@@ -230,11 +230,16 @@ handle_call(delete, _From, State = #state{dir = PartitionDir}) ->
                  end, State#state.estores),
     case list_buckets(State) of
         {ok, Buckets} ->
-            [begin
-                 lager:warning("[event] deleting bucket: ~s.",
-                               [B]),
-                 {ok, Store} = estore:open([PartitionDir, $/, B]),
-                 estore:delete(Store)
+            [case estore:open([PartitionDir, $/, B], [no_index]) of
+                 {ok, Store}  ->
+                     lager:warning("[event] deleting bucket: ~s.",
+                                   [B]),
+                     estore:delete(Store),
+                     file:del_dir([PartitionDir, $/, B]);
+                 {error, enoent} ->
+                     lager:warning("[event] deleting (empty) bucket: ~s.",
+                                   [B]),
+                     file:del_dir([PartitionDir, $/, B])
              end || B <- Buckets];
         _ ->
             ok

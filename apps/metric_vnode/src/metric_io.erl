@@ -317,11 +317,16 @@ handle_call(delete, _From, State = #state{dir = PartitionDir}) ->
                  end, State#state.closed_mstores),
     case list_buckets(State) of
         {ok, Buckets} ->
-            [begin
-                 lager:warning("[metric] deleting bucket: ~s.",
-                               [B]),
-                 {ok, Store} = estore:open([PartitionDir, $/, B]),
-                 estore:delete(Store)
+            [case mstore:open([PartitionDir, $/, B]) of
+                 {ok, Store}  ->
+                     lager:warning("[metric] deleting bucket: ~s.",
+                                   [B]),
+                     mstore:delete(Store),
+                     file:del_dir([PartitionDir, $/, B]);
+                 {error, enoent} ->
+                     lager:warning("[metric] deleting (empty) bucket: ~s.",
+                                   [B]),
+                     file:del_dir([PartitionDir, $/, B])
              end || B <- Buckets];
         _ ->
             ok
