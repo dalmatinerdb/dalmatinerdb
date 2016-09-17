@@ -106,10 +106,13 @@ handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, Sender,
         fun(Acc) ->
                 riak_core_vnode:reply(Sender, Acc)
         end,
+    lager:debug("[handoff] begins"),
     case event_io:fold(IO, Fun, Acc0) of
         {ok, AsyncWork} ->
+            lager:debug("[handoff] async"),
             {async, {fold, AsyncWork, FinishFun}, Sender, State};
         empty ->
+            lager:debug("[handoff] empty"),
             {async, {fold, fun() -> Acc0 end, FinishFun}, Sender, State}
     end;
 
@@ -118,19 +121,24 @@ handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, Sender,
 %% during an handoff.
 handle_handoff_command({put, Bucket, Events}, _Sender, State)
   when is_binary(Bucket), is_list(Events) ->
+    lager:debug("[handoff] put"),
     State1 = do_put(Bucket, Events, State),
     {reply, ok, State1};
 
 handle_handoff_command(_Message, _Sender, State) ->
+    lager:debug("[handoff] forward"),
     {forward, State}.
 
 handoff_starting(_TargetNode, State) ->
+    lager:debug("[handoff] starting"),
     {true, State}.
 
 handoff_cancelled(State) ->
+    lager:debug("[handoff] cancled"),
     {ok, State}.
 
 handoff_finished(_TargetNode, State) ->
+    lager:debug("[handoff] finished"),
     {ok, State}.
 
 -dialyzer({no_return, handle_handoff_data/2}).
