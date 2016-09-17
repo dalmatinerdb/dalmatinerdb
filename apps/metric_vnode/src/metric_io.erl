@@ -243,20 +243,26 @@ fold_fun(Metric, Time, V,
     end.
 
 bucket_fold_fun({BucketDir, Bucket}, {AccIn, Fun}) ->
-    lager:debug("[metric] Folding: ~s", [BucketDir]),
-    {ok, MStore} = mstore:open(BucketDir),
-    Acc1 = #facc{hacc = AccIn,
-                 bucket = Bucket,
-                 file_size = mstore:file_size(MStore),
-                 acc_fun = Fun},
-    AccOut = mstore:fold(MStore, fun fold_fun/4, Acc1),
-    mstore:close(MStore),
-    case AccOut of
-        #facc{lacc=[], hacc=HAcc} ->
-            {HAcc, Fun};
-        #facc{bucket = Bucket, metric = Metric,
-              lacc=AccL, hacc=HAcc}->
-            {Fun({Bucket, Metric}, lists:reverse(AccL), HAcc), Fun}
+    case mstore:open(BucketDir) of
+        {ok, MStore} ->
+            Acc1 = #facc{hacc = AccIn,
+                         bucket = Bucket,
+                         file_size = mstore:file_size(MStore),
+                         acc_fun = Fun},
+            AccOut = mstore:fold(MStore, fun fold_fun/4, Acc1),
+            mstore:close(MStore),
+            case AccOut of
+                #facc{lacc=[], hacc=HAcc} ->
+                    {HAcc, Fun};
+                #facc{bucket = Bucket, metric = Metric,
+                      lacc=AccL, hacc=HAcc}->
+                    {Fun({Bucket, Metric}, lists:reverse(AccL), HAcc), Fun}
+            end;
+        {error, enoent} ->
+            lager:warning("Empty bucket detencted going to remove it: ~s",
+                          [BucketDir]),
+            file:del_dir(BucketDir),
+            {AccIn, Fun}
     end.
 
 fold_buckets_fun(PartitionDir, Buckets, Fun, Acc0) ->

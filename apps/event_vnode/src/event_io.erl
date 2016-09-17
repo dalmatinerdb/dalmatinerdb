@@ -160,15 +160,22 @@ fold_fun(Time, ID, Event,
     FAcc#facc{acc = AccOut}.
 
 bucket_fold_fun({BucketDir, Bucket}, {AccIn, Fun}) ->
-    Acc1 = #facc{
-              bucket = Bucket,
-              fold_fun = Fun,
-              acc = AccIn
-             },
-    {ok, EStore} = estore:open(BucketDir, [no_index]),
-    {ok, AccOut, EStore1} = estore:fold(fun fold_fun/4, Acc1, EStore),
-    estore:close(EStore1),
-    {AccOut#facc.acc, Fun}.
+    case estore:open(BucketDir, [no_index]) of
+        {ok, EStore} ->
+            Acc1 = #facc{
+                      bucket = Bucket,
+                      fold_fun = Fun,
+                      acc = AccIn
+                     },
+            {ok, AccOut, EStore1} = estore:fold(fun fold_fun/4, Acc1, EStore),
+            estore:close(EStore1),
+            {AccOut#facc.acc, Fun};
+        {error, enoent} ->
+            lager:warning("Empty bucket detencted going to remove it: ~s",
+                          [BucketDir]),
+            file:del_dir(BucketDir),
+            {AccIn, Fun}
+    end.
 
 fold_buckets_fun(PartitionDir, Buckets, Fun, Acc0) ->
     Buckets1 = [{[PartitionDir, $/, BucketS], list_to_binary(BucketS)}
