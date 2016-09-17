@@ -168,7 +168,7 @@ bucket_fold_fun({BucketDir, Bucket}, {AccIn, Fun}) ->
     {ok, EStore} = estore:open(BucketDir, [no_index]),
     {ok, AccOut, EStore1} = estore:fold(fun fold_fun/4, Acc1, EStore),
     estore:close(EStore1),
-    AccOut#facc.acc.
+    {AccOut#facc.acc, Fun}.
 
 fold_buckets_fun(PartitionDir, Buckets, Fun, Acc0) ->
     Buckets1 = [{[PartitionDir, $/, BucketS], list_to_binary(BucketS)}
