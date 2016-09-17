@@ -29,7 +29,7 @@
   0},
  {<<"mstore">>,
   {git,"https://github.com/dalmatinerdb/mstore.git",
-       {ref,"512f64302df9f7c014ece60afc8d3f75fdb004cf"}},
+       {ref,"16ed37d988c3f2dfe8af9973583a40a1da024dca"}},
   0},
  {<<"parse_trans">>,{pkg,<<"parse_trans">>,<<"2.9.0">>},2},
  {<<"pbkdf2">>,{pkg,<<"pbkdf2">>,<<"2.0.0">>},1},

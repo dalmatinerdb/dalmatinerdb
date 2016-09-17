@@ -188,7 +188,12 @@ handle_call(buckets, _From, State = #state{dir = PartitionDir}) ->
 handle_call(count, _From, State) ->
     case list_buckets(State) of
         {ok, Buckets} ->
-            Count = length(Buckets),
+            Count = lists:foldl(fun(B, Acc) ->
+                                        {ok, Store} = estore:open(B),
+                                        {ok, N, Store1} = estore:count(Store),
+                                        estore:close(Store1),
+                                        Acc + N
+                                end, 0, Buckets),
             {reply, Count, State};
         _ ->
             {reply, 0, State}
