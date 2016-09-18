@@ -324,7 +324,8 @@ is_empty(State = #state{tbl = T, io=IO}) ->
             {false, {Count, objects}, State}
     end.
 
-delete(State = #state{io = IO, tbl=T}) ->
+delete(State = #state{io = IO, tbl = T, partition = P}) ->
+    lager:warning("[metric:~p] deleting vnode.", [P]),
     ets:delete_all_objects(T),
     ok = metric_io:delete(IO),
     {ok, State}.
@@ -387,7 +388,7 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
     {reply, Reply, State}.
 
 handle_info(vacuum, State = #state{io = IO, partition = P}) ->
-    lager:info("[vaccum] Starting vaccum for partution ~p.", [P]),
+    lager:info("[vaccum] Starting vaccum for partition ~p.", [P]),
     {ok, Bs} = metric_io:buckets(IO),
     State1 = State#state{now = timestamp()},
     State2 =

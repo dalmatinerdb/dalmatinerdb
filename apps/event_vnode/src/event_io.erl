@@ -13,9 +13,9 @@
 -include_lib("mmath/include/mmath.hrl").
 
 %% API
--export([start_link/1, count/1,
+-export([start_link/1, count/1, buckets/1,
          fold/3, delete/1,
-         %%delete/2, delete/3,
+         delete/2, delete/3,
          close/1, read/6, write/4]).
 
 %% gen_server callbacks
@@ -26,12 +26,12 @@
 -define(WEEK, 604800). %% Seconds in a week.
 -define(MAX_Q_LEN, 20).
 
--type entry() :: estore:estore().
 
 -record(state, {
           partition,
           node,
-          estores = gb_trees:empty() :: gb_trees:tree(binary(), entry()),
+          estores = gb_trees:empty() :: gb_trees:tree(binary(),
+                                                      estore:estore()),
           dir,
           fold_size,
           max_open_stores
@@ -52,6 +52,9 @@
 %%--------------------------------------------------------------------
 start_link(Partition) ->
     gen_server:start_link(?MODULE, [Partition], []).
+
+buckets(Pid) ->
+    gen_server:call(Pid, buckets).
 
 write(Pid, Bucket, Events, MaxLen) ->
     case erlang:process_info(Pid, message_queue_len) of
@@ -80,11 +83,11 @@ delete(Pid) ->
 close(Pid) ->
     gen_server:call(Pid, close).
 
-%% delete(Pid, Bucket) ->
-%%     gen_server:call(Pid, {delete, Bucket}).
+delete(Pid, Bucket) ->
+    gen_server:call(Pid, {delete, Bucket}).
 
-%% delete(Pid, Bucket, Before) ->
-%%     gen_server:call(Pid, {delete, Bucket, Before}).
+delete(Pid, Bucket, Before) ->
+    gen_server:call(Pid, {delete, Bucket, Before}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -108,15 +111,19 @@ init([Partition]) ->
                       DD;
                   _ ->
                       "data"
-              end ++ "/events",
+              end,
     FoldSize = case application:get_env(event_vnode, handoff_chunk) of
                    {ok, FS} ->
                        FS;
                    _ ->
                        10*1024
                end,
-    PartitionDir = [DataDir, $/,  integer_to_list(Partition)],
-
+    file:make_dir(DataDir),
+    EventsDir = [DataDir, "/events"],
+    file:make_dir(EventsDir),
+    PartitionDir = [EventsDir, $/,  integer_to_list(Partition)],
+    file:make_dir(PartitionDir),
+    lager:info("[event] Opening IO node in ~s", [PartitionDir]),
     {ok, #state{ partition = Partition,
                  node = node(),
                  dir = PartitionDir,
@@ -137,30 +144,106 @@ init([Partition]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+-record(facc,
+        {
+          bucket,
+          fold_fun,
+          acc
+        }).
 
-handle_call(count, _From, State) ->
+fold_fun(Time, ID, Event,
+         FAcc = #facc{
+                   bucket = Bucket,
+                   fold_fun = Fun,
+                   acc = AccIn}) ->
+    AccOut = Fun({Bucket, Time}, {ID, Event}, AccIn),
+    FAcc#facc{acc = AccOut}.
+
+bucket_fold_fun({BucketDir, Bucket}, {AccIn, Fun}) ->
+    case estore:open(BucketDir, [no_index]) of
+        {ok, EStore} ->
+            Acc1 = #facc{
+                      bucket = Bucket,
+                      fold_fun = Fun,
+                      acc = AccIn
+                     },
+            {ok, AccOut, EStore1} = estore:fold(fun fold_fun/4, Acc1, EStore),
+            estore:close(EStore1),
+            {AccOut#facc.acc, Fun};
+        {error, enoent} ->
+            lager:warning("Empty bucket detencted going to remove it: ~s",
+                          [BucketDir]),
+            file:del_dir(BucketDir),
+            {AccIn, Fun}
+    end.
+
+fold_buckets_fun(PartitionDir, Buckets, Fun, Acc0) ->
+    Buckets1 = [{[PartitionDir, $/, BucketS], list_to_binary(BucketS)}
+                || BucketS <- Buckets],
+    fun() ->
+            {Out, _} = lists:foldl(fun bucket_fold_fun/2, {Acc0, Fun},
+                                   Buckets1),
+            Out
+    end.
+
+handle_call(buckets, _From, State = #state{dir = PartitionDir}) ->
+    Buckets1 = case file:list_dir(PartitionDir) of
+                   {ok, Buckets} ->
+                       btrie:from_list([{list_to_binary(B), t}
+                                        || B <- Buckets]);
+                   _ ->
+                       btrie:new()
+               end,
+    {reply, {ok, Buckets1}, State};
+
+handle_call(count, _From, State = #state{dir = PartitionDir}) ->
     case list_buckets(State) of
         {ok, Buckets} ->
-            Count = length(Buckets),
+            Count = lists:foldl(fun(B, Acc) ->
+                                        F =[PartitionDir, $/, B],
+                                        {ok, Store} = estore:open(F),
+                                        {ok, N, Store1} = estore:count(Store),
+                                        estore:close(Store1),
+                                        Acc + N
+                                end, 0, Buckets),
             {reply, Count, State};
         _ ->
             {reply, 0, State}
     end;
 
-handle_call({fold, _Fun, _Acc0}, _From, State) ->
+handle_call({fold, Fun, Acc0}, _From, State = #state{dir = PartitionDir}) ->
     case list_buckets(State) of
         {ok, Buckets} ->
-            {reply, {ok, Buckets}, State};
+            AsyncWork = fold_buckets_fun(PartitionDir, Buckets, Fun, Acc0),
+            {reply, {ok, AsyncWork}, State};
         _ ->
             {reply, empty, State}
     end;
 
 handle_call(delete, _From, State = #state{dir = PartitionDir}) ->
-    gb_trees:map(fun(Bucket, _EStore) ->
-                         lager:error("Can't delete event buckets yet"),
-                         %%estore:delete(EStore),
+    lager:warning("[event] deleting io node: ~s.", [PartitionDir]),
+    gb_trees:map(fun(Bucket, EStore) ->
+                         lager:warning("[event] deleting bucket: ~s.",
+                                       [Bucket]),
+                         estore:delete(EStore),
                          file:del_dir([PartitionDir, $/, Bucket])
                  end, State#state.estores),
+    case list_buckets(State) of
+        {ok, Buckets} ->
+            [case estore:open([PartitionDir, $/, B], [no_index]) of
+                 {ok, Store}  ->
+                     lager:warning("[event] deleting bucket: ~s.",
+                                   [B]),
+                     estore:delete(Store),
+                     file:del_dir([PartitionDir, $/, B]);
+                 {error, enoent} ->
+                     lager:warning("[event] deleting (empty) bucket: ~s.",
+                                   [B]),
+                     file:del_dir([PartitionDir, $/, B])
+             end || B <- Buckets];
+        _ ->
+            ok
+    end,
     {reply, ok, State#state{estores = gb_trees:empty()}};
 
 handle_call(close, _From, State) ->
@@ -170,30 +253,30 @@ handle_call(close, _From, State) ->
     State1 = State#state{estores = gb_trees:empty()},
     {reply, ok, State1};
 
-%% handle_call({delete, Bucket}, _From,
-%%             State = #state{dir = Dir}) ->
-%%     {R, State1} = case get_set(Bucket, State) of
-%%                       {ok, {EStore, S1}} ->
-%%                           estore:delete(EStore),
-%%                           file:del_dir([Dir, $/, Bucket]),
-%%                           Estore = gb_trees:delete(Bucket, S1#state.estores),
-%%                           {ok, S1#state{estores = Estore}};
-%%                       _ ->
-%%                           {not_found, State}
-%%                   end,
-%%     {reply, R, State1};
+handle_call({delete, Bucket}, _From,
+             State = #state{dir = Dir}) ->
+    {R, State1} = case get_set(Bucket, State) of
+                      {ok, {EStore, S1}} ->
+                          estore:delete(EStore),
+                          file:del_dir([Dir, $/, Bucket]),
+                          Estore = gb_trees:delete(Bucket, S1#state.estores),
+                          {ok, S1#state{estores = Estore}};
+                      _ ->
+                          {not_found, State}
+                  end,
+    {reply, R, State1};
 
-%% handle_call({delete, Bucket, Before}, _From, State) ->
-%%     {R, State1} = case get_set(Bucket, State) of
-%%                       {ok, {EStore, S1}} ->
-%%                           {ok, EStore1} = estore:delete(Before, EStore),
-%%                           Estore = gb_trees:enter(
-%%                                      Bucket, EStore1, S1#state.estores),
-%%                           {ok, S1#state{estores = Estore}};
-%%                       _ ->
-%%                           {not_found, State}
-%%                   end,
-%%     {reply, R, State1};
+handle_call({delete, Bucket, Before}, _From, State) ->
+    {R, State1} = case get_set(Bucket, State) of
+                      {ok, {EStore, S1}} ->
+                          {ok, EStore1} = estore:delete(Before, EStore),
+                          Estore = gb_trees:enter(
+                                     Bucket, EStore1, S1#state.estores),
+                          {ok, S1#state{estores = Estore}};
+                      _ ->
+                          {not_found, State}
+                  end,
+    {reply, R, State1};
 
 handle_call(buckets, _From, State) ->
     Buckets1 = case list_buckets(State) of
@@ -294,7 +377,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 bucket_dir(Bucket, Partition) ->
     DataDir = application:get_env(riak_core, platform_data_dir, "data"),
-    PartitionDir = DataDir ++ [$/, integer_to_list(Partition)],
+    PartitionDir = DataDir ++ ["/events/", integer_to_list(Partition)],
     BucketDir = PartitionDir ++ [$/, binary_to_list(Bucket)],
     file:make_dir(PartitionDir),
     file:make_dir(BucketDir),
@@ -314,7 +397,7 @@ new_store(Partition, Bucket) when is_binary(Bucket) ->
     EStore.
 
 -spec get_set(binary(), state()) ->
-                     {ok, {entry(), state()}} |
+                     {ok, {estore:estore(), state()}} |
                      {error, not_found}.
 get_set(Bucket, State=#state{estores = Store}) ->
     case gb_trees:lookup(Bucket, Store) of
@@ -332,7 +415,7 @@ get_set(Bucket, State=#state{estores = Store}) ->
     end.
 
 -spec get_or_create_set(binary(), state()) ->
-                               {entry(), state()}.
+                               {estore:estore(), state()}.
 get_or_create_set(Bucket, State=#state{estores = Store}) ->
     case get_set(Bucket, State) of
         {ok, R} ->
