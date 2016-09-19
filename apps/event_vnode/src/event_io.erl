@@ -16,7 +16,7 @@
 -export([start_link/1, count/1, buckets/1,
          fold/3, delete/1,
          delete/2, delete/3,
-         close/1, read/6, write/4]).
+         close/1, read/7, write/4]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -67,9 +67,8 @@ write(Pid, Bucket, Events, MaxLen) ->
 swrite(Pid, Bucket, Events) ->
     gen_server:call(Pid, {write, Bucket, Events}).
 
-read(Pid, Bucket, Start, End, ReqID, Sender) ->
-    lager:info("read1: ~p ~p ~p", [Bucket, Start, End]),
-    gen_server:cast(Pid, {read, Bucket, Start, End, ReqID, Sender}).
+read(Pid, Bucket, Start, End, Filter, ReqID, Sender) ->
+    gen_server:cast(Pid, {read, Bucket, Start, End, Filter, ReqID, Sender}).
 
 count(Pid) ->
     gen_server:call(Pid, count).
@@ -311,10 +310,9 @@ handle_cast({write, Bucket, Events}, State) ->
     State1 = do_write(Bucket, Events, State),
     {noreply, State1};
 
-handle_cast({read, Bucket, Start, End, ReqID, Sender},
+handle_cast({read, Bucket, Start, End, Filter, ReqID, Sender},
             State = #state{node = N, partition = P}) ->
-    lager:info("read2: ~p ~p ~p", [Bucket, Start, End]),
-    {D, State1} = do_read(Bucket, Start, End, State),
+    {D, State1} = do_read(Bucket, Start, End, Filter, State),
     riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, D}),
     {noreply, State1};
 
@@ -445,17 +443,27 @@ do_write(Bucket, Events, State) ->
     Store1 = gb_trees:enter(Bucket, EStore1, State1#state.estores),
     State1#state{estores = Store1}.
 
--spec do_read(binary(), pos_integer(), pos_integer(), state()) ->
+-spec do_read(binary(), pos_integer(), pos_integer(), event_filter:filters(),
+              state()) ->
                      {sets:set(), state()}.
-do_read(Bucket, Start, End, State = #state{})
+read_fold_fn(Filter) ->
+    fun(Time, ID, Event, Acc) ->
+            case event_filter:filter(Event, Filter) of
+                true ->
+                    sets:add_element({Time, ID, Event}, Acc);
+                false ->
+                    Acc
+            end
+    end.
+do_read(Bucket, Start, End, Filter, State = #state{})
   when is_binary(Bucket), is_integer(Start), is_integer(End),
        Start =< End, Start > 0 ->
     lager:info("read: ~p ~p ~p", [Bucket, Start, End]),
     case get_set(Bucket, State) of
         {ok, {EStore, S2}} ->
-            lager:info("reading: ~p", [{Start, End, EStore}]),
-            {ok, Events, EStore1} = estore:read(Start, End, EStore),
-            lager:info("=> ~p @ ~p", [Events, EStore1]),
+            {ok, Events, EStore1} =
+                estore:fold(Start, End, read_fold_fn(Filter), sets:new(),
+                            EStore),
 
             Stores = gb_trees:enter(Bucket, EStore1, S2#state.estores),
             {sets:from_list(Events), S2#state{estores = Stores}};

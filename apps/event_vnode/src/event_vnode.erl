@@ -64,9 +64,10 @@ put(Preflist, ReqID, Bucket, Events) ->
                                    ?MASTER).
 
 get(Preflist, ReqID, Bucket, {Start, End}) ->
-    lager:info("Get: ~p", [[Preflist, Bucket, {Start, End}]]),
+    get(Preflist, ReqID, Bucket, {Start, End, []});
+get(Preflist, ReqID, Bucket, {Start, End, Filter}) ->
     riak_core_vnode_master:command(Preflist,
-                                   {get, ReqID, Bucket, Start, End},
+                                   {get, ReqID, Bucket, Start, End, Filter},
                                    {fsm, undefined, self()},
                                    ?MASTER).
 
@@ -95,9 +96,9 @@ handle_command({put, Bucket, Events}, _Sender, State)
     State1 = do_put(Bucket, Events, State),
     {reply, ok, State1};
 
-handle_command({get, ReqID, Bucket, Start, End}, Sender,
+handle_command({get, ReqID, Bucket, Start, End, Filter}, Sender,
                State = #state{io=IO}) ->
-    event_io:read(IO, Bucket, Start, End, ReqID, Sender),
+    event_io:read(IO, Bucket, Start, End, Filter, ReqID, Sender),
     {noreply, State}.
 
 handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, Sender,

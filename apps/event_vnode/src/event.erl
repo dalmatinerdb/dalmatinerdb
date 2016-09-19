@@ -7,7 +7,7 @@
          split/1
         ]).
 
--ignore_xref([update_ttl/2, get/4, put/4]).
+-ignore_xref([get/4]).
 append(_Bucket, []) ->
     ok;
 append(Bucket, [{T, E} | Events]) ->
@@ -45,14 +45,18 @@ do_append(N, W, Bucket, C, Events) ->
       end).
 
 get(Bucket, Start, End) ->
-    get(Bucket, split(Bucket), Start, End).
+    get(Bucket, split(Bucket), Start, End, []).
 
-get(Bucket, Split, Start, End) when
+get(Bucket, Start, End, Filter) ->
+    get(Bucket, split(Bucket), Start, End, Filter).
+
+
+get(Bucket, Split, Start, End, Filter) when
       Start div Split =:= End div Split->
     folsom_metrics:histogram_timed_update(
       {event, get}, dalmatiner_read_fsm, start,
       [{event_vnode, event}, get, {Bucket, Start div Split},
-       {Start, End}]).
+       {Start, End, Filter}]).
 
 do_wait(0, _ReqID) ->
     ok;
