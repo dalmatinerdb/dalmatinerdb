@@ -14,14 +14,14 @@ append(Bucket, [{T, E} | Events]) ->
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, W} = application:get_env(dalmatiner_db, w),
     Split = split(Bucket),
-    append(N, W, Split, Bucket, Events, T div Split, [{T, id(), E}]).
+    append(N, W, Split, Bucket, Events, T div Split, [{T, estore:eid(), E}]).
 
 append(N, W, _Split, Bucket, [], C, Acc) ->
     do_append(N, W, Bucket, C, Acc);
 
 append(N, W, Split, Bucket, [{T, E} | Es], C, Acc)
   when T div Split =:= C ->
-    append(N, W, Split, Bucket, Es, C, [{T, id(), E} | Acc]);
+    append(N, W, Split, Bucket, Es, C, [{T, estore:eid(), E} | Acc]);
 append(N, W, Split, Bucket, [{T, E} | Es], C, Acc) ->
     %% If we have to write over multiple VNodes
     %% We do it asyncronously for all but the 'last'
@@ -74,7 +74,3 @@ split(Bucket) ->
     PPF = dalmatiner_opt:ppf(Bucket),
     Res = dalmatiner_opt:resolution(Bucket),
     erlang:convert_time_unit(PPF * Res, milli_seconds, nano_seconds).
-
-%% TODO: we might want something quicker then this!
-id() ->
-    crypto:hash(sha, term_to_binary({erlang:unique_integer(), node(), self()})).
