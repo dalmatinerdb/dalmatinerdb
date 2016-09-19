@@ -466,7 +466,7 @@ do_read(Bucket, Start, End, Filter, State = #state{})
                             EStore),
 
             Stores = gb_trees:enter(Bucket, EStore1, S2#state.estores),
-            {sets:from_list(Events), S2#state{estores = Stores}};
+            {Events, S2#state{estores = Stores}};
         _ ->
             lager:warning("[IO] Unknown event: ~p", [Bucket]),
             {sets:new(), State}
