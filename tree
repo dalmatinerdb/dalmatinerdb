@@ -4,11 +4,12 @@
 ├─ dproto─0.1.23
 ├─ edown─0.8.1
 ├─ eper─0.94.0
-├─ estore─0.1.6
+├─ estore─0.1.7
 ├─ event_vnode─0.1.0
 ├─ fifo_utils─0.1.22
 │  └─ uuid─1.5.1
 │     └─ quickrand─1.5.3
+├─ jsxd─0.2.0
 ├─ k6_bytea─1.1.5
 ├─ lager─3.2.1
 │  └─ goldrush─0.1.8
