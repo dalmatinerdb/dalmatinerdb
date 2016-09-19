@@ -11,7 +11,7 @@
  {<<"erocksdb">>,{pkg,<<"erocksdb">>,<<"0.4.1">>},1},
  {<<"estore">>,
   {git,"https://github.com/dalmatinerdb/estore.git",
-       {ref,"110a9f2cdc673eabd2ed1dbc7f72d138b5049435"}},
+       {ref,"75fa097362864fa42bb8d5f1c112847ec242a729"}},
   0},
  {<<"exometer_core">>,{pkg,<<"basho_exometer_core">>,<<"1.0.2">>},1},
  {<<"fifo_utils">>,
