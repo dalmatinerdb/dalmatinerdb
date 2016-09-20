@@ -250,4 +250,3 @@ get_events(Bucket, Filter, [{Start, End} | R], Socket, Transport, State) ->
     Es1 = [{T, E} || {T, _, E} <- Es],
     Transport:send(Socket, dproto_tcp:encode({events, Es1})),
     get_events(Bucket, Filter, R, Socket, Transport, State).
-
