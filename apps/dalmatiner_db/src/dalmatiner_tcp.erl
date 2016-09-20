@@ -73,7 +73,12 @@ loop(Socket, Transport, State) ->
                 {get_events, Bucket, Start, End} ->
                     Size = event:split(Bucket),
                     Splits = estore:make_splits(Start, End, Size),
-                    get_events(Bucket, Splits, Socket, Transport, State);
+                    get_events(Bucket, [], Splits, Socket, Transport, State);
+                {get_events, Bucket, Start, End, Filter} ->
+                    Size = event:split(Bucket),
+                    Splits = estore:make_splits(Start, End, Size),
+                    get_events(Bucket, Filter, Splits, Socket, Transport,
+                               State);
                 {stream, Bucket, Delay} ->
                     lager:info("[tcp] Entering stream mode for bucket '~s' "
                                "and a max delay of: ~p", [Bucket, Delay]),
@@ -235,14 +240,13 @@ error(E, Transport, Socket, #sstate{dict = Dict}) ->
     lager:error("[tcp:stream] Error: ~p~n", [E]),
     bkt_dict:flush(Dict),
     ok = Transport:close(Socket).
--dialyzer({nowarn_function, get_events/5}).
-get_events(_Bucket, [], Socket, Transport, State) ->
+-dialyzer({nowarn_function, get_events/6}).
+get_events(_Bucket, _Filter, [], Socket, Transport, State) ->
     Transport:send(Socket, dproto_tcp:encode(events_end)),
     loop(Socket, Transport, State);
 
-get_events(Bucket, [{Start, End} | R], Socket, Transport, State) ->
-    {ok, Es} = event:get(Bucket, Start, End),
+get_events(Bucket, Filter, [{Start, End} | R], Socket, Transport, State) ->
+    {ok, Es} = event:get(Bucket, Start, End, Filter),
     Es1 = [{T, E} || {T, _, E} <- Es],
     Transport:send(Socket, dproto_tcp:encode({events, Es1})),
-    get_events(Bucket, R, Socket, Transport, State).
-
+    get_events(Bucket, Filter, R, Socket, Transport, State).

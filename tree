@@ -1,14 +1,15 @@
-[0m├─ dalmatiner_db─0.2.1
+[0m├─ dalmatiner_db─0.2.2
 ├─ dalmatiner_opt─0.1.0
 ├─ dalmatiner_vacuum─0.1.2
-├─ dproto─0.1.23
+├─ dproto─0.1.24
 ├─ edown─0.8.1
 ├─ eper─0.94.0
-├─ estore─0.1.6
+├─ estore─0.1.8
 ├─ event_vnode─0.1.0
 ├─ fifo_utils─0.1.22
 │  └─ uuid─1.5.1
 │     └─ quickrand─1.5.3
+├─ jsxd─0.2.1
 ├─ k6_bytea─1.1.5
 ├─ lager─3.2.1
 │  └─ goldrush─0.1.8

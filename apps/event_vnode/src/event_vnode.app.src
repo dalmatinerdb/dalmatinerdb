@@ -11,7 +11,8 @@
                   trie,
                   lager,
                   dalmatiner_vacuum,
-                  riak_core
+                  riak_core,
+                  jsxd
                  ]},
   {mod, { event_vnode_app, []}},
   {env, []}
