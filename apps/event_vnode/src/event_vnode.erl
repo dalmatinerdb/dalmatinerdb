@@ -57,7 +57,6 @@ repair(IdxNode, Bucket, Events) ->
       ?MASTER).
 
 put(Preflist, ReqID, Bucket, Events) ->
-    lager:info("Put: ~p", [[Preflist, Bucket, Events]]),
     riak_core_vnode_master:command(Preflist,
                                    {put, Bucket, Events},
                                    {raw, ReqID, self()},
@@ -73,6 +72,7 @@ get(Preflist, ReqID, Bucket, {Start, End, Filter}) ->
 
 init([Partition]) ->
     process_flag(trap_exit, true),
+    ok = dalmatiner_vacuum:register(),
     random:seed(erlang:phash2([node()]),
                 erlang:monotonic_time(),
                 erlang:unique_integer()),
@@ -153,7 +153,6 @@ handle_handoff_data(Compressed, State) ->
            end,
     {{Bucket, Time}, {ID, Event}} = binary_to_term(Data),
     true = is_binary(Bucket),
-    lager:debug("handoff item received: ~p", [[{Time, ID, Event}]]),
     State1 = do_put(Bucket, [{Time, ID, Event}], State, 2),
     {reply, ok, State1}.
 

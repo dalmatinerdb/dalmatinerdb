@@ -436,12 +436,12 @@ do_write(Bucket, Events, State) ->
     Store1 = gb_trees:enter(Bucket, EStore1, State1#state.estores),
     State1#state{estores = Store1}.
 
--spec do_read(binary(), pos_integer(), pos_integer(), event_filter:filters(),
+-spec do_read(binary(), pos_integer(), pos_integer(), jsxd_filter:filters(),
               state()) ->
                      {sets:set(), state()}.
 read_fold_fn(Filter) ->
     fun(Time, ID, Event, Acc) ->
-            case event_filter:filter(Event, Filter) of
+            case jsxd_filter:filter(Event, Filter) of
                 true ->
                     sets:add_element({Time, ID, Event}, Acc);
                 false ->
