@@ -3,7 +3,6 @@
 -export([
          append/2,
          get/4,
-         get/3,
          split/1
         ]).
 
@@ -43,9 +42,6 @@ do_append(N, W, Bucket, C, Events) ->
       fun() ->
               do_wait(W, ReqID)
       end).
-
-get(Bucket, Start, End) ->
-    get(Bucket, split(Bucket), Start, End, []).
 
 get(Bucket, Start, End, Filter) ->
     get(Bucket, split(Bucket), Start, End, Filter).
