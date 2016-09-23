@@ -6,7 +6,7 @@ if [[ $(id dalmatiner 2>/dev/null) ]] ;then
     chown -R dalmatiner:dalmatiner /var/log/ddb
 fi
 
-CONFFILE=/etc/ddb/dalmatinerdb.conf
+CONFFILE=/etc/ddb/ddb.conf
 
 if [ ! -f "${CONFFILE}" ]
 then
