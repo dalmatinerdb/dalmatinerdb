@@ -195,11 +195,11 @@ handle_call(buckets, _From, State = #state{dir = PartitionDir}) ->
                end,
     {reply, {ok, Buckets1}, State};
 
-handle_call(count, _From, State = #state{dir = PartitionDir}) ->
+handle_call(count, _From, State) ->
     case list_buckets(State) of
         {ok, Buckets} ->
             Count = lists:foldl(fun(B, Acc) ->
-                                        F =[PartitionDir, $/, B],
+                                        F = bucket_dir(B, State),
                                         {ok, Store} = estore:open(F),
                                         {ok, N, Store1} = estore:count(Store),
                                         estore:close(Store1),
@@ -219,26 +219,26 @@ handle_call({fold, Fun, Acc0}, _From, State = #state{dir = PartitionDir}) ->
             {reply, empty, State}
     end;
 
-handle_call(delete, _From, State = #state{dir = PartitionDir}) ->
-    lager:warning("[event] deleting io node: ~s.", [PartitionDir]),
+handle_call(delete, _From, State) ->
+    lager:warning("[event] deleting io node: ~s.", [State#state.dir]),
     gb_trees:map(fun(Bucket, EStore) ->
                          lager:warning("[event] deleting bucket: ~s.",
                                        [Bucket]),
                          estore:delete(EStore),
-                         file:del_dir([PartitionDir, $/, Bucket])
+                         file:del_dir(bucket_dir(Bucket, State))
                  end, State#state.estores),
     case list_buckets(State) of
         {ok, Buckets} ->
-            [case estore:open([PartitionDir, $/, B], [no_index]) of
+            [case estore:open(bucket_dir(B, State), [no_index]) of
                  {ok, Store}  ->
                      lager:warning("[event] deleting bucket: ~s.",
                                    [B]),
                      estore:delete(Store),
-                     file:del_dir([PartitionDir, $/, B]);
+                     file:del_dir(bucket_dir(B, State));
                  {error, enoent} ->
                      lager:warning("[event] deleting (empty) bucket: ~s.",
                                    [B]),
-                     file:del_dir([PartitionDir, $/, B])
+                     file:del_dir(bucket_dir(B, State))
              end || B <- Buckets];
         _ ->
             ok
@@ -252,12 +252,11 @@ handle_call(close, _From, State) ->
     State1 = State#state{estores = gb_trees:empty()},
     {reply, ok, State1};
 
-handle_call({delete, Bucket}, _From,
-             State = #state{dir = Dir}) ->
+handle_call({delete, Bucket}, _From, State) ->
     {R, State1} = case get_set(Bucket, State) of
                       {ok, {EStore, S1}} ->
                           estore:delete(EStore),
-                          file:del_dir([Dir, $/, Bucket]),
+                          file:del_dir(bucket_dir(Bucket, State)),
                           Estore = gb_trees:delete(Bucket, S1#state.estores),
                           {ok, S1#state{estores = Estore}};
                       _ ->
@@ -371,20 +370,21 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
--spec bucket_dir(binary(), non_neg_integer()) -> string().
+-spec bucket_dir(file:filename_all(), #state{}) -> string().
+bucket_dir(Bucket, State) when is_binary(Bucket)->
+    bucket_dir(binary_to_list(Bucket), State);
 
-bucket_dir(Bucket, Partition) ->
-    DataDir = application:get_env(riak_core, platform_data_dir, "data"),
-    PartitionDir = DataDir ++ ["/events/", integer_to_list(Partition)],
-    BucketDir = PartitionDir ++ [$/, binary_to_list(Bucket)],
+bucket_dir(Bucket, #state{dir = PartitionDir}) when is_list(Bucket) ->
+    BucketDir = filename:join([PartitionDir, Bucket]),
     file:make_dir(PartitionDir),
     file:make_dir(BucketDir),
     BucketDir.
 
--spec new_store(non_neg_integer(), binary()) ->
+-spec new_store(binary(), #state{}) ->
                        estore:estore().
-new_store(Partition, Bucket) when is_binary(Bucket) ->
-    BucketDir = bucket_dir(Bucket, Partition),
+new_store(Bucket, State = #state{partition = Partition})
+  when is_binary(Bucket) ->
+    BucketDir = bucket_dir(Bucket, State),
     %% Default bucket points are stored in ms
     PointsPerFile = dalmatiner_opt:ppf(Bucket),
     Resolution = dalmatiner_opt:resolution(Bucket),
@@ -402,9 +402,9 @@ get_set(Bucket, State=#state{estores = Store}) ->
         {value, EStore} ->
             {ok, {EStore, State}};
         none ->
-            case bucket_exists(State#state.partition, Bucket) of
+            case bucket_exists(Bucket, State) of
                 true ->
-                    R = new_store(State#state.partition, Bucket),
+                    R = new_store(Bucket, State),
                     Store1 = gb_trees:insert(Bucket, R, Store),
                     {ok, {R, State#state{estores = Store1}}};
                 _ ->
@@ -419,20 +419,13 @@ get_or_create_set(Bucket, State=#state{estores = Store}) ->
         {ok, R} ->
             R;
         {error, not_found} ->
-            EStore = new_store(State#state.partition, Bucket),
+            EStore = new_store(Bucket, State),
             Store1 = gb_trees:insert(Bucket, EStore, Store),
             {EStore, State#state{estores = Store1}}
     end.
 
-bucket_exists(Partition, Bucket) ->
-    DataDir = case application:get_env(riak_core, platform_data_dir) of
-                  {ok, DD} ->
-                      DD;
-                  _ ->
-                      "data"
-              end,
-    PartitionDir = [DataDir | [$/ |  integer_to_list(Partition)]],
-    BucketDir = [PartitionDir, [$/ | binary_to_list(Bucket)]],
+bucket_exists(Bucket, State) ->
+    BucketDir = bucket_dir(Bucket, State),
     filelib:is_dir(BucketDir).
 
 -spec do_write(binary(), [efile:event()], state()) ->
@@ -443,12 +436,12 @@ do_write(Bucket, Events, State) ->
     Store1 = gb_trees:enter(Bucket, EStore1, State1#state.estores),
     State1#state{estores = Store1}.
 
--spec do_read(binary(), pos_integer(), pos_integer(), event_filter:filters(),
+-spec do_read(binary(), pos_integer(), pos_integer(), jsxd_filter:filters(),
               state()) ->
                      {sets:set(), state()}.
 read_fold_fn(Filter) ->
     fun(Time, ID, Event, Acc) ->
-            case event_filter:filter(Event, Filter) of
+            case jsxd_filter:filter(Event, Filter) of
                 true ->
                     sets:add_element({Time, ID, Event}, Acc);
                 false ->

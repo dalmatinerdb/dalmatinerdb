@@ -3,7 +3,6 @@
 -export([
          append/2,
          get/4,
-         get/3,
          split/1
         ]).
 
@@ -44,12 +43,8 @@ do_append(N, W, Bucket, C, Events) ->
               do_wait(W, ReqID)
       end).
 
-get(Bucket, Start, End) ->
-    get(Bucket, split(Bucket), Start, End, []).
-
 get(Bucket, Start, End, Filter) ->
     get(Bucket, split(Bucket), Start, End, Filter).
-
 
 get(Bucket, Split, Start, End, Filter) when
       Start div Split =:= End div Split->
