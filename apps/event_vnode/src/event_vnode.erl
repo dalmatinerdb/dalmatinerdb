@@ -34,7 +34,9 @@
              ]).
 
 -record(state, {
+          now,
           partition,
+          lifetimes = btrie:new(),
           node,
           io
          }).
@@ -55,21 +57,22 @@ repair(IdxNode, Bucket, Events) ->
       ?MASTER).
 
 put(Preflist, ReqID, Bucket, Events) ->
-    lager:info("Put: ~p", [[Preflist, Bucket, Events]]),
     riak_core_vnode_master:command(Preflist,
                                    {put, Bucket, Events},
                                    {raw, ReqID, self()},
                                    ?MASTER).
 
 get(Preflist, ReqID, Bucket, {Start, End}) ->
-    lager:info("Get: ~p", [[Preflist, Bucket, {Start, End}]]),
+    get(Preflist, ReqID, Bucket, {Start, End, []});
+get(Preflist, ReqID, Bucket, {Start, End, Filter}) ->
     riak_core_vnode_master:command(Preflist,
-                                   {get, ReqID, Bucket, Start, End},
+                                   {get, ReqID, Bucket, Start, End, Filter},
                                    {fsm, undefined, self()},
                                    ?MASTER).
 
 init([Partition]) ->
     process_flag(trap_exit, true),
+    ok = dalmatiner_vacuum:register(),
     random:seed(erlang:phash2([node()]),
                 erlang:monotonic_time(),
                 erlang:unique_integer()),
@@ -93,9 +96,9 @@ handle_command({put, Bucket, Events}, _Sender, State)
     State1 = do_put(Bucket, Events, State),
     {reply, ok, State1};
 
-handle_command({get, ReqID, Bucket, Start, End}, Sender,
+handle_command({get, ReqID, Bucket, Start, End, Filter}, Sender,
                State = #state{io=IO}) ->
-    event_io:read(IO, Bucket, Start, End, ReqID, Sender),
+    event_io:read(IO, Bucket, Start, End, Filter, ReqID, Sender),
     {noreply, State}.
 
 handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, Sender,
@@ -104,24 +107,39 @@ handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, Sender,
         fun(Acc) ->
                 riak_core_vnode:reply(Sender, Acc)
         end,
+    lager:debug("[handoff] begins"),
     case event_io:fold(IO, Fun, Acc0) of
         {ok, AsyncWork} ->
+            lager:debug("[handoff] async"),
             {async, {fold, AsyncWork, FinishFun}, Sender, State};
         empty ->
+            lager:debug("[handoff] empty"),
             {async, {fold, fun() -> Acc0 end, FinishFun}, Sender, State}
     end;
 
 %% We want to forward all the other handoff commands
+%% TODO: This is very tricky how to handle commands that come in
+%% during an handoff.
+handle_handoff_command({put, Bucket, Events}, _Sender, State)
+  when is_binary(Bucket), is_list(Events) ->
+    lager:debug("[handoff] put"),
+    State1 = do_put(Bucket, Events, State),
+    {reply, ok, State1};
+
 handle_handoff_command(_Message, _Sender, State) ->
+    lager:debug("[handoff] forward"),
     {forward, State}.
 
 handoff_starting(_TargetNode, State) ->
+    lager:debug("[handoff] starting"),
     {true, State}.
 
 handoff_cancelled(State) ->
+    lager:debug("[handoff] cancled"),
     {ok, State}.
 
 handoff_finished(_TargetNode, State) ->
+    lager:debug("[handoff] finished"),
     {ok, State}.
 
 -dialyzer({no_return, handle_handoff_data/2}).
@@ -133,10 +151,9 @@ handle_handoff_data(Compressed, State) ->
                _ ->
                    Compressed
            end,
-    {Bucket, Events} = binary_to_term(Data),
+    {{Bucket, Time}, {ID, Event}} = binary_to_term(Data),
     true = is_binary(Bucket),
-    true = is_list(Events),
-    State1 = do_put(Bucket, Events, State, 2),
+    State1 = do_put(Bucket, [{Time, ID, Event}], State, 2),
     {reply, ok, State1}.
 
 -dialyzer({no_return, encode_handoff_item/2}).
@@ -157,13 +174,41 @@ is_empty(State = #state{io=IO}) ->
             {false, {Count, objects}, State}
     end.
 
-delete(State = #state{io = IO}) ->
+delete(State = #state{io = IO, partition = P}) ->
+    lager:warning("[event:~p] deleting vnode.", [P]),
     ok = event_io:delete(IO),
     {ok, State}.
+
+handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
+                State = #state{partition=P, node=N, io = IO}) ->
+    _Repply = event_io:delete(IO, Bucket),
+    R = btrie:new(),
+    R1 = btrie:store(Bucket, t, R),
+    Reply = {ok, undefined, {P, N}, R1},
+    {reply, Reply, State};
 
 handle_coverage(_, _KeySpaces, _Sender, State = #state{partition=P, node=N}) ->
     Reply = {ok, undefined, {P, N}, []},
     {reply, Reply, State}.
+
+handle_info(vacuum, State = #state{io = IO, partition = P}) ->
+    lager:info("[vaccum] Starting vaccum for partution ~p.", [P]),
+    {ok, Bs} = event_io:buckets(IO),
+    State1 = State#state{now = timestamp()},
+    State2 =
+        lists:foldl(fun (Bucket, SAcc) ->
+                            case expiry(Bucket, SAcc) of
+                                {infinity, SAcc1} ->
+                                    SAcc1;
+                                {Exp, SAcc1} ->
+                                    lager:debug("[vaccum:~p] expiry is: ~p",
+                                                [Bucket, Exp]),
+                                    event_io:delete(IO, Bucket, Exp),
+                                    SAcc1
+                            end
+                    end, State1, btrie:fetch_keys(Bs)),
+    lager:info("[vaccum] Finalized vaccum for partition ~p.", [P]),
+    {ok, State2};
 
 handle_info({'EXIT', IO, normal}, State = #state{io = IO}) ->
     lager:info("Info: normal exit"),
@@ -194,3 +239,30 @@ do_put(Bucket, Events, State) ->
 do_put(Bucket, Events, State = #state{io = IO}, Sync) ->
     event_io:write(IO, Bucket, Events, Sync),
     State.
+
+timestamp() ->
+    erlang:system_time(nano_seconds).
+
+
+%% Return the latest point we'd ever want to save. This is more strict
+%% then the expiration we do on the data but it is strong enough for
+%% our guarantee.
+expiry(Bucket, State = #state{now=Now}) ->
+    case get_lifetime(Bucket, State) of
+        {infinity, State1} ->
+            {infinity, State1};
+        {LT, State1} ->
+            Exp = erlang:convert_time_unit(
+                    Now - LT, milli_seconds, nano_seconds),
+            {Exp, State1}
+    end.
+
+get_lifetime(Bucket, State = #state{lifetimes = Lifetimes}) ->
+    case btrie:find(Bucket, Lifetimes) of
+        {ok, TTL} ->
+            {TTL, State};
+        error ->
+            TTL = dalmatiner_opt:lifetime(Bucket),
+            Lifetimes1 = btrie:store(Bucket, TTL, Lifetimes),
+            {TTL, State#state{lifetimes = Lifetimes1}}
+    end.

@@ -6,6 +6,12 @@ if [[ $(id dalmatiner 2>/dev/null) ]] ;then
     chown -R dalmatiner:dalmatiner /var/log/ddb
 fi
 
-# Don't change configuration that may potentially exist there.
-#CONFFILE=/etc/ddb/dalmatinerdb.conf
-#cp ${CONFFILE}.example ${CONFFILE}
+CONFFILE=/etc/ddb/dalmatinerdb.conf
+
+if [ ! -f "${CONFFILE}" ]
+then
+    echo "Creating new configuration from example file."
+    cp ${CONFFILE}.example ${CONFFILE}
+else
+    echo "Please update your configuration according to the update manual!"
+fi
