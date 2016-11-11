@@ -37,6 +37,7 @@ init(Ref, Socket, Transport, _Opts = []) ->
 
 -spec loop(port(), term(), state()) -> ok.
 -dialyzer({nowarn_function, loop/3}).
+
 loop(Socket, Transport, State) ->
     case Transport:recv(Socket, 0, 5000) of
         {ok, Data} ->
