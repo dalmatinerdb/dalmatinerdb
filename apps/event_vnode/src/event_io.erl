@@ -388,10 +388,12 @@ new_store(Bucket, State = #state{partition = Partition})
     %% Default bucket points are stored in ms
     PointsPerFile = dalmatiner_opt:ppf(Bucket),
     Resolution = dalmatiner_opt:resolution(Bucket),
+    Grace = dalmatiner_opt:grace(Bucket),
     PPF = {PointsPerFile * Resolution, ms},
-    lager:debug("[event_io:~p] Opening ~s@~p",
-                [Partition, Bucket, PointsPerFile]),
-    {ok, EStore} = estore:new(BucketDir, [{file_size, PPF}]),
+    lager:debug("[event_io:~p] Opening ~s@~p / ~p",
+                [Partition, Bucket, PointsPerFile, Grace]),
+    {ok, EStore} = estore:new(BucketDir, [{file_size, PPF},
+                                          {grace, Grace}]),
     EStore.
 
 -spec get_set(binary(), state()) ->

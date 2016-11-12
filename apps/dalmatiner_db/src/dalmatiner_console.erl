@@ -20,6 +20,16 @@ create([BucketS, ResS, PPFS, TTLS]) ->
             E
     end;
 
+create([BucketS, ResS, PPFS, TTLS, GraceS]) ->
+    case create([BucketS, ResS, PPFS, TTLS]) of
+        ok ->
+            Bucket = list_to_binary(BucketS),
+            Grace = decode_time(GraceS, ns),
+            dalmatiner_opt:set_grace(Bucket, Grace);
+        E ->
+            E
+    end;
+
 create([BucketS, ResS, PPFS]) ->
     Bucket = list_to_binary(BucketS),
     Res = cuttlefish_datatypes:from_string(
@@ -34,30 +44,41 @@ create([BucketS, ResS, PPFS]) ->
                format_time(PPF * Res, ms)]).
 
 buckets([]) ->
-    Bs1 = riak_core_metadata:to_list({<<"buckets">>, <<"resolution">>}),
-    Bkts = [B || {B, _} <- Bs1],
-    io:format("~30s | ~-15s | ~-15s | ~-15s~n",
-              ["Bucket", "Resolution", "File Size", "TTL"]),
-    io:format("~30c-+-~-15c-+-~-15c-+-~-15c~n",
-              [$-, $-, $-, $-]),
+    Bkts = dalmatiner_bucket:list(),
+    io:format("~30s | ~-15s | ~-15s | ~-15s | ~-15s~n",
+              ["Bucket", "Resolution", "File Size", "Grace", "TTL"]),
+    io:format("~30c-+-~-15c-+-~-15c-+-~-15c-+-~-15c~n",
+              [$-, $-, $-, $-, $-]),
 
     print_buckets(Bkts).
 
 print_buckets([]) ->
     ok;
 print_buckets([Bucket | R]) ->
-    case metric:bucket_info(Bucket) of
-        {ok, {Res, PPF, infinity}} ->
-            io:format("~30s | ~-15s | ~-15s | ~-15s~n",
+    case dalmatiner_bucket:info(Bucket) of
+        #{
+           resolution := Res,
+           ppf := PPF,
+           grace := Grace,
+           ttl := infinity
+         } ->
+            io:format("~30s | ~-15s | ~-15s | ~-15s | ~-15s~n",
                       [Bucket,
                        format_time(Res, ms),
                        format_time(PPF * Res, ms),
-                       inf]);
-        {ok, {Res, PPF, TTL}} ->
-            io:format("~30s | ~-15s | ~-15s | ~-15s~n",
+                       format_time(Grace, ns),
+                       infinity]);
+        #{
+           resolution := Res,
+           ppf := PPF,
+           grace := Grace,
+           ttl := TTL
+         } ->
+            io:format("~30s | ~-15s | ~-15s | ~-15s | ~-15s~n",
                       [Bucket,
                        format_time(Res, ms),
                        format_time(PPF * Res, ms),
+                       format_time(Grace, ns),
                        format_time(TTL * Res, ms)])
     end,
     print_buckets(R).
@@ -73,10 +94,12 @@ ttl([Buckets]) ->
             io:format("~p~n", [TTL])
     end;
 
+ttl([BucketS, "inf"]) ->
+    Bucket = list_to_binary(BucketS),
+    metric:update_ttl(Bucket, infinity);
 ttl([BucketS, "infinity"]) ->
     Bucket = list_to_binary(BucketS),
     metric:update_ttl(Bucket, infinity);
-
 
 ttl([BucketS, TTLs]) ->
     Bucket = list_to_binary(BucketS),
@@ -90,6 +113,16 @@ ttl([BucketS, TTLs]) ->
                   TTLms div Res
           end,
     metric:update_ttl(Bucket, TTL).
+
+format_time(T, ns)
+  when T >= 1000
+       andalso T rem 1000 =:= 0 ->
+    format_time(T div 1000, us);
+
+format_time(T, us)
+  when T >= 1000
+       andalso T rem 1000 =:= 0 ->
+    format_time(T div 1000, ms);
 
 format_time(T, ms)
   when T >= 1000
@@ -115,5 +148,15 @@ format_time(T, d)
   when T >= 7
        andalso T rem 7 =:= 0 ->
     format_time(T div 7, w);
+
 format_time(T, F) ->
     io_lib:format("~b~s", [T, F]).
+
+decode_time(TimeS, Unit) ->
+    try
+        integer_to_list(TimeS)
+    catch
+        _:_ ->
+            cuttlefish_datatypes:from_string(
+              TimeS, {duration,  Unit})
+    end.

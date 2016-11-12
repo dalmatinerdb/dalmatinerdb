@@ -764,7 +764,8 @@ case "$1" in
         echo
         echo " buckets list         - List all buckets"
         echo " buckets create <bucket> <res>"
-        echo "                <ppf> [<TTL>] - List all buckets"
+        echo "                <ppf> [<TTL>"
+        echo "                [<Grace>]]    - creates a new bucket"
         echo " ttl <bucket>                 - Show the TTL of a bucket"
         echo " ttl <bucket> <TTL>           - Set the lifetime of a bucket, either in the"
         echo "                                buckets native time b using a simple number or"
