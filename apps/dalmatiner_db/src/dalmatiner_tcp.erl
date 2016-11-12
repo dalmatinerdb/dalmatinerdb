@@ -43,7 +43,7 @@ loop(Socket, Transport, State) ->
         {ok, Data} ->
             case dproto_tcp:decode(Data) of
                 buckets ->
-                    {ok, Bs} = metric:list(),
+                    Bs = dalmatiner_bucket:list(),
                     Transport:send(Socket, dproto_tcp:encode_metrics(Bs)),
                     loop(Socket, Transport, State);
                 {list, Bucket} ->
@@ -58,8 +58,8 @@ loop(Socket, Transport, State) ->
                     Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
                     loop(Socket, Transport, State);
                 {info, Bucket} ->
-                    {ok, {Res, PPF, TTL}} = metric:bucket_info(Bucket),
-                    InfoBin = dproto_tcp:encode_bucket_info(Res, PPF, TTL),
+                    Info = dalmatiner_bucket:info(Bucket),
+                    InfoBin = dproto_tcp:encode_bucket_info(Info),
                     Transport:send(Socket, InfoBin),
                     loop(Socket, Transport, State);
                 {get, B, M, T, C} ->
