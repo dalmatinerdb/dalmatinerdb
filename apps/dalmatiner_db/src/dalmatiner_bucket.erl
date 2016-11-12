@@ -12,7 +12,7 @@
 
 list() ->
     Bs = riak_core_metadata:to_list({<<"buckets">>, <<"resolution">>}),
-    [B || {B, _} <- Bs].
+    [B || {B, R} <- Bs, R /= ['$deleted']].
 
 info(Bucket) ->
     Resolution = dalmatiner_opt:resolution(Bucket),

@@ -1,34 +1,35 @@
 %% @doc Interface for dalmatiner-admin commands.
 -module(dalmatiner_console).
 -export([
+         delete/1,
          ttl/1,
          buckets/1,
          create/1
         ]).
 
 -ignore_xref([
+              delete/1,
               ttl/1,
               buckets/1,
               create/1
              ]).
 
+delete([BucketS]) ->
+    Bucket = list_to_binary(BucketS),
+    event:delete(Bucket),
+    metric:delete(Bucket),
+    dalmatiner_opt:delete(Bucket).
+
 create([BucketS, ResS, PPFS, TTLS]) ->
-    case create([BucketS, ResS, PPFS]) of
-        ok ->
-            ttl([BucketS, TTLS]);
-        E ->
-            E
-    end;
+    ok = create([BucketS, ResS, PPFS]),
+    ttl([BucketS, TTLS]);
 
 create([BucketS, ResS, PPFS, TTLS, GraceS]) ->
-    case create([BucketS, ResS, PPFS, TTLS]) of
-        ok ->
-            Bucket = list_to_binary(BucketS),
-            Grace = decode_time(GraceS, ns),
-            dalmatiner_opt:set_grace(Bucket, Grace);
-        E ->
-            E
-    end;
+    ok = create([BucketS, ResS, PPFS, TTLS]),
+    Bucket = list_to_binary(BucketS),
+    Grace = decode_time(GraceS, ns),
+    io:format("Setting grace to: ~s~n", [format_time(Grace, ns)]),
+    dalmatiner_opt:set_grace(Bucket, Grace);
 
 create([BucketS, ResS, PPFS]) ->
     Bucket = list_to_binary(BucketS),
@@ -38,7 +39,8 @@ create([BucketS, ResS, PPFS]) ->
     PPF = cuttlefish_datatypes:from_string(
             PPFS, {duration, ms}) div Res,
     dalmatiner_opt:set_ppf(Bucket, PPF),
-    io:format("~s ~s ~s~n",
+    io:format("Carated ~s with a resolution of ~s and ~s worth of points "
+              "per file.~n",
               [Bucket,
                format_time(Res, ms),
                format_time(PPF * Res, ms)]).
@@ -96,23 +98,29 @@ ttl([Buckets]) ->
 
 ttl([BucketS, "inf"]) ->
     Bucket = list_to_binary(BucketS),
-    metric:update_ttl(Bucket, infinity);
+    io:format("TTL set to: ~s~n", [infinity]),
+    metric:update_ttl(Bucket, infinity),
+    ok;
 ttl([BucketS, "infinity"]) ->
     Bucket = list_to_binary(BucketS),
-    metric:update_ttl(Bucket, infinity);
+    io:format("TTL set to: ~s~n", [infinity]),
+    metric:update_ttl(Bucket, infinity),
+    ok;
 
 ttl([BucketS, TTLs]) ->
     Bucket = list_to_binary(BucketS),
+    Res = dalmatiner_opt:resolution(Bucket),
     TTL = try
               integer_to_list(TTLs)
           catch
               _:_ ->
                   TTLms = cuttlefish_datatypes:from_string(
                             TTLs, {duration, ms}),
-                  Res = dalmatiner_opt:resolution(Bucket),
                   TTLms div Res
           end,
-    metric:update_ttl(Bucket, TTL).
+    io:format("TTL set to: ~s~n", [format_time(TTL*Res, ms)]),
+    metric:update_ttl(Bucket, TTL),
+    ok.
 
 format_time(T, ns)
   when T >= 1000
@@ -157,6 +165,14 @@ decode_time(TimeS, Unit) ->
         integer_to_list(TimeS)
     catch
         _:_ ->
-            cuttlefish_datatypes:from_string(
-              TimeS, {duration,  Unit})
+            decode_time_(TimeS, Unit)
     end.
+
+
+decode_time_(TimeS, ns) ->
+    decode_time_(TimeS, us) * 1000;
+decode_time_(TimeS, us) ->
+    decode_time_(TimeS, ms) * 1000;
+decode_time_(TimeS, Unit) ->
+    cuttlefish_datatypes:from_string(
+      TimeS, {duration,  Unit}).
