@@ -5,7 +5,7 @@
 |                                                                              |
 | Please have a look at the configuraiton files:                               |
 |                                                                              |
-|  * /opt/local/dalmatinerdb/etc/dalmatinerdb.conf                             |
+|  * /data/dalmatinerdb/etc/dalmatinerdb.conf                             |
 |                                                                              |
 | Note: To enable DalmatinerDB you first need to enable the epmd service.      |
 |                                                                              |
