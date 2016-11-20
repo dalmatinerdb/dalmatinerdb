@@ -1,0 +1,12 @@
+language: erlang
+otp_release:
+  - 18.3
+
+install: true
+script:
+  - make deb-prepare
+
+branches:
+  only:
+  - master
+  - dev
