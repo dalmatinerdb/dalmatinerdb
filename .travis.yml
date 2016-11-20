@@ -4,6 +4,8 @@ otp_release:
 
 install: true
 script:
+  - ./rebar3 xref
+  - ./rebar3 dialyzer
   - make deb-prepare
 
 branches:
