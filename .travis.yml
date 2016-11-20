@@ -12,3 +12,4 @@ branches:
   only:
   - master
   - dev
+  - test
