@@ -22,7 +22,7 @@
 ├─ riak_core─2.2.8
 │  ├─ basho_stats─1.0.3
 │  ├─ blume─0.1.0
-│  ├─ chash─0.1.1
+│  ├─ chash─0.1.2
 │  ├─ clique─0.3.6
 │  ├─ cuttlefish─2.0.8
 │  │  └─ getopt─0.8.2
