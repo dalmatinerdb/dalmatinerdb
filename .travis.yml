@@ -1,0 +1,15 @@
+language: erlang
+otp_release:
+  - 18.3
+
+sudo: false
+install: true
+script:
+  - ./rebar3 xref
+  - ./rebar3 dialyzer
+
+branches:
+  only:
+  - master
+  - dev
+  - test
