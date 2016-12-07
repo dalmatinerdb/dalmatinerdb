@@ -124,16 +124,6 @@ ttl([BucketS, TTLs]) ->
     metric:update_ttl(Bucket, TTL),
     ok.
 
-format_time(T, ns)
-  when T >= 1000
-       andalso T rem 1000 =:= 0 ->
-    format_time(T div 1000, us);
-
-format_time(T, us)
-  when T >= 1000
-       andalso T rem 1000 =:= 0 ->
-    format_time(T div 1000, ms);
-
 -spec(status([]) -> ok).
 status([]) ->
     try
@@ -166,6 +156,16 @@ format_stat_key([Key]) ->
     Key;
 format_stat_key([Key|T]) ->
     [Key, <<".">>, format_stat_key(T)].
+
+format_time(T, ns)
+  when T >= 1000
+       andalso T rem 1000 =:= 0 ->
+    format_time(T div 1000, us);
+
+format_time(T, us)
+  when T >= 1000
+       andalso T rem 1000 =:= 0 ->
+    format_time(T div 1000, ms);
 
 format_time(T, ms)
   when T >= 1000
