@@ -1,4 +1,6 @@
-[0m├─ dalmatiner_db─0.3.0
+[0m├─ bitmap─0.1.2
+│  └─ cf─0.2.2
+├─ dalmatiner_db─0.3.0
 ├─ dalmatiner_opt─0.1.0
 ├─ dalmatiner_vacuum─0.1.2
 ├─ dproto─0.2.1
@@ -16,7 +18,8 @@
 │  └─ goldrush─0.1.8
 ├─ metric_vnode─0.1.3
 ├─ mmath─0.2.13
-├─ mstore─0.1.20
+├─ mstore─0.2.0
+├─ mstore_inspector─0.1.0
 ├─ ranch─1.1.0
 ├─ recon─2.3.2
 ├─ riak_core─2.2.8
