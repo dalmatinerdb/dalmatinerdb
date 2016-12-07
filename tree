@@ -1,32 +1,35 @@
-[0m├─ dalmatiner_db─0.2.2
+[0m├─ bitmap─0.1.2
+│  └─ cf─0.2.2
+├─ dalmatiner_db─0.3.0
 ├─ dalmatiner_opt─0.1.0
 ├─ dalmatiner_vacuum─0.1.2
-├─ dproto─0.1.25
+├─ dproto─0.2.1
 ├─ edown─0.8.1
 ├─ eper─0.94.0
 ├─ estore─0.1.8
 ├─ event_vnode─0.1.0
-├─ fifo_utils─0.1.22
-│  └─ uuid─1.5.1
-│     └─ quickrand─1.5.3
-├─ jsxd─0.2.2
+├─ fifo_utils─0.1.27
+│  ├─ jsone─1.4.0
+│  └─ uuid─1.5.4
+│     └─ quickrand─1.5.4
+├─ jsxd─0.2.3
 ├─ k6_bytea─1.1.5
 ├─ lager─3.2.1
 │  └─ goldrush─0.1.8
 ├─ metric_vnode─0.1.3
-├─ mmath─0.2.9
-├─ mstore─0.1.20
+├─ mmath─0.2.13
+├─ mstore─0.2.0
+├─ mstore_inspector─0.1.0
 ├─ ranch─1.1.0
 ├─ recon─2.3.2
-├─ riak_core─2.2.6
+├─ riak_core─2.2.8
 │  ├─ basho_stats─1.0.3
 │  ├─ blume─0.1.0
-│  ├─ chash─0.1.1
+│  ├─ chash─0.1.2
 │  ├─ clique─0.3.6
 │  ├─ cuttlefish─2.0.8
 │  │  └─ getopt─0.8.2
 │  ├─ eleveldb─2.2.19
-│  ├─ erocksdb─0.4.1
 │  ├─ exometer_core─1.0.2
 │  │  ├─ parse_trans─2.9.0
 │  │  └─ setup─1.7.0
@@ -37,4 +40,4 @@
 │  ├─ riak_ensemble─2.2.0
 │  └─ riak_sysmon─2.1.3
 ├─ snappy─1.1.1
-└─ trie─1.5.3
+└─ trie─1.5.4

@@ -1,12 +1,13 @@
 {application, dalmatiner_db,
  [
   {description, "DalmatinerDB cluster logic"},
-  {vsn, "0.2.2"},
+  {vsn, "0.3.0"},
   {registered, []},
   {applications, [
                   kernel,
                   stdlib,
                   fifo_utils,
+                  mstore_inspector,
                   dalmatiner_opt,
                   metric_vnode,
                   event_vnode,

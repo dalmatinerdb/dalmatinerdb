@@ -6,10 +6,8 @@
          get/4,
          get/5,
          delete/1,
-         list/0,
          list/1,
          list/2,
-         bucket_info/1,
          update_ttl/2
         ]).
 
@@ -53,10 +51,6 @@ update_ttl(Bucket, TTL) ->
     dalmatiner_opt:set_lifetime(Bucket, TTL),
     metric_coverage:start({update_ttl, Bucket}).
 
-list() ->
-    folsom_metrics:histogram_timed_update(
-      list_buckets, metric_coverage, start, [list]).
-
 list(Bucket) ->
     folsom_metrics:histogram_timed_update(
       list_metrics, metric_coverage, start, [{metrics, Bucket}]).
@@ -70,17 +64,6 @@ delete(Bucket) ->
 list(Bucket, Prefix) ->
     folsom_metrics:histogram_timed_update(
       list_metrics, metric_coverage, start, [{metrics, Bucket, Prefix}]).
-
-%% Queries the ring metadata for properties assosciated with the given bucket.
-%% There may a latency concern with querying the metadata directly - this query
-%% could be directed to a metric_vnode where a cache may already present with
-%% this information. A bucket may not be sufficient to generate a CHash key in
-%% this case.
-bucket_info(Bucket) ->
-    Resolution = dalmatiner_opt:resolution(Bucket),
-    PPF = dalmatiner_opt:ppf(Bucket),
-    TTL = dalmatiner_opt:lifetime(Bucket),
-    {ok, {Resolution, PPF, TTL}}.
 
 do_put(Bucket, Metric, PPF, Time, Value, N, W) ->
     DocIdx = riak_core_util:chash_key({Bucket, {Metric, Time div PPF}}),
