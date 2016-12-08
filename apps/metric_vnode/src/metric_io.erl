@@ -13,7 +13,7 @@
 -include_lib("mmath/include/mmath.hrl").
 
 %% API
--export([start_link/1, count/1,
+-export([start_link/1, count/1, get_bitmap/6,
          empty/1, fold/3, delete/1, delete/2, delete/3, close/1,
          buckets/1, metrics/2, metrics/3,
          read/7, read_rest/8, write/5, write/6]).
@@ -67,6 +67,9 @@ write(Pid, Bucket, Metric, Time, Value, MaxLen) ->
 
 swrite(Pid, Bucket, Metric, Time, Value) ->
     gen_server:call(Pid, {write, Bucket, Metric, Time, Value}).
+
+get_bitmap(Pid, Bucket, Metric, Time, Ref, Sender) ->
+    gen_server:cast(Pid, {get_bitmap, Bucket, Metric, Time, Ref, Sender}).
 
 read(Pid, Bucket, Metric, Time, Count, ReqID, Sender) ->
     gen_server:cast(Pid, {read, Bucket, Metric, Time, Count, ReqID, Sender}).
@@ -422,6 +425,10 @@ handle_cast({write, Bucket, Metric, Time, Value}, State) ->
     State1 = do_write(Bucket, Metric, Time, Value, State),
     {noreply, State1};
 
+handle_cast({get_bitmap, Bucket, Metric, Time, Ref, Sender}, State) ->
+    {D, State1} = do_read_bitmap(Bucket, Metric, Time, State),
+    Sender ! {reply, Ref, D},
+    {noreply, State1};
 handle_cast({read, Bucket, Metric, Time, Count, ReqID, Sender},
             State = #state{node = N, partition = P}) ->
     {D, State1} = do_read(Bucket, Metric, Time, Count, State),
@@ -595,6 +602,15 @@ do_write(Bucket, Metric, Time, Value, State) ->
                             State1#state.mstores),
     State1#state{mstores = Store1}.
 
+do_read_bitmap(Bucket, Metric, Time, State) ->
+    case get_set(Bucket, State) of
+        {ok, {{_LastWritten, _Resolution, MSet}, S2}} ->
+            R = mstore:bitmap(MSet, Metric, Time),
+            {R, S2};
+        _ ->
+            lager:warning("[IO] Unknown metric: ~p/~p", [Bucket, Metric]),
+            {{error, not_found}, State}
+    end.
 -spec do_read(binary(), binary(), non_neg_integer(), pos_integer(), state()) ->
                       {{pos_integer(), bitstring()}, state()}.
 do_read(Bucket, Metric, Time, Count, State = #state{})

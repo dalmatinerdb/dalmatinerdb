@@ -4,9 +4,7 @@
 -export([show/1, verify/1]).
 
 %% for RPC
--export([compile/3, get/4]).
-
--ignore_xref([show/1, verify/1, compile/3, get/4]).
+-ignore_xref([show/1, verify/1]).
 
 
 show(["--width", WidthS, TimeS, BucketS | MetricS]) ->
@@ -26,13 +24,17 @@ verify([TimeS, BucketS | MetricS]) ->
 %% Internal functions
 %%====================================================================
 
+
+get_bmps(Bucket, Metric, Time) ->
+    Nodes =  get_nodes(Bucket, Metric, Time),
+    get_nodes(Nodes, Bucket, Metric, Time, []).
+
 compare_nodes(TimeS, BucketS, MetricS, Width) ->
     Bucket = list_to_binary(BucketS),
     Time = list_to_integer(TimeS),
     MetricL = [list_to_binary(M) || M <- MetricS],
     Metric = dproto:metric_from_list(MetricL),
-    Nodes =  get_nodes(Bucket, Metric, Time),
-    Results = [{_, B0} | Rest] = get_nodes(Nodes, Bucket, Metric, Time, []),
+    Results = [{_, B0} | Rest] = get_bmps(Bucket, Metric, Time),
     Union = calc_f(fun bitmap:union/2, B0, Rest),
     Intersection = calc_f(fun bitmap:intersection/2, B0, Rest),
     case {Union, Intersection} of
@@ -71,11 +73,11 @@ calc_f(F, B0, [{_, B1} | R]) ->
 get_nodes([], _Bucket, _Metric, _Time, Acc) ->
     Acc;
 get_nodes([{P, N} | R], Bucket, Metric, Time, Acc) ->
-    rpc:call(N, ddb_bmp, compile, [P, Bucket, Time]),
-    case rpc:call(N, ddb_bmp, get, [P, Bucket, Metric, Time]) of
+    {ok, PID} = riak_core_vnode_manager:get_vnode_pid(P, metric_vnode),
+    case metric_vnode:get_bitmap(PID, Bucket, Metric, Time) of
         {ok, BMP} ->
             get_nodes(R, Bucket, Metric, Time, [{N, BMP} | Acc]);
-        {error, not_found} ->
+        _O ->
             get_nodes(R, Bucket, Metric, Time, [{N, not_found} | Acc])
     end.
 
@@ -84,40 +86,20 @@ show_bitmap(TimeS, BucketS, MetricS, Width) ->
     Time = list_to_integer(TimeS),
     MetricL = [list_to_binary(M) || M <- MetricS],
     Metric = dproto:metric_from_list(MetricL),
-    Nodes =  get_nodes(Bucket, Metric, Time),
-    case [P || {P, Node} <- Nodes, Node =:= node()] of
+    Nodes =  get_bmps(Bucket, Metric, Time),
+    case [BMP || {Node, BMP} <- Nodes, Node =:= node()] of
         [] ->
             io:format("No valid node found, try on: ~p~n",
-                      [[Node || {_, Node} <- Nodes]]),
+                      [[Node || {Node, _} <- Nodes]]),
             error;
-        [P] ->
-            compile(P, Bucket, Time),
-            case get(P, Bucket, Metric, Time) of
-                {ok, BMP} ->
-                    io:format("=== ~s~n", [string:join(MetricS, ".")]),
-                    bitmap:display(BMP, Width),
-                    io:format("~n");
-                {error, not_found} ->
-                    io:format("No data for this time range~n"),
-                    error
-            end
+        [not_found] ->
+            io:format("No data for this time range~n"),
+            error;
+        [BMP]  ->
+            io:format("=== ~s~n", [string:join(MetricS, ".")]),
+            bitmap:display(BMP, Width),
+            io:format("~n")
     end.
-
-file(Hash, Bucket, Time) ->
-    PPF = dalmatiner_opt:ppf(Bucket),
-    Base = Time div PPF,
-    {ok, DD} = application:get_env(riak_core, platform_data_dir),
-    binary_to_list(filename:join([DD, integer_to_list(Hash), Bucket,
-                                  integer_to_list(Base*PPF)])).
-
-get(Hash, Bucket, Metric, Time) ->
-    F = file(Hash, Bucket, Time),
-    mstore_inspector:get(F, Metric).
-
-compile(Hash, Bucket, Time) ->
-    F = file(Hash, Bucket, Time),
-    mstore_inspector:create(F),
-    F.
 
 get_nodes(Bucket, Metric, Time) ->
     PPF = dalmatiner_opt:ppf(Bucket),
