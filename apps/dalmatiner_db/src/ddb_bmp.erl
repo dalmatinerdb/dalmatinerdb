@@ -80,9 +80,8 @@ calc_f(F, B0, [{_, B1} | R]) ->
 
 get_nodes([], _Bucket, _Metric, _Time, Acc) ->
     Acc;
-get_nodes([{P, N} | R], Bucket, Metric, Time, Acc) ->
-    {ok, PID} = riak_core_vnode_manager:get_vnode_pid(P, metric_vnode),
-    case metric_vnode:get_bitmap(PID, Bucket, Metric, Time) of
+get_nodes([{_P, N} = PN | R], Bucket, Metric, Time, Acc) ->
+    case metric_vnode:get_bitmap(PN, Bucket, Metric, Time) of
         {ok, BMP} ->
             get_nodes(R, Bucket, Metric, Time, [{N, BMP} | Acc]);
         _O ->
@@ -103,7 +102,7 @@ show_bitmap(TimeS, BucketS, MetricS, Width) ->
         [not_found] ->
             io:format("No data for this time range~n"),
             error;
-        [BMP]  ->
+        [BMP | _]  ->
             io:format("=== ~s~n", [string:join(MetricS, ".")]),
             bitmap:display(BMP, Width),
             io:format("~n")
