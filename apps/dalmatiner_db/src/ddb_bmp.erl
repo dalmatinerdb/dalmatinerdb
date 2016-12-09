@@ -1,10 +1,10 @@
 -module(ddb_bmp).
 
 %% for CLI
--export([show/1, verify/1]).
+-export([show/1, compare/1]).
 
 %% for RPC
--ignore_xref([show/1, verify/1]).
+-ignore_xref([show/1, compare/1]).
 
 
 show(["--width", WidthS, TimeS, BucketS | MetricS]) ->
@@ -13,10 +13,10 @@ show(["--width", WidthS, TimeS, BucketS | MetricS]) ->
 show([TimeS, BucketS | MetricS]) ->
     show_bitmap(TimeS, BucketS,  MetricS, 100).
 
-verify(["--width", WidthS, TimeS, BucketS | MetricS]) ->
+compare(["--width", WidthS, TimeS, BucketS | MetricS]) ->
     Width = list_to_integer(WidthS),
     compare_nodes(TimeS, BucketS,  MetricS, Width);
-verify([TimeS, BucketS | MetricS]) ->
+compare([TimeS, BucketS | MetricS]) ->
     compare_nodes(TimeS, BucketS,  MetricS, 100).
 
 

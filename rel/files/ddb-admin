@@ -760,9 +760,9 @@ case "$1" in
                 shift
                 exec $NODETOOL rpc ddb_bmp show $@
             ;;
-            verify)
+            compare)
                 shift
-                exec $NODETOOL rpc ddb_bmp verify $@
+                exec $NODETOOL rpc ddb_bmp compare $@
             ;;
         esac
         ;;
@@ -791,6 +791,10 @@ case "$1" in
         echo " buckets ttl <bucket> <TTL>   - Set the lifetime of a bucket, either in the"
         echo "                                buckets native time b using a simple number or"
         echo "                                in relative time by using a suffix like 'w' 's' 'h'."
+        echo " bitmap show <time> <bucket>  - displays the bitmap for a metiric in a"
+        echo "             <metric>*          given time range."
+        echo " bitmap compare <time>        - allows you to compare all copies"
+        echo "           <bucket> <metric>*   of a metric over the vnodes holding it."
         exit 1
         ;;
 esac
