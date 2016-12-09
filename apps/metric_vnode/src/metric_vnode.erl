@@ -52,12 +52,19 @@
 
 %% API
 
-get_bitmap(Pid, Bucket, Metric, Time) ->
+get_bitmap(PN, Bucket, Metric, Time) ->
     Ref = make_ref(),
-    Pid ! {bitmap, self(), Ref, Bucket, Metric, Time},
+    R = riak_core_vnode_master:command(
+           [PN],
+           {bitmap, self(), Ref, Bucket, Metric, Time},
+           raw,
+           ?MASTER),
+    io:format("~p~n", [R]),
     receive
         {reply, Ref, Reply} ->
-            Reply
+            Reply;
+        Other ->
+            io:format("Meh: ~p~n", [Other])
     after
         5000 ->
             {error, timeout}
@@ -202,6 +209,13 @@ repair_update_cache(Bucket, Metric, Time, Count, Value,
             do_put(Bucket, Metric, Time, Value, State)
     end.
 
+
+handle_command({bitmap, From, Ref, Bucket, Metric, Time},
+            _Sender, State = #state{io = IO})
+  when is_binary(Bucket), is_binary(Metric), is_integer(Time),
+       Time >= 0->
+    metric_io:get_bitmap(IO, Bucket, Metric, Time, Ref, From),
+    {noreply, State};
 
 %% Repair request are always full values not including non set values!
 handle_command({repair, Bucket, Metric, Time, Value}, _Sender, State)
@@ -400,13 +414,6 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
     R1 = btrie:store(Bucket, t, R),
     Reply = {ok, undefined, {P, N}, R1},
     {reply, Reply, State}.
-
-handle_info({bitmap, From, Ref, Bucket, Metric, Time},
-            State = #state{io = IO})
-  when is_binary(Bucket), is_binary(Metric), is_integer(Time),
-       Time >= 0->
-    metric_io:get_bitmap(IO, Bucket, Metric, Time, Ref, From),
-    {ok, State};
 
 handle_info(vacuum, State = #state{io = IO, partition = P}) ->
     lager:info("[vaccum] Starting vaccum for partition ~p.", [P]),
