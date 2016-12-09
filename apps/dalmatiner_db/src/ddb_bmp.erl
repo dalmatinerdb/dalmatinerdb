@@ -51,7 +51,7 @@ compare_nodes(TimeS, BucketS, MetricS, Width) ->
         _ ->
             io:format("Total difference:~n"),
             bitmap:display_diff(Union, Intersection, Width),
-            io:format("~n", []),
+            io:format("~n"),
             show_diff(Results, Union, Width)
     end.
 
