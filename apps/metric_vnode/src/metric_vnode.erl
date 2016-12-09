@@ -10,6 +10,7 @@
          terminate/2,
          handle_command/3,
          is_empty/1,
+         get_bitmap/4,
          delete/1,
          repair/3,
          handle_handoff_command/3,
@@ -50,6 +51,18 @@
 -define(VAC, 1000*60*60*2).
 
 %% API
+
+get_bitmap(Pid, Bucket, Metric, Time) ->
+    Ref = make_ref(),
+    Pid ! {bitmap, self(), Ref, Bucket, Metric, Time},
+    receive
+        {reply, Ref, Reply} ->
+            Reply
+    after
+        5000 ->
+            {error, timeout}
+    end.
+
 start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
@@ -188,6 +201,7 @@ repair_update_cache(Bucket, Metric, Time, Count, Value,
         [] ->
             do_put(Bucket, Metric, Time, Value, State)
     end.
+
 
 %% Repair request are always full values not including non set values!
 handle_command({repair, Bucket, Metric, Time, Value}, _Sender, State)
@@ -386,6 +400,13 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
     R1 = btrie:store(Bucket, t, R),
     Reply = {ok, undefined, {P, N}, R1},
     {reply, Reply, State}.
+
+handle_info({bitmap, From, Ref, Bucket, Metric, Time},
+            State = #state{io = IO})
+  when is_binary(Bucket), is_binary(Metric), is_integer(Time),
+       Time >= 0->
+    metric_io:get_bitmap(IO, Bucket, Metric, Time, Ref, From),
+    {ok, State};
 
 handle_info(vacuum, State = #state{io = IO, partition = P}) ->
     lager:info("[vaccum] Starting vaccum for partition ~p.", [P]),
