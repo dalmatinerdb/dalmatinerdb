@@ -763,7 +763,16 @@ case "$1" in
             compare)
                 shift
                 exec $NODETOOL rpc ddb_bmp compare $@
-            ;;
+                ;;
+            repair)
+                shift
+                exec $NODETOOL rpc ddb_bmp repair $@
+                ;;
+            
+            *)
+                echo "Unknown command"
+                exit 1
+                ;;
         esac
         ;;
     transfer[_-]limit)
@@ -786,15 +795,17 @@ case "$1" in
         echo " buckets list         - List all buckets"
         echo " buckets create <bucket> <res>"
         echo "                <ppf> [<TTL>"
-        echo "                [<Grace>]]    - creates a new bucket"
-        echo " buckets delete <bucket>      - Deletes a bucket"
-        echo " buckets ttl <bucket> <TTL>   - Set the lifetime of a bucket, either in the"
-        echo "                                buckets native time b using a simple number or"
-        echo "                                in relative time by using a suffix like 'w' 's' 'h'."
-        echo " bitmap show <time> <bucket>  - displays the bitmap for a metiric in a"
-        echo "             <metric>*          given time range."
-        echo " bitmap compare <time>        - allows you to compare all copies"
-        echo "           <bucket> <metric>*   of a metric over the vnodes holding it."
+        echo "                [<Grace>]]     - creates a new bucket"
+        echo " buckets delete <bucket>       - Deletes a bucket"
+        echo " buckets ttl <bucket> <TTL>    - Set the lifetime of a bucket, either in the"
+        echo "                                 buckets native time b using a simple number or"
+        echo "                                 in relative time by using a suffix like 'w' 's' 'h'."
+        echo " bitmap show <time> <bucket>   - displays the bitmap for a metiric in a"
+        echo "             <metric>*           given time range."
+        echo " bitmap compare <time>         - allows you to compare all copies"
+        echo "           <bucket> <metric>*    of a metric over the vnodes holding it."
+        echo " bitmap repair <time> <bucket> - repairs a time range"
+        echo "               <metric>*"
         exit 1
         ;;
 esac

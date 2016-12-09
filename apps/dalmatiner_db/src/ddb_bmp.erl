@@ -1,10 +1,8 @@
 -module(ddb_bmp).
 
 %% for CLI
--export([show/1, compare/1]).
-
-%% for RPC
--ignore_xref([show/1, compare/1]).
+-export([show/1, compare/1, repair/1]).
+-ignore_xref([show/1, compare/1, repair/1]).
 
 
 show(["--width", WidthS, TimeS, BucketS | MetricS]) ->
@@ -18,6 +16,16 @@ compare(["--width", WidthS, TimeS, BucketS | MetricS]) ->
     compare_nodes(TimeS, BucketS,  MetricS, Width);
 compare([TimeS, BucketS | MetricS]) ->
     compare_nodes(TimeS, BucketS,  MetricS, 100).
+
+repair([TimeS, BucketS | MetricS]) ->
+    Bucket = list_to_binary(BucketS),
+    Time = list_to_integer(TimeS),
+    MetricL = [list_to_binary(M) || M <- MetricS],
+    Metric = dproto:metric_from_list(MetricL),
+    PPF = dalmatiner_opt:ppf(Bucket),
+    Base = Time div PPF,
+    {ok, _, M} = metric:get(Bucket, Metric, PPF, Base*PPF, PPF),
+    io:format("Read ~p datapoints.~n", [mmath_bin:length(M)]).
 
 
 %%====================================================================
