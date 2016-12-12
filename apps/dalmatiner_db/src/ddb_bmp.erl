@@ -104,7 +104,7 @@ show_bitmap(TimeS, BucketS, MetricS, Width) ->
                                io:format("=== ~p~n", [P]),
                                io:format("* No data for this time range~n");
                           ({P, BMP}) ->
-                               io:format("=== ~s~n", [P]),
+                               io:format("=== ~p~n", [P]),
                                bitmap:display(BMP, Width),
                                io:format("~n")
                        end, L)
