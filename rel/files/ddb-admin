@@ -454,7 +454,7 @@ case "$1" in
                 ;;
             ttl)
                 shift
-                $NODETOOL rpc dalmatiner_console create $@
+                $NODETOOL rpc dalmatiner_console ttl $@
                 ;;
             *)
                 echo "possible sub options are 'list' or 'create'"
