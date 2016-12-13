@@ -71,10 +71,14 @@ show_diff([{Node, P, Bitmap} | R], Union, Width) ->
 
 calc_f(_F, R, []) ->
     R;
+calc_f(F, not_found, [{_, _, not_found} | R])->
+    calc_f(F, not_found, R);
 calc_f(F, not_found, [{_, _, B0} | R])->
-    calc_f(F, B0, R);
+    {ok, B1} = bitmap:new([{size, bitmap:size(B0)}]),
+    calc_f(F, F(B0, B1), R);
 calc_f(F, B0, [{_, _, not_found} | R]) ->
-    calc_f(F, B0, R);
+    {ok, B1} = bitmap:new([{size, bitmap:size(B0)}]),
+    calc_f(F, F(B0, B1), R);
 calc_f(F, B0, [{_, _, B1} | R]) ->
     calc_f(F, F(B0, B1), R).
 
