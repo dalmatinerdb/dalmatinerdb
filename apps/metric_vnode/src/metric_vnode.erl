@@ -211,9 +211,24 @@ repair_update_cache(Bucket, Metric, Time, Count, Value,
 
 
 handle_command({bitmap, From, Ref, Bucket, Metric, Time},
-            _Sender, State = #state{io = IO})
+               _Sender, State = #state{io = IO, tbl=T})
   when is_binary(Bucket), is_binary(Metric), is_integer(Time),
-       Time >= 0->
+       Time >= 0 ->
+    BM = {Bucket, Metric},
+    case ets:lookup(T, BM) of
+        %% If we have any kid of metric in the cache we flush it,
+        %% this is not perfect but it'll do for now.
+        %% @TODO: prevent flushes when the base of the bitmap
+        %% and the cache are different.
+        [{BM, Start, Size, _End, Array}] ->
+            ets:delete(T, {Bucket, Metric}),
+            Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
+            k6_bytea:delete(Array),
+            metric_io:write(IO, Bucket, Metric, Start, Bin, ?MAX_Q_LEN);
+            %%metric_io:write(IO, Bucket, Metric, Time, Value, ?MAX_Q_LEN);
+        [] ->
+            ok
+    end,
     metric_io:get_bitmap(IO, Bucket, Metric, Time, Ref, From),
     {noreply, State};
 
