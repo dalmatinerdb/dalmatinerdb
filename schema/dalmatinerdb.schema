@@ -128,3 +128,9 @@
   {datatype, string},
   {validators, ["valid_ipaddr"]}
 ]}.
+
+%% @doc enable / disable self monitoring
+{mapping, "self_monitor", "dalmatiner_db.self_monitor", [
+  {default, on },
+  {datatype, flag}
+]}.

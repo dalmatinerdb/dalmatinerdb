@@ -217,7 +217,7 @@ handle_command({bitmap, From, Ref, Bucket, Metric, Time},
     metric_io:get_bitmap(IO, Bucket, Metric, Time, Ref, From),
     {noreply, State};
 
-%% Repair request are always full values not including non set values!
+%% Repair request are always full values not including non set values!2
 handle_command({repair, Bucket, Metric, Time, Value}, _Sender, State)
   when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     Count = mmath_bin:length(Value),
