@@ -215,18 +215,16 @@ handle_command({bitmap, From, Ref, Bucket, Metric, Time},
   when is_binary(Bucket), is_binary(Metric), is_integer(Time),
        Time >= 0 ->
     BM = {Bucket, Metric},
+    PPF = dalmatiner_opt:ppf(Bucket),
     case ets:lookup(T, BM) of
-        %% If we have any kid of metric in the cache we flush it,
-        %% this is not perfect but it'll do for now.
-        %% @TODO: prevent flushes when the base of the bitmap
-        %% and the cache are different.
-        [{BM, Start, Size, _End, Array}] ->
+        [{BM, Start, Size, _End, Array}] when
+              (Start div PPF) =:= (Time div PPF) ->
             ets:delete(T, {Bucket, Metric}),
             Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
             k6_bytea:delete(Array),
             metric_io:write(IO, Bucket, Metric, Start, Bin, ?MAX_Q_LEN);
             %%metric_io:write(IO, Bucket, Metric, Time, Value, ?MAX_Q_LEN);
-        [] ->
+        _ ->
             ok
     end,
     metric_io:get_bitmap(IO, Bucket, Metric, Time, Ref, From),
