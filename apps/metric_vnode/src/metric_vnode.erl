@@ -54,17 +54,14 @@
 
 get_bitmap(PN, Bucket, Metric, Time) ->
     Ref = make_ref(),
-    R = riak_core_vnode_master:command(
+    ok = riak_core_vnode_master:command(
            [PN],
            {bitmap, self(), Ref, Bucket, Metric, Time},
            raw,
            ?MASTER),
-    io:format("~p~n", [R]),
     receive
         {reply, Ref, Reply} ->
-            Reply;
-        Other ->
-            io:format("Meh: ~p~n", [Other])
+            Reply
     after
         5000 ->
             {error, timeout}
