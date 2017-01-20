@@ -10,6 +10,7 @@
          terminate/2,
          handle_command/3,
          is_empty/1,
+         get_bitmap/4,
          delete/1,
          repair/3,
          handle_handoff_command/3,
@@ -50,6 +51,22 @@
 -define(VAC, 1000*60*60*2).
 
 %% API
+
+get_bitmap(PN, Bucket, Metric, Time) ->
+    Ref = make_ref(),
+    ok = riak_core_vnode_master:command(
+           [PN],
+           {bitmap, self(), Ref, Bucket, Metric, Time},
+           raw,
+           ?MASTER),
+    receive
+        {reply, Ref, Reply} ->
+            Reply
+    after
+        5000 ->
+            {error, timeout}
+    end.
+
 start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
@@ -189,7 +206,28 @@ repair_update_cache(Bucket, Metric, Time, Count, Value,
             do_put(Bucket, Metric, Time, Value, State)
     end.
 
-%% Repair request are always full values not including non set values!
+
+handle_command({bitmap, From, Ref, Bucket, Metric, Time},
+               _Sender, State = #state{io = IO, tbl=T})
+  when is_binary(Bucket), is_binary(Metric), is_integer(Time),
+       Time >= 0 ->
+    BM = {Bucket, Metric},
+    PPF = dalmatiner_opt:ppf(Bucket),
+    case ets:lookup(T, BM) of
+        [{BM, Start, Size, _End, Array}] when
+              (Start div PPF) =:= (Time div PPF) ->
+            ets:delete(T, {Bucket, Metric}),
+            Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
+            k6_bytea:delete(Array),
+            metric_io:write(IO, Bucket, Metric, Start, Bin, ?MAX_Q_LEN);
+            %%metric_io:write(IO, Bucket, Metric, Time, Value, ?MAX_Q_LEN);
+        _ ->
+            ok
+    end,
+    metric_io:get_bitmap(IO, Bucket, Metric, Time, Ref, From),
+    {noreply, State};
+
+%% Repair request are always full values not including non set values!2
 handle_command({repair, Bucket, Metric, Time, Value}, _Sender, State)
   when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     Count = mmath_bin:length(Value),

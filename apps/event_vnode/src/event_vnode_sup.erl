@@ -26,5 +26,8 @@ init([]) ->
     VMaster = {event_vnode_master,
                {riak_core_vnode_master, start_link, [event_vnode]},
                permanent, 5000, worker, [riak_core_vnode_master]},
-    {ok, {{one_for_one, 5, 10}, [VMaster]}}.
+    CoverageFSMs = {event_coverage_sup,
+                    {event_coverage_sup, start_link, []},
+                    permanent, infinity, supervisor, [event_coverage_sup]},
+    {ok, {{one_for_one, 5, 10}, [CoverageFSMs, VMaster]}}.
 

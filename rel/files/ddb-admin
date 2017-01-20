@@ -444,9 +444,17 @@ case "$1" in
                 shift
                 $NODETOOL rpc dalmatiner_console buckets $@
                 ;;
+            delete)
+                shift
+                $NODETOOL rpc dalmatiner_console delete $@
+                ;;
             create)
                 shift
                 $NODETOOL rpc dalmatiner_console create $@
+                ;;
+            ttl)
+                shift
+                $NODETOOL rpc dalmatiner_console ttl $@
                 ;;
             *)
                 echo "possible sub options are 'list' or 'create'"
@@ -745,6 +753,28 @@ case "$1" in
         node_up_check
         exec $NODETOOL rpc riak_core_console command riak-admin $@
         ;;
+    bitmap)
+        shift
+        case $1 in
+            show)
+                shift
+                exec $NODETOOL rpc ddb_bmp show $@
+            ;;
+            compare)
+                shift
+                exec $NODETOOL rpc ddb_bmp compare $@
+                ;;
+            repair)
+                shift
+                exec $NODETOOL rpc ddb_bmp repair $@
+                ;;
+            
+            *)
+                echo "Unknown command"
+                exit 1
+                ;;
+        esac
+        ;;
     transfer[_-]limit)
         if [ $# -gt 3 ]; then
             echo "Usage: $SCRIPT $1"
@@ -764,11 +794,18 @@ case "$1" in
         echo
         echo " buckets list         - List all buckets"
         echo " buckets create <bucket> <res>"
-        echo "                <ppf> [<TTL>] - List all buckets"
-        echo " ttl <bucket>                 - Show the TTL of a bucket"
-        echo " ttl <bucket> <TTL>           - Set the lifetime of a bucket, either in the"
-        echo "                                buckets native time b using a simple number or"
-        echo "                                in relative time by using a suffix like 'w' 's' 'h'."
+        echo "                <ppf> [<TTL>"
+        echo "                [<Grace>]]     - creates a new bucket"
+        echo " buckets delete <bucket>       - Deletes a bucket"
+        echo " buckets ttl <bucket> <TTL>    - Set the lifetime of a bucket, either in the"
+        echo "                                 buckets native time b using a simple number or"
+        echo "                                 in relative time by using a suffix like 'w' 's' 'h'."
+        echo " bitmap show <time> <bucket>   - displays the bitmap for a metiric in a"
+        echo "             <metric>*           given time range."
+        echo " bitmap compare <time>         - allows you to compare all copies"
+        echo "           <bucket> <metric>*    of a metric over the vnodes holding it."
+        echo " bitmap repair <time> <bucket> - repairs a time range"
+        echo "               <metric>*"
         exit 1
         ;;
 esac

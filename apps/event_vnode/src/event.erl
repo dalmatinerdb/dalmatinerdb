@@ -1,12 +1,18 @@
 -module(event).
 
 -export([
+         delete/1,
          append/2,
          get/4,
          split/1
         ]).
 
 -ignore_xref([get/4]).
+
+delete(Bucket) ->
+    folsom_metrics:histogram_timed_update(
+      list_metrics, event_coverage, start, [{delete, Bucket}]).
+
 append(_Bucket, []) ->
     ok;
 append(Bucket, [{T, E} | Events]) ->

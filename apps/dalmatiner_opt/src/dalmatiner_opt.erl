@@ -2,8 +2,11 @@
 
 -define(WEEK, 604800). %% Seconds in a week.
 
--export([resolution/1, lifetime/1, ppf/1, set_ppf/2, set_resolution/2,
-         set_lifetime/2, delete/1]).
+-export([resolution/1, set_resolution/2,
+         lifetime/1, set_lifetime/2,
+         ppf/1, set_ppf/2,
+         grace/1, set_grace/2,
+         delete/1]).
 -ignore_xref([set_resolution/2]).
 
 resolution(Bucket) when is_binary(Bucket) ->
@@ -15,6 +18,7 @@ set_resolution(Bucket, Resolution)
        is_integer(Resolution),
        Resolution > 0 ->
     set(<<"buckets">>, <<"resolution">>, Bucket, Resolution).
+
 delete_resolution(Bucket) when is_binary(Bucket) ->
     riak_core_metadata:delete({<<"buckets">>, <<"resolution">>}, Bucket).
 
@@ -42,9 +46,23 @@ ppf(Bucket, Dflt) when is_binary(Bucket) ->
 delete_ppf(Bucket) when is_binary(Bucket) ->
     riak_core_metadata:delete({<<"buckets">>, <<"points_per_file">>}, Bucket).
 
+set_grace(Bucket, GRACE) ->
+    set(<<"buckets">>, <<"grace">>, Bucket, GRACE).
+
+grace(Bucket) when is_binary(Bucket) ->
+    grace(Bucket, 0).
+
+grace(Bucket, Dflt) when is_binary(Bucket) ->
+    get(<<"buckets">>, <<"grace">>, Bucket,
+        {metric_vnode, grace}, Dflt).
+
+delete_grace(Bucket) when is_binary(Bucket) ->
+    riak_core_metadata:delete({<<"buckets">>, <<"grace">>}, Bucket).
+
 delete(Bucket) ->
     delete_ppf(Bucket),
     delete_lifetime(Bucket),
+    delete_grace(Bucket),
     delete_resolution(Bucket).
 
 %%%===================================================================
