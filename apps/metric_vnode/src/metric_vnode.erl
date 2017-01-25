@@ -108,9 +108,6 @@ get(Preflist, ReqID, {Bucket, Metric}, {Time, Count}) ->
 init([Partition]) ->
     ok = dalmatiner_vacuum:register(),
     process_flag(trap_exit, true),
-    random:seed(erlang:phash2([node()]),
-                erlang:monotonic_time(),
-                erlang:unique_integer()),
     P = list_to_atom(integer_to_list(Partition)),
     CT = case application:get_env(metric_vnode, cache_points) of
              {ok, V} ->
@@ -522,7 +519,7 @@ do_put(Bucket, Metric, Time, Value,
                 [] when Len < CT ->
                     Array = k6_bytea:new(CT * ?DATA_SIZE),
                     k6_bytea:set(Array, 0, Value),
-                    Jitter = random:uniform(CT),
+                    Jitter = rand:uniform(CT),
                     ets:insert(T, {BM, Time, Len, Time + Jitter, Array});
                 %% If we don't have a cache but our data is too big for the
                 %% cache we happiely write it directly
