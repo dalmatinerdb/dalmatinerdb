@@ -13,7 +13,7 @@
  {<<"eper">>,{pkg,<<"eper">>,<<"0.94.0">>},0},
  {<<"estore">>,
   {git,"https://github.com/dalmatinerdb/estore.git",
-       {ref,"75fa097362864fa42bb8d5f1c112847ec242a729"}},
+       {ref,"0239550edbf83f19646ef03f877e394b4bf1d85f"}},
   0},
  {<<"exometer_core">>,{pkg,<<"basho_exometer_core">>,<<"1.0.2">>},1},
  {<<"fifo_utils">>,
