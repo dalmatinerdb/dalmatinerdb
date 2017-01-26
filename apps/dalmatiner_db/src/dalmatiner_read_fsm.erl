@@ -295,15 +295,22 @@ merge_([DHc | DT], [R | _] = Ress) ->
                         [R, Ress]),
             not_found;
         false ->
-            {ok, DH} = snappy:decompress(DHc),
+            {ok, DH} = decompress(DHc),
             Res = lists:foldl(fun merge_compressed/2, DH, DT),
             {R, Res}
     end.
 
-merge_compressed(Acc, NewC) ->
-    {ok, New} = snappy:decompress(NewC),
-    mmath_bin:merge(Acc, New).
+merge_compressed(Acc, New) ->
+    mmath_bin:merge(Acc, decompress(New)).
 
+decompress(D) ->
+    case snappy:is_valid(D) of
+        true ->
+            {ok, Res} = snappy:decompress(D),
+            Res;
+        _ ->
+            D
+    end.
 %% @pure
 %%
 %% @doc Reconcile conflicts among conflicting values.
