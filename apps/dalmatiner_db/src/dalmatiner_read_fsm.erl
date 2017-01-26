@@ -32,10 +32,12 @@
                 num_r=0,
                 size,
                 timeout=?DEFAULT_TIMEOUT,
+                type = metric,
                 val,
                 vnode,
                 system,
                 replies=[] :: [reply_src()]}).
+-type state() :: #state{}.
 
 -ignore_xref([
               code_change/4,
@@ -95,6 +97,9 @@ start(VNodeInfo, Op, User, Val) ->
 %%%===================================================================
 
 %% Intiailize state data.
+-spec init([any()]) ->
+                  {ok, prepare, state(), 0}.
+
 init([ReqId, {VNode, System}, Op, From]) ->
     init([ReqId, {VNode, System}, Op, From, undefined, undefined]);
 
@@ -141,17 +146,17 @@ execute(timeout, SD0=#state{req_id=ReqId,
                 _ ->
 
                     metric_vnode:Op(Prelist, ReqId, {Bucket, Metric}, Val)
-            end;
+            end,
+            {next_state, waiting, SD0};
         {Bucket, _Time} ->
             case Val of
                 undefined ->
                     event_vnode:Op(Prelist, ReqId, Bucket);
                 _ ->
-
                     event_vnode:Op(Prelist, ReqId, Bucket, Val)
-            end
-    end,
-    {next_state, waiting, SD0}.
+            end,
+            {next_state, waiting, SD0#state{type=event}}
+    end.
 
 %% @doc Wait for R replies and then respond to From (original client
 %% that called `get/2').
@@ -283,17 +288,21 @@ merge_metrics(Replies) ->
             merge_(Ds, Ress)
     end.
 
-merge_([DH | DT], [R | _] = Ress) ->
+merge_([DHc | DT], [R | _] = Ress) ->
     case lists:any(different(R), Ress) of
         true ->
             lager:error("[merge] Resolution mismatch: ~p /= ~p",
                         [R, Ress]),
             not_found;
         false ->
-            Res = lists:foldl(fun mmath_bin:merge/2, DH, DT),
+            {ok, DH} = snappy:decompress(DHc),
+            Res = lists:foldl(fun merge_compressed/2, DH, DT),
             {R, Res}
     end.
 
+merge_compressed(Acc, NewC) ->
+    {ok, New} = snappy:decompress(NewC),
+    mmath_bin:merge(Acc, New).
 
 %% @pure
 %%

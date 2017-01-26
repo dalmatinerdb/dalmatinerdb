@@ -370,7 +370,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
--spec bucket_dir(file:filename_all(), #state{}) -> string().
+-spec bucket_dir(file:filename_all(), state()) -> string().
 bucket_dir(Bucket, State) when is_binary(Bucket)->
     bucket_dir(binary_to_list(Bucket), State);
 
@@ -380,7 +380,7 @@ bucket_dir(Bucket, #state{dir = PartitionDir}) when is_list(Bucket) ->
     file:make_dir(BucketDir),
     BucketDir.
 
--spec new_store(binary(), #state{}) ->
+-spec new_store(binary(), state()) ->
                        estore:estore().
 new_store(Bucket, State = #state{partition = Partition})
   when is_binary(Bucket) ->
