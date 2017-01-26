@@ -63,7 +63,7 @@
                 val = undefined :: term() | undefined,
                 preflist :: riak_core_apl:preflist2(),
                 num_w = 0 :: non_neg_integer()}).
-
+-type state() :: #state{}.
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -104,6 +104,9 @@ mk_reqid() ->
 %%%===================================================================
 
 %% @doc Initialize the state data.
+-spec init([any()]) ->
+                  {ok, prepare, state(), 0}.
+
 init([{VNode, System}, ReqID, From, Entity, Op, Val]) ->
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, W} = application:get_env(dalmatiner_db, w),
