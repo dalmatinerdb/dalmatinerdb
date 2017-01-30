@@ -25,7 +25,7 @@
  {<<"mmath">>,{pkg,<<"mmath">>,<<"0.2.14">>},0},
  {<<"mstore">>,
   {git,"https://github.com/dalmatinerdb/mstore.git",
-       {ref,"3977be25caa0dd8daf03b758fb8c30f7dd9d23b6"}},
+       {ref,"7d098d33800a0a4c285d3a7add4e603816d615fc"}},
   0},
  {<<"mstore_inspector">>,
   {git,"https://github.com/dalmatinerdb/mstore_inspector.git",
