@@ -43,7 +43,7 @@ init({From, ReqID, _}, Request) ->
     State = #state{replies = btrie:new(), r = R,
                    from = From, reqid = ReqID},
     {Request, VNodeSelector, NVal, PrimaryVNodeCoverage,
-     event, event_vnode_master, Timeout, State}.
+     event, event_vnode_master, Timeout, riak_core_coverage_plan, State}.
 
 process_results({ok, _ReqID, _IdxNode, Events},
                 State = #state{replies = Replies}) ->

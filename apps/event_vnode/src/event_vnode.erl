@@ -73,9 +73,6 @@ get(Preflist, ReqID, Bucket, {Start, End, Filter}) ->
 init([Partition]) ->
     process_flag(trap_exit, true),
     ok = dalmatiner_vacuum:register(),
-    random:seed(erlang:phash2([node()]),
-                erlang:monotonic_time(),
-                erlang:unique_integer()),
     WorkerPoolSize = case application:get_env(event_vnode, async_workers) of
                          {ok, Val} ->
                              Val;
