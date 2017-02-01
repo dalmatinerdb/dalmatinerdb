@@ -130,7 +130,8 @@ status([]) ->
         Stats = dalmatiner_metrics:statistics(),
         StatString = format_stats(Stats,
                             ["-------------------------------------------\n",
-                            io_lib:format("1-minute stats for ~p~n",[node()])]),
+                            io_lib:format("1-minute stats for ~p~n",
+                                          [node()])]),
         io:format("~s\n", [StatString])
     catch
         Exception:Reason ->

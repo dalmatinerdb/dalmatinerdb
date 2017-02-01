@@ -338,8 +338,13 @@ different(A) -> fun(B) -> A =/= B end.
 %% @impure
 %%
 %% @doc Repair any vnodes that do not have the correct object.
-repair(_, _, _, []) -> ok;
 
+%% I giveup :/
+-dialyzer({nowarn_function, repair/4}).
+
+repair(_, _, _, []) -> ok;
+repair(_, _, not_found, _) -> ok;
+repair(_, _, Events, _) when is_list(Events) -> ok;
 repair(Time, {Bkt, {Met, _}} = MetAndTime, MObj, [{IdxNode, Obj}|T]) ->
     case MObj == Obj of
         true ->

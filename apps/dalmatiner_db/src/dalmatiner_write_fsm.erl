@@ -64,6 +64,8 @@
                 preflist :: riak_core_apl:preflist2(),
                 num_w = 0 :: non_neg_integer()}).
 
+-type state() :: #state{}.
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -120,6 +122,7 @@ init([{VNode, System}, ReqID, From, Entity, Op, Val]) ->
     {ok, prepare, SD, 0}.
 
 %% @doc Prepare the write by calculating the _preference list_.
+-spec prepare(timeout, state()) -> {next_state, execute, state(), 0}.
 prepare(timeout, SD0=#state{
                         entity=Entity,
                         system=System,
@@ -133,6 +136,7 @@ prepare(timeout, SD0=#state{
 
 %% @doc Execute the write request and then go into waiting state to
 %% verify it has meets consistency requirements.
+-spec execute(timeout, state()) -> {next_state, waiting, state()}.
 execute(timeout, SD0=#state{req_id=ReqID,
                             entity=Entity,
                             op=Op,
@@ -148,6 +152,9 @@ execute(timeout, SD0=#state{req_id=ReqID,
     {next_state, waiting, SD0}.
 
 %% @doc Wait for W write reqs to respond.
+-spec waiting(term(), state()) -> {next_state, normal, state()} |
+                                  {stop, normal, state()} |
+                                  {next_state, waiting, state()}.
 waiting({ok, ReqID}, SD0=#state{from=From, num_w=NumW0, req_id=ReqID, w=W}) ->
     NumW = NumW0 + 1,
     SD = SD0#state{num_w=NumW},
