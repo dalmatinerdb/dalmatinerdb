@@ -6,13 +6,13 @@
 ├─ dproto─0.2.2
 ├─ edown─0.8.1
 ├─ eper─0.94.0
-├─ estore─0.1.8
+├─ estore─0.1.9
 ├─ event_vnode─0.1.0
 ├─ fifo_utils─0.1.30
 │  ├─ jsone─1.4.1
 │  └─ uuid─1.5.4
 │     └─ quickrand─1.5.4
-├─ jsxd─0.2.3
+├─ jsxd─0.2.4
 ├─ k6_bytea─1.1.5
 ├─ lager─3.2.4
 │  └─ goldrush─0.1.9
@@ -22,7 +22,7 @@
 ├─ mstore_inspector─0.1.0
 ├─ ranch─1.1.0
 ├─ recon─2.3.2
-├─ riak_core─3.0.0
+├─ riak_core─3.0.1
 │  ├─ basho_stats─1.0.3
 │  ├─ blume─0.1.0
 │  ├─ chash─0.1.2
