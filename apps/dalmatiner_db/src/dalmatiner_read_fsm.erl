@@ -342,8 +342,9 @@ needs_repair_even_compressed(MObj, Replies) ->
 
 %% Snappy :(
 -dialyzer({nowarn_function, different_even_compressed/1}).
-different_even_compressed(A) ->
-    {ok, A1} = snappy:compress(A),
+different_even_compressed({R, D} = A) ->
+    {ok, D1} = snappy:compress(D),
+    A1 = {R, D1},
     fun(B) ->
             A =/= B andalso A1 =/= B
     end.
