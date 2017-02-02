@@ -215,7 +215,7 @@ finalize(timeout, SD=#state{
                         replies=Replies,
                         entity=Entity}) ->
     MObj = merge_metrics(Replies),
-    case needs_repair(MObj, Replies) of
+    case needs_repair_even_compressed(MObj, Replies) of
         true ->
             repair(Time, Entity, MObj, Replies),
             {stop, normal, SD};
@@ -302,7 +302,7 @@ merge_([DH | DT], [R | _] = Ress) ->
     end.
 
 -dialyzer({nowarn_function, merge_compressed/2}).
-merge_compressed(Acc, New) ->
+merge_compressed(New, Acc) ->
     mmath_bin:merge(Acc, decompress(New)).
 
 %% Snappy :(
@@ -334,6 +334,20 @@ needs_repair(MObj, Replies) ->
 
 %% @pure
 different(A) -> fun(B) -> A =/= B end.
+
+-dialyzer({nowarn_function, needs_repair_even_compressed/2}).
+needs_repair_even_compressed(MObj, Replies) ->
+    Objs = [Obj || {_, Obj} <- Replies],
+    lists:any(different_even_compressed(MObj), Objs).
+
+%% Snappy :(
+-dialyzer({nowarn_function, different_even_compressed/1}).
+different_even_compressed({R, D} = A) ->
+    {ok, D1} = snappy:compress(D),
+    A1 = {R, D1},
+    fun(B) ->
+            A =/= B andalso A1 =/= B
+    end.
 
 %% @impure
 %%
