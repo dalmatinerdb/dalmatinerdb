@@ -335,12 +335,15 @@ needs_repair(MObj, Replies) ->
 %% @pure
 different(A) -> fun(B) -> A =/= B end.
 
+-dialyzer({nowarn_function, needs_repair_even_compressed/2}).
 needs_repair_even_compressed(MObj, Replies) ->
     Objs = [Obj || {_, Obj} <- Replies],
     lists:any(different_even_compressed(MObj), Objs).
 
+%% Snappy :(
+-dialyzer({nowarn_function, different_even_compressed/1}).
 different_even_compressed(A) ->
-    A1 = snappy:compress(A),
+    {ok, A1} = snappy:compress(A),
     fun(B) ->
             A =/= B andalso A1 =/= B
     end.
