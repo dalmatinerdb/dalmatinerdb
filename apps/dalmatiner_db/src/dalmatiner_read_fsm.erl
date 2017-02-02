@@ -22,6 +22,7 @@
 -type partition() :: chash:index_as_int().
 -type reply_src() :: {partition(), term()}.
 -type metric_element() :: {non_neg_integer(), binary()}.
+%%-type metric_reply() :: {partition(), metric_element()}.
 
 -record(state, {req_id,
                 from,
@@ -315,7 +316,6 @@ decompress(D) ->
         _ ->
             D
     end.
-
 %% @pure
 %%
 %% @doc Reconcile conflicts among conflicting values.
@@ -345,12 +345,12 @@ different(A) -> fun(B) -> A =/= B end.
 repair(_, _, _, []) -> ok;
 repair(_, _, not_found, _) -> ok;
 repair(_, _, Events, _) when is_list(Events) -> ok;
-repair(Time, {Bkt, {Met, _}} = MetAndTime, MObj, [{IdxNode, Obj}|T]) ->
+repair(Time, {Bkt, {Met, _}} = MetAndTime, {_, Data} = MObj, [{IdxNode, Obj}|T])
+  when not is_list(Obj)->
     case MObj == Obj of
         true ->
             repair(Time, MetAndTime, MObj, T);
         false ->
-            {_, Data} = MObj,
             metric_vnode:repair(IdxNode, {Bkt, Met}, {Time, Data}),
             repair(Time, MetAndTime, MObj, T)
     end.

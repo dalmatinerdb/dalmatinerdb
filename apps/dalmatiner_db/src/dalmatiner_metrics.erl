@@ -92,6 +92,15 @@ init([]) ->
     lager:info("[metrics] Initializing metric watcher with N: ~p, W: ~p at an "
                "interval of ~pms.", [N, W, ?INTERVAL]),
     Dict = bkt_dict:new(?BUCKET, N, W),
+    %% We will delay starting ticks until all services are started uo
+    %% that way we won't try to send data before the services are ready
+    case application:get_env(dalmatiner_db, self_monitor) of
+        {ok, false} ->
+            lager:info("[ddb] Self monitoring is disabled.");
+        _ ->
+            lager:info("[ddb] Self monitoring is enabled."),
+            spawn(fun delay_tick/0)
+    end,
     {ok, #state{dict = Dict, prefix = list_to_binary(atom_to_list(node()))}}.
 
 
@@ -361,3 +370,15 @@ build_histogram([{n, V} | H], Prefix, Fun, Acc) ->
 
 build_histogram([_ | H], Prefix, Fun, Acc) ->
     build_histogram(H, Prefix, Fun, Acc).
+
+delay_tick() ->
+    riak_core:wait_for_application(dalmatiner_db),
+    Services = riak_core_node_watcher:services(),
+    delay_tick(Services).
+
+delay_tick([S | R]) ->
+    riak_core:wait_for_service(S),
+    delay_tick(R);
+
+delay_tick([]) ->
+    dalmatiner_metrics:start().
