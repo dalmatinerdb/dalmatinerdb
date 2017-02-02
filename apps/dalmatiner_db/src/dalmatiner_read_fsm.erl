@@ -302,7 +302,7 @@ merge_([DH | DT], [R | _] = Ress) ->
     end.
 
 -dialyzer({nowarn_function, merge_compressed/2}).
-merge_compressed(Acc, New) ->
+merge_compressed(New, Acc) ->
     mmath_bin:merge(Acc, decompress(New)).
 
 %% Snappy :(
