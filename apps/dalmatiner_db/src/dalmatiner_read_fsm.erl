@@ -165,11 +165,11 @@ execute(timeout, SD0=#state{req_id=ReqId,
 %% TODO: read repair...or another blog post?
 
 waiting({ok, ReqID, IdxNode, Obj},
-        SD0=#state{from=From, num_r=NumR0, replies=Replies0,
+        SD0=#state{from=From, num_r=NumR0,
                    r=R, n=N, timeout=Timeout}) ->
     NumR = NumR0 + 1,
-    Replies = [{IdxNode, Obj} | Replies0],
-    SD = SD0#state{num_r=NumR, replies=Replies},
+    SD = save_reply(IdxNode, Obj, SD0#state{num_r = NumR}),
+    Replies = SD#state.replies,
     case NumR of
         Min when Min >= R ->
             case merge(SD0, Replies) of
@@ -189,15 +189,15 @@ waiting({ok, ReqID, IdxNode, Obj},
     end.
 
 wait_for_n({ok, _ReqID, IdxNode, Obj},
-           SD0=#state{n=N, num_r=NumR, replies=Replies0}) when NumR == N - 1 ->
-    Replies = [{IdxNode, Obj}|Replies0],
-    {next_state, finalize, SD0#state{num_r=N, replies=Replies}, 0};
+           SD0=#state{n = N, num_r = NumR}) when NumR == N - 1 ->
+    SD1 = save_reply(IdxNode, Obj, SD0),
+    {next_state, finalize, SD1#state{num_r=N}, 0};
 
 wait_for_n({ok, _ReqID, IdxNode, Obj},
-           SD0=#state{num_r=NumR0, replies=Replies0, timeout=Timeout}) ->
+           SD0=#state{num_r=NumR0, timeout=Timeout}) ->
     NumR = NumR0 + 1,
-    Replies = [{IdxNode, Obj}|Replies0],
-    {next_state, wait_for_n, SD0#state{num_r=NumR, replies=Replies}, Timeout};
+    SD1 = save_reply(IdxNode, Obj, SD0),
+    {next_state, wait_for_n, SD1#state{num_r = NumR}, Timeout};
 
 %% TODO partial repair?
 wait_for_n(timeout, SD) ->
@@ -215,7 +215,7 @@ finalize(timeout, SD=#state{
                         replies=Replies,
                         entity=Entity}) ->
     MObj = merge_metrics(Replies),
-    case needs_repair_even_compressed(MObj, Replies) of
+    case needs_repair(MObj, Replies) of
         true ->
             repair(Time, Entity, MObj, Replies),
             {stop, normal, SD};
@@ -240,6 +240,15 @@ terminate(_Reason, _SN, _SD) ->
 %%%===================================================================
 %%% Internal Functions
 %%%===================================================================
+-spec save_reply(partition(), term(), state()) -> state().
+save_reply(IdxNode, Obj, SD = #state{system = event, replies = Replies0}) ->
+    Replies = [{IdxNode, Obj} | Replies0],
+    SD#state{replies = Replies};
+save_reply(IdxNode, Obj, SD = #state{system = metric, replies = Replies0}) ->
+    {Res, Metrics} = Obj,
+    Replies = [{IdxNode, {Res, decompress(Metrics)}} | Replies0],
+    SD#state{replies = Replies}.
+
 -spec merge(state(), [E]) -> E.
 merge(#state{system = event}, Events) ->
     merge_events(Events);
@@ -297,13 +306,9 @@ merge_([DH | DT], [R | _] = Ress) ->
                         [R, Ress]),
             not_found;
         false ->
-            Res = lists:foldl(fun merge_compressed/2, decompress(DH), DT),
+            Res = lists:foldl(fun mmath_bin:merge/2, DH, DT),
             {R, Res}
     end.
-
--dialyzer({nowarn_function, merge_compressed/2}).
-merge_compressed(New, Acc) ->
-    mmath_bin:merge(Acc, decompress(New)).
 
 %% Snappy :(
 -dialyzer({nowarn_function, decompress/1}).
@@ -334,20 +339,6 @@ needs_repair(MObj, Replies) ->
 
 %% @pure
 different(A) -> fun(B) -> A =/= B end.
-
--dialyzer({nowarn_function, needs_repair_even_compressed/2}).
-needs_repair_even_compressed(MObj, Replies) ->
-    Objs = [Obj || {_, Obj} <- Replies],
-    lists:any(different_even_compressed(MObj), Objs).
-
-%% Snappy :(
--dialyzer({nowarn_function, different_even_compressed/1}).
-different_even_compressed({R, D} = A) ->
-    {ok, D1} = snappy:compress(D),
-    A1 = {R, D1},
-    fun(B) ->
-            A =/= B andalso A1 =/= B
-    end.
 
 %% @impure
 %%
