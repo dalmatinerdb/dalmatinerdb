@@ -165,11 +165,11 @@ execute(timeout, SD0=#state{req_id=ReqId,
 %% TODO: read repair...or another blog post?
 
 waiting({ok, ReqID, IdxNode, Obj},
-        SD0=#state{from=From, num_r=NumR0, replies=Replies0,
+        SD0=#state{from=From, num_r=NumR0,
                    r=R, n=N, timeout=Timeout}) ->
     NumR = NumR0 + 1,
-    Replies = [{IdxNode, Obj} | Replies0],
-    SD = SD0#state{num_r=NumR, replies=Replies},
+    SD = save_reply(IdxNode, Obj, SD0#state{num_r = NumR}),
+    Replies = SD#state.replies,
     case NumR of
         Min when Min >= R ->
             case merge(SD0, Replies) of
@@ -189,15 +189,15 @@ waiting({ok, ReqID, IdxNode, Obj},
     end.
 
 wait_for_n({ok, _ReqID, IdxNode, Obj},
-           SD0=#state{n=N, num_r=NumR, replies=Replies0}) when NumR == N - 1 ->
-    Replies = [{IdxNode, Obj}|Replies0],
-    {next_state, finalize, SD0#state{num_r=N, replies=Replies}, 0};
+           SD0=#state{n = N, num_r = NumR}) when NumR == N - 1 ->
+    SD1 = save_reply(IdxNode, Obj, SD0),
+    {next_state, finalize, SD1#state{num_r=N}, 0};
 
 wait_for_n({ok, _ReqID, IdxNode, Obj},
-           SD0=#state{num_r=NumR0, replies=Replies0, timeout=Timeout}) ->
+           SD0=#state{num_r=NumR0, timeout=Timeout}) ->
     NumR = NumR0 + 1,
-    Replies = [{IdxNode, Obj}|Replies0],
-    {next_state, wait_for_n, SD0#state{num_r=NumR, replies=Replies}, Timeout};
+    SD1 = save_reply(IdxNode, Obj, SD0),
+    {next_state, wait_for_n, SD1#state{num_r = NumR}, Timeout};
 
 %% TODO partial repair?
 wait_for_n(timeout, SD) ->
@@ -240,6 +240,15 @@ terminate(_Reason, _SN, _SD) ->
 %%%===================================================================
 %%% Internal Functions
 %%%===================================================================
+-spec save_reply(partition(), term(), state()) -> state().
+save_reply(IdxNode, Obj, SD = #state{system = event, replies = Replies0}) ->
+    Replies = [{IdxNode, Obj} | Replies0],
+    SD#state{replies = Replies};
+save_reply(IdxNode, Obj, SD = #state{system = metric, replies = Replies0}) ->
+    {Res, Metrics} = Obj,
+    Replies = [{IdxNode, {Res, decompress(Metrics)}} | Replies0],
+    SD#state{replies = Replies}.
+
 -spec merge(state(), [E]) -> E.
 merge(#state{system = event}, Events) ->
     merge_events(Events);
@@ -297,13 +306,9 @@ merge_([DH | DT], [R | _] = Ress) ->
                         [R, Ress]),
             not_found;
         false ->
-            Res = lists:foldl(fun merge_compressed/2, decompress(DH), DT),
+            Res = lists:foldl(fun mmath_bin:merge/2, DH, DT),
             {R, Res}
     end.
-
--dialyzer({nowarn_function, merge_compressed/2}).
-merge_compressed(Acc, New) ->
-    mmath_bin:merge(Acc, decompress(New)).
 
 %% Snappy :(
 -dialyzer({nowarn_function, decompress/1}).
