@@ -25,6 +25,7 @@
 %%-type metric_reply() :: {partition(), metric_element()}.
 
 -record(state, {req_id,
+                compression :: snappy | none,
                 from,
                 entity,
                 op,
@@ -110,15 +111,19 @@ init([ReqId, {VNode, System}, Op, From, Entity]) ->
 init([ReqId, {VNode, System}, Op, From, Entity, Val]) ->
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, R} = application:get_env(dalmatiner_db, r),
-    SD = #state{req_id=ReqId,
-                r=R,
-                n=N,
-                from=From,
-                op=Op,
-                val=Val,
-                vnode=VNode,
-                system=System,
-                entity=Entity},
+    Compression = application:get_env(dalmatiner_db,
+                                      metric_transport_compression, snappy),
+
+    SD = #state{req_id = ReqId,
+                compression = Compression,
+                r = R,
+                n = N,
+                from = From,
+                op = Op,
+                val = Val,
+                vnode = VNode,
+                system = System,
+                entity = Entity},
     {ok, prepare, SD, 0}.
 
 %% @doc Calculate the Preflist.
@@ -246,7 +251,7 @@ save_reply(IdxNode, Obj, SD = #state{system = event, replies = Replies0}) ->
     SD#state{replies = Replies};
 save_reply(IdxNode, Obj, SD = #state{system = metric, replies = Replies0}) ->
     {Res, Metrics} = Obj,
-    Replies = [{IdxNode, {Res, decompress(Metrics)}} | Replies0],
+    Replies = [{IdxNode, {Res, decompress(Metrics, SD)}} | Replies0],
     SD#state{replies = Replies}.
 
 -spec merge(state(), [E]) -> E.
@@ -311,16 +316,19 @@ merge_([DH | DT], [R | _] = Ress) ->
     end.
 
 %% Snappy :(
--dialyzer({nowarn_function, decompress/1}).
--spec decompress(binary()) -> binary().
-decompress(D) ->
+-dialyzer({nowarn_function, decompress/2}).
+-spec decompress(binary(), state()) -> binary().
+decompress(D, #state{compression = snappy}) ->
     case snappy:is_valid(D) of
         true ->
             {ok, Res} = snappy:decompress(D),
             Res;
         _ ->
             D
-    end.
+    end;
+decompress(D, #state{compression = none}) ->
+    D.
+
 %% @pure
 %%
 %% @doc Reconcile conflicts among conflicting values.
