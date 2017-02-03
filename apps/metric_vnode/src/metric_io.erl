@@ -440,14 +440,13 @@ handle_cast({get_bitmap, Bucket, Metric, Time, Ref, Sender}, State) ->
     {noreply, State1};
 handle_cast({read, Bucket, Metric, Time, Count, ReqID, Sender},
             State = #state{node = N, partition = P}) ->
-    {{Res, D}, State1} = do_read(Bucket, Metric, Time, Count, State),
-    {ok, Dc} = snappy:compress(D),
-    riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, {Res, Dc}}),
+    {D, State1} = do_read(Bucket, Metric, Time, Count, State),
+    riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, D}),
     {noreply, State1};
 
 handle_cast({read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender},
             State = #state{node = N, partition = P}) ->
-    {{ResR, Data}, State1} =
+    {Data, State1} =
         case Part of
             {Offset, Len, Bin} when Offset =:= 0 ->
                 {{Res, D}, S} =
@@ -464,8 +463,7 @@ handle_cast({read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender},
                                  (Offset + Len - Count) * ?DATA_SIZE),
                 {{Res, <<D1/binary, Bin/binary, D2/binary>>}, S}
         end,
-    {ok, Dc} = snappy:compress(Data),
-    riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, {ResR, Dc}}),
+    riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Data}),
     {noreply, State1};
 
 handle_cast(_Msg, State) ->
