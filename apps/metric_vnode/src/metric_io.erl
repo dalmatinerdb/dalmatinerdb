@@ -29,6 +29,7 @@
 -type entry() :: {non_neg_integer(), pos_integer(), mstore:mstore()}.
 
 -record(state, {
+          compression :: snappy | none,
           partition,
           node,
           mstores = gb_trees:empty() :: gb_trees:tree(binary(), entry()),
@@ -125,6 +126,8 @@ delete(Pid, Bucket, Before) ->
 %%--------------------------------------------------------------------
 init([Partition]) ->
     process_flag(trap_exit, true),
+    Compression = application:get_env(dalmatiner_db,
+                                      metric_transport_compression, snappy),
     DataDir = case application:get_env(riak_core, platform_data_dir) of
                   {ok, DD} ->
                       DD;
@@ -139,6 +142,7 @@ init([Partition]) ->
                end,
     PartitionDir = filename:join([DataDir,  integer_to_list(Partition)]),
     {ok, #state{ partition = Partition,
+                 compression = Compression,
                  node = node(),
                  dir = PartitionDir,
                  fold_size = FoldSize
@@ -433,7 +437,7 @@ handle_cast({get_bitmap, Bucket, Metric, Time, Ref, Sender}, State) ->
 handle_cast({read, Bucket, Metric, Time, Count, ReqID, Sender},
             State = #state{node = N, partition = P}) ->
     {{Res, D}, State1} = do_read(Bucket, Metric, Time, Count, State),
-    {ok, Dc} = snappy:compress(D),
+    Dc = compress(D, State),
     riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, {Res, Dc}}),
     {noreply, State1};
 
@@ -456,7 +460,7 @@ handle_cast({read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender},
                                  (Offset + Len - Count) * ?DATA_SIZE),
                 {{Res, <<D1/binary, Bin/binary, D2/binary>>}, S}
         end,
-    {ok, Dc} = snappy:compress(Data),
+    Dc = compress(Data, State),
     riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, {ResR, Dc}}),
     {noreply, State1};
 
@@ -630,3 +634,10 @@ do_read(Bucket, Metric, Time, Count, State = #state{})
 
 list_buckets(#state{dir = PartitionDir}) ->
     file:list_dir(PartitionDir).
+
+compress(Data, #state{compression = snappy}) ->
+    {ok, Dc} = snappy:compress(Data),
+    Dc;
+compress(Data, #state{compression = none}) ->
+    Data.
+

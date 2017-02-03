@@ -50,9 +50,9 @@
 %% @doc Maximum number of files kept open per mstore, settings
 %% over two have no effect, settings below 0 eqal to 0.
 {mapping, "mstore.max_files", "metric_vnode.max_files", [
-  {default, 2},
-  {datatype, integer}
-]}.
+                                                         {default, 2},
+                                                         {datatype, integer}
+                                                        ]}.
 
 %% @doc How often a pertition will be picked to be vacuumed.
 {mapping, "vacuum_interval", "dalmatiner_vacuum.interval",
@@ -114,23 +114,30 @@
 }.
 
 {translation,
-  "riak_core.schema_dirs",
-  fun(Conf) ->
-          D = cuttlefish:conf_get("schema_dir", Conf),
-          [D]
-  end
+ "riak_core.schema_dirs",
+ fun(Conf) ->
+         D = cuttlefish:conf_get("schema_dir", Conf),
+         [D]
+ end
 }.
 
 %% @doc handoff.ip is the network address that Riak binds to for
 %% intra-cluster data handoff.
-{mapping, "handoff.ip", "riak_core.handoff_ip", [
-  {default, "127.0.0.1" },
+{mapping, "handoff.ip", "riak_core.handoff_ip", 
+ [{default, "127.0.0.1" },
   {datatype, string},
-  {validators, ["valid_ipaddr"]}
-]}.
+  {validators, ["valid_ipaddr"]}]
+}.
 
 %% @doc enable / disable self monitoring
-{mapping, "self_monitor", "dalmatiner_db.self_monitor", [
-  {default, on },
-  {datatype, flag}
-]}.
+{mapping, "self_monitor", "dalmatiner_db.self_monitor",
+ [{default, on},
+  {datatype, flag}]
+}.
+%% @doc Transport compression for sending data between the vnode
+%% and the reading node.
+{mapping, "metrics.transport_compression",
+ "dalmatiner_db.metric_transport_compression",
+ [{default, snappy},
+  {enum, [snappy, none]
+  }.
