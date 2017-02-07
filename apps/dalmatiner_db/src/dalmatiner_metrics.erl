@@ -342,7 +342,7 @@ build_histogram([{kurtosis, V} | H], Prefix, Time, Acc) ->
 build_histogram([{percentile, Ps} | H], Prefix, Time, Acc) ->
     Acc1 = lists:foldl(
              fun({N, V}, AccIn) ->
-                     P = atom_to_binary(N, utf8),
+                     P = integer_to_binary(N),
                      add_metric(Prefix, <<"p", P/binary>>, Time, V, AccIn)
              end, Acc, Ps),
     build_histogram(H, Prefix, Time, Acc1);
