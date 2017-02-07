@@ -139,7 +139,7 @@
 {mapping, "metrics.transport_compression",
  "dalmatiner_db.metric_transport_compression",
  [{default, "snappy"},
-  {enum, [snappy, none]}]}.
+  {enum, [{"snappy", snappy}, {"none", none}]}]}.
 
 %% @doc Number of asyncronous IO requests that won't block the vnode.
 %% A highter number reduces blockage but can lead to piling up of requests.
