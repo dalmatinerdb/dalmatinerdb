@@ -25,7 +25,7 @@
 -define(SERVER, ?MODULE).
 -define(WEEK, 604800). %% Seconds in a week.
 
--type entry() :: {non_neg_integer(), pos_integer(), mstore:mstore()}.
+-type entry() :: {non_neg_integer(), mstore:mstore()}.
 
 -record(state, {
           compression :: snappy | none | undefined,
@@ -341,12 +341,12 @@ handle_call(close, _From, State) ->
 handle_call({delete, Bucket}, _From,
             State = #state{dir = Dir}) ->
     {R, State1} = case get_set(Bucket, State) of
-                      {ok, {{_, _, MSet}, S1}} ->
+                      {ok, {{_, MSet}, S1}} ->
                           mstore:delete(MSet),
                           file:del_dir(filename:join([Dir, Bucket])),
                           MStore = gb_trees:delete(Bucket, S1#state.mstores),
                           CMStore = gb_trees:delete(
-                                       Bucket, S1#state.closed_mstores),
+                                      Bucket, S1#state.closed_mstores),
                           {ok, S1#state{mstores = MStore,
                                         closed_mstores = CMStore}};
                       _ ->
@@ -356,9 +356,9 @@ handle_call({delete, Bucket}, _From,
 
 handle_call({delete, Bucket, Before}, _From, State) ->
     {R, State1} = case get_set(Bucket, State) of
-                      {ok, {{LastWritten, Res, MSet}, S1}} ->
+                      {ok, {{LastWritten, MSet}, S1}} ->
                           {ok, MSet1} = mstore:delete(MSet, Before),
-                          V = {LastWritten, Res, MSet1},
+                          V = {LastWritten, MSet1},
                           MStore = gb_trees:enter(Bucket, V, S1#state.mstores),
                           {ok, S1#state{mstores = MStore}};
                       _ ->
@@ -378,7 +378,7 @@ handle_call(buckets, _From, State = #state{dir = PartitionDir}) ->
 
 handle_call({metrics, Bucket}, _From, State) ->
     {Ms, State1} = case get_set(Bucket, State) of
-                       {ok, {{_, _, M}, S2}} ->
+                       {ok, {{_, M}, S2}} ->
                            {mstore:metrics(M), S2};
                        _ ->
                            {btrie:new(), State}
@@ -387,7 +387,7 @@ handle_call({metrics, Bucket}, _From, State) ->
 
 handle_call({metrics, Bucket, Prefix}, _From, State) ->
     {MsR, State1} = case get_set(Bucket, State) of
-                        {ok, {{_, _, M}, S2}} ->
+                        {ok, {{_, M}, S2}} ->
                             Ms = mstore:metrics(M),
                             Ms1 = btrie:fetch_keys_similar(Prefix, Ms),
                             {btrie:from_list(Ms1), S2};
@@ -429,6 +429,7 @@ handle_cast({get_bitmap, Bucket, Metric, Time, Ref, Sender}, State) ->
     {D, State1} = do_read_bitmap(Bucket, Metric, Time, State),
     Sender ! {reply, Ref, D},
     {noreply, State1};
+
 handle_cast({read, Bucket, Metric, Time, Count, ReqID, Sender},
             State) ->
     State1 = maybe_async_read(Bucket, Metric, Time, Count, ReqID,
@@ -472,7 +473,7 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info({'EXIT', _From, _Reason}, State = #state{mstores = MStore}) ->
-    gb_trees:map(fun(_, {_, _, MSet}) ->
+    gb_trees:map(fun(_, {_, MSet}) ->
                          mstore:close(MSet)
                  end, MStore),
     {stop, normal, State#state{mstores = gb_trees:empty()}};
@@ -492,7 +493,7 @@ handle_info(_Info, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(_Reason, #state{mstores = MStore}) ->
-    gb_trees:map(fun(_, {_, _, MSet}) ->
+    gb_trees:map(fun(_, {_, MSet}) ->
                          mstore:close(MSet)
                  end, MStore),
     ok.
@@ -542,13 +543,12 @@ bucket_dir(Bucket, Partition) ->
 new_store(Partition, Bucket) when is_binary(Bucket) ->
     BucketDir = bucket_dir(Bucket, Partition),
     PointsPerFile = dalmatiner_opt:ppf(Bucket),
-    Resolution = dalmatiner_opt:resolution(Bucket),
     MaxOpenFiles = application:get_env(metric_vnode, max_files, 2),
     lager:debug("[metric_io:~p] Opening ~s@~p",
                 [Partition, Bucket, PointsPerFile]),
     {ok, MSet} = mstore:new(BucketDir, [{file_size, PointsPerFile},
                                         {max_files, MaxOpenFiles}]),
-    {0, Resolution, MSet}.
+    {0, MSet}.
 
 -spec get_set(binary(), state()) ->
                      {ok, {entry(), state()}} |
@@ -603,7 +603,7 @@ calc_empty(I) ->
     case gb_trees:next(I) of
         none ->
             true;
-        {_, {_, _, MSet}, I2} ->
+        {_, {_, MSet}, I2} ->
             btrie:size(mstore:metrics(MSet)) =:= 0
                 andalso calc_empty(I2)
     end.
@@ -611,16 +611,16 @@ calc_empty(I) ->
 -spec do_write(binary(), binary(), pos_integer(), binary(), state()) ->
                       state().
 do_write(Bucket, Metric, Time, Value, State) ->
-    {{_, R, MSet}, State1} = get_or_create_set(Bucket, State),
+    {{_, MSet}, State1} = get_or_create_set(Bucket, State),
     MSet1 = mstore:put(MSet, Metric, Time, Value),
     LastWritten = erlang:system_time(),
-    Store1 = gb_trees:enter(Bucket, {LastWritten, R, MSet1},
+    Store1 = gb_trees:enter(Bucket, {LastWritten, MSet1},
                             State1#state.mstores),
     State1#state{mstores = Store1}.
 
 do_read_bitmap(Bucket, Metric, Time, State) ->
     case get_set(Bucket, State) of
-        {ok, {{_LastWritten, _Resolution, MSet}, S2}} ->
+        {ok, {{_LastWritten, MSet}, S2}} ->
             R = mstore:bitmap(MSet, Metric, Time),
             {R, S2};
         _ ->
@@ -632,7 +632,7 @@ do_read_bitmap(Bucket, Metric, Time, State) ->
 do_read(Bucket, Metric, Time, Count, State = #state{})
   when is_binary(Bucket), is_binary(Metric), is_integer(Count) ->
     case get_set(Bucket, State) of
-        {ok, {{_LastWritten, _Resolution, MSet}, S2}} ->
+        {ok, {{_LastWritten, MSet}, S2}} ->
             {ok, Data} = mstore:get(MSet, Metric, Time, Count),
             {Data, S2};
         _ ->
@@ -648,4 +648,3 @@ compress(Data, #state{compression = snappy}) ->
     Dc;
 compress(Data, #state{compression = none}) ->
     Data.
-
