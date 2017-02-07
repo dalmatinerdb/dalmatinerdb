@@ -42,13 +42,12 @@
           ct,
           io,
           now,
+          max_q_len = 20,
           resolutions = btrie:new(),
           lifetimes  = btrie:new()
          }).
 
 -define(MASTER, metric_vnode_master).
--define(MAX_Q_LEN, 20).
--define(VAC, 1000*60*60*2).
 
 %% API
 
@@ -109,12 +108,6 @@ init([Partition]) ->
     ok = dalmatiner_vacuum:register(),
     process_flag(trap_exit, true),
     P = list_to_atom(integer_to_list(Partition)),
-    CT = case application:get_env(metric_vnode, cache_points) of
-             {ok, V} ->
-                 V;
-             _ ->
-                 10
-         end,
     WorkerPoolSize = case application:get_env(metric_vnode, async_workers) of
                          {ok, Val} ->
                              Val;
@@ -123,18 +116,17 @@ init([Partition]) ->
                      end,
     FoldWorkerPool = {pool, metric_worker, WorkerPoolSize, []},
     {ok, IO} = metric_io:start_link(Partition),
-    {ok, #state{
-            partition = Partition,
-            node = node(),
-            tbl = ets:new(P, [public, ordered_set]),
-            io = IO,
-            now = timestamp(),
-            ct = CT
-           },
+    {ok, update_env(#state{
+                       partition = Partition,
+                       node = node(),
+                       tbl = ets:new(P, [public, ordered_set]),
+                       io = IO,
+                       now = timestamp()
+                      }),
      [FoldWorkerPool]}.
 
 repair_update_cache(Bucket, Metric, Time, Count, Value,
-                    #state{tbl=T} = State) ->
+                    #state{tbl = T, max_q_len = Q} = State) ->
     case ets:lookup(T, {Bucket, Metric}) of
         %% ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐
         %% │Cache│     │     │     │     │     │Start│ ... │St+Si│     │
@@ -146,8 +138,7 @@ repair_update_cache(Bucket, Metric, Time, Count, Value,
         %% write it!
         [{{Bucket, Metric}, Start, _Size, _Time, _Array}]
           when Time + Count < Start ->
-            metric_io:write(State#state.io, Bucket, Metric, Time,
-                            Value),
+            metric_io:write(State#state.io, Bucket, Metric, Time, Value, Q),
             State;
         %% ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐
         %% │Cache│     │Start│ ... │St+Si│     │     │     │     │     │
@@ -162,8 +153,7 @@ repair_update_cache(Bucket, Metric, Time, Count, Value,
             Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
             k6_bytea:delete(Array),
             ets:delete(T, {Bucket, Metric}),
-            metric_io:write(State#state.io, Bucket, Metric, Start,
-                            Bin),
+            metric_io:write(State#state.io, Bucket, Metric, Start, Bin, Q),
             do_put(Bucket, Metric, Time, Value, State);
         %% ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐
         %% │Cache│     │     │     │Start│ ... │St+Si│     │     │     │
@@ -192,10 +182,8 @@ repair_update_cache(Bucket, Metric, Time, Count, Value,
             Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
             k6_bytea:delete(Array),
             ets:delete(T, {Bucket, Metric}),
-            metric_io:write(State#state.io, Bucket, Metric, Start,
-                            Bin),
-            metric_io:write(State#state.io, Bucket, Metric, Time,
-                            Value),
+            metric_io:write(State#state.io, Bucket, Metric, Start, Bin, Q),
+            metric_io:write(State#state.io, Bucket, Metric, Time, Value, Q),
             State;
         %% If we had no privious cache we can safely cache the
         %% repair.
@@ -205,7 +193,7 @@ repair_update_cache(Bucket, Metric, Time, Count, Value,
 
 
 handle_command({bitmap, From, Ref, Bucket, Metric, Time},
-               _Sender, State = #state{io = IO, tbl=T})
+               _Sender, State = #state{io = IO, tbl=T, max_q_len = Q})
   when is_binary(Bucket), is_binary(Metric), is_integer(Time),
        Time >= 0 ->
     BM = {Bucket, Metric},
@@ -216,8 +204,7 @@ handle_command({bitmap, From, Ref, Bucket, Metric, Time},
             ets:delete(T, {Bucket, Metric}),
             Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
             k6_bytea:delete(Array),
-            metric_io:write(IO, Bucket, Metric, Start, Bin, ?MAX_Q_LEN);
-            %%metric_io:write(IO, Bucket, Metric, Time, Value, ?MAX_Q_LEN);
+            metric_io:write(IO, Bucket, Metric, Start, Bin, Q);
         _ ->
             ok
     end,
@@ -296,7 +283,8 @@ handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, Sender,
     ets:foldl(fun({{Bucket, Metric}, Start, Size, _, Array}, _) ->
                       Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
                       k6_bytea:delete(Array),
-                      metric_io:write(IO, Bucket, Metric, Start, Bin)
+                      metric_io:write(IO, Bucket, Metric, Start, Bin,
+                                      State#state.max_q_len)
               end, ok, T),
     ets:delete_all_objects(T),
     FinishFun =
@@ -405,13 +393,20 @@ handle_coverage({update_ttl, Bucket}, _KeySpaces, _Sender,
     Reply = {ok, undefined, {P, N}, R1},
     {reply, Reply, State#state{lifetimes = LT1}};
 
+handle_coverage(update_env, _KeySpaces, _Sender,
+                State = #state{partition=P, node=N, io = IO}) ->
+    metric_io:update_env(IO),
+    Reply = {ok, undefined, {P, N}, []},
+    {reply, Reply, update_env(State)};
+
 handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
                 State = #state{partition=P, node=N, tbl=T, io = IO}) ->
     ets:foldl(fun({{Bkt, Metric}, Start, Size, _, Array}, _)
                     when Bkt /= Bucket ->
                       Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
                       k6_bytea:delete(Array),
-                      metric_io:write(IO, Bkt, Metric, Start, Bin);
+                      metric_io:write(IO, Bkt, Metric, Start, Bin,
+                                      State#state.max_q_len);
                  ({_, _, _, _, Array}, _) ->
                       k6_bytea:delete(Array)
               end, ok, T),
@@ -457,18 +452,18 @@ handle_exit(IO, E, State = #state{io = IO}) ->
 handle_exit(_PID, _Reason, State) ->
     {noreply, State}.
 
-terminate(_Reason, #state{tbl = T, io = IO}) ->
+terminate(_Reason, #state{tbl = T, io = IO, max_q_len = Q}) ->
     ets:foldl(fun({{Bucket, Metric}, Start, Size, _, Array}, _) ->
                       Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
                       k6_bytea:delete(Array),
-                      metric_io:write(IO, Bucket, Metric, Start, Bin)
+                      metric_io:write(IO, Bucket, Metric, Start, Bin, Q)
               end, ok, T),
     ets:delete(T),
     metric_io:close(IO),
     ok.
 
 do_put(Bucket, Metric, Time, Value, State) ->
-    do_put(Bucket, Metric, Time, Value, State, ?MAX_Q_LEN).
+    do_put(Bucket, Metric, Time, Value, State, State#state.max_q_len).
 
 do_put(Bucket, Metric, Time, Value,
        State = #state{tbl = T, ct = CT, io = IO},
@@ -588,3 +583,18 @@ get_lifetime(Bucket, State = #state{lifetimes = Lifetimes}) ->
             Lifetimes1 = btrie:store(Bucket, TTL, Lifetimes),
             {TTL, State#state{lifetimes = Lifetimes1}}
     end.
+
+update_env(State) ->
+    CT = case application:get_env(metric_vnode, cache_points) of
+             {ok, V} ->
+                 V;
+             _ ->
+                 10
+         end,
+    Q = case application:get_env(metric_vnode, max_async_io) of
+            {ok, Qx} ->
+                Qx;
+             _ ->
+                20
+         end,
+    State#state{ct = CT, max_q_len = Q}.

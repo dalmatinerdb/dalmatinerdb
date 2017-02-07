@@ -21,10 +21,11 @@
 
 -type partition() :: chash:index_as_int().
 -type reply_src() :: {partition(), term()}.
--type metric_element() :: {non_neg_integer(), binary()}.
+-type metric_element() :: binary().
 %%-type metric_reply() :: {partition(), metric_element()}.
 
 -record(state, {req_id,
+                compression :: snappy | none,
                 from,
                 entity,
                 op,
@@ -80,15 +81,12 @@ start(VNodeInfo, Op, User) ->
 start(VNodeInfo, Op, User, Val) ->
     ReqID = mk_reqid(),
     dalmatiner_read_fsm_sup:start_read_fsm(
-      [ReqID, VNodeInfo, Op, self(), User, Val]
-     ),
+      [ReqID, VNodeInfo, Op, self(), User, Val]),
     receive
         {ReqID, ok} ->
             ok;
-        {ReqID, ok, {Res, Data}} ->
-            {ok, Res, Data};
-        {ReqID, ok, Res} ->
-            {ok, Res}
+        {ReqID, ok, Result} ->
+            {ok, Result}
     after ?DEFAULT_TIMEOUT ->
             {error, timeout}
     end.
@@ -110,15 +108,19 @@ init([ReqId, {VNode, System}, Op, From, Entity]) ->
 init([ReqId, {VNode, System}, Op, From, Entity, Val]) ->
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, R} = application:get_env(dalmatiner_db, r),
-    SD = #state{req_id=ReqId,
-                r=R,
-                n=N,
-                from=From,
-                op=Op,
-                val=Val,
-                vnode=VNode,
-                system=System,
-                entity=Entity},
+    Compression = application:get_env(dalmatiner_db,
+                                      metric_transport_compression, snappy),
+
+    SD = #state{req_id = ReqId,
+                compression = Compression,
+                r = R,
+                n = N,
+                from = From,
+                op = Op,
+                val = Val,
+                vnode = VNode,
+                system = System,
+                entity = Entity},
     {ok, prepare, SD, 0}.
 
 %% @doc Calculate the Preflist.
@@ -165,11 +167,11 @@ execute(timeout, SD0=#state{req_id=ReqId,
 %% TODO: read repair...or another blog post?
 
 waiting({ok, ReqID, IdxNode, Obj},
-        SD0=#state{from=From, num_r=NumR0, replies=Replies0,
+        SD0=#state{from=From, num_r=NumR0,
                    r=R, n=N, timeout=Timeout}) ->
     NumR = NumR0 + 1,
-    Replies = [{IdxNode, Obj} | Replies0],
-    SD = SD0#state{num_r=NumR, replies=Replies},
+    SD = save_reply(IdxNode, Obj, SD0#state{num_r = NumR}),
+    Replies = SD#state.replies,
     case NumR of
         Min when Min >= R ->
             case merge(SD0, Replies) of
@@ -189,15 +191,15 @@ waiting({ok, ReqID, IdxNode, Obj},
     end.
 
 wait_for_n({ok, _ReqID, IdxNode, Obj},
-           SD0=#state{n=N, num_r=NumR, replies=Replies0}) when NumR == N - 1 ->
-    Replies = [{IdxNode, Obj}|Replies0],
-    {next_state, finalize, SD0#state{num_r=N, replies=Replies}, 0};
+           SD0=#state{n = N, num_r = NumR}) when NumR == N - 1 ->
+    SD1 = save_reply(IdxNode, Obj, SD0),
+    {next_state, finalize, SD1#state{num_r=N}, 0};
 
 wait_for_n({ok, _ReqID, IdxNode, Obj},
-           SD0=#state{num_r=NumR0, replies=Replies0, timeout=Timeout}) ->
+           SD0=#state{num_r=NumR0, timeout=Timeout}) ->
     NumR = NumR0 + 1,
-    Replies = [{IdxNode, Obj}|Replies0],
-    {next_state, wait_for_n, SD0#state{num_r=NumR, replies=Replies}, Timeout};
+    SD1 = save_reply(IdxNode, Obj, SD0),
+    {next_state, wait_for_n, SD1#state{num_r = NumR}, Timeout};
 
 %% TODO partial repair?
 wait_for_n(timeout, SD) ->
@@ -240,6 +242,15 @@ terminate(_Reason, _SN, _SD) ->
 %%%===================================================================
 %%% Internal Functions
 %%%===================================================================
+-spec save_reply(partition(), term(), state()) -> state().
+save_reply(IdxNode, Obj, SD = #state{system = event, replies = Replies0}) ->
+    Replies = [{IdxNode, Obj} | Replies0],
+    SD#state{replies = Replies};
+save_reply(IdxNode, Metrics,
+           SD = #state{system = metric, replies = Replies0}) ->
+    Replies = [{IdxNode, decompress(Metrics, SD)} | Replies0],
+    SD#state{replies = Replies}.
+
 -spec merge(state(), [E]) -> E.
 merge(#state{system = event}, Events) ->
     merge_events(Events);
@@ -282,40 +293,28 @@ repair_events(Bucket, Merged, [{IdxNode, Es} | R]) ->
 
 -spec merge_metrics([reply_src()]) -> metric_element() | not_found.
 merge_metrics(Replies) ->
-    case [Data || {_, {_, Data}} <- Replies, is_binary(Data)] of
+    case [Data || {_IdxNode, Data} <- Replies, is_binary(Data)] of
         [] ->
             not_found;
-        Ds ->
-            Ress = [Resolution || {_, {Resolution, _}} <- Replies],
-            merge_(Ds, Ress)
+        [DH | DT] ->
+            lists:foldl(fun mmath_bin:merge/2, DH, DT)
     end.
 
-merge_([DH | DT], [R | _] = Ress) ->
-    case lists:any(different(R), Ress) of
-        true ->
-            lager:error("[merge] Resolution mismatch: ~p /= ~p",
-                        [R, Ress]),
-            not_found;
-        false ->
-            Res = lists:foldl(fun merge_compressed/2, decompress(DH), DT),
-            {R, Res}
-    end.
-
--dialyzer({nowarn_function, merge_compressed/2}).
-merge_compressed(Acc, New) ->
-    mmath_bin:merge(Acc, decompress(New)).
 
 %% Snappy :(
--dialyzer({nowarn_function, decompress/1}).
--spec decompress(binary()) -> binary().
-decompress(D) ->
+-dialyzer({nowarn_function, decompress/2}).
+-spec decompress(binary(), state()) -> binary().
+decompress(D, #state{compression = snappy}) ->
     case snappy:is_valid(D) of
         true ->
             {ok, Res} = snappy:decompress(D),
             Res;
         _ ->
             D
-    end.
+    end;
+decompress(D, #state{compression = none}) ->
+    D.
+
 %% @pure
 %%
 %% @doc Reconcile conflicts among conflicting values.
@@ -329,7 +328,7 @@ reconcile(Vals) ->
 %% @doc Given the merged object `MObj' and a list of `Replies'
 %% determine if repair is needed.
 needs_repair(MObj, Replies) ->
-    Objs = [Obj || {_, Obj} <- Replies],
+    Objs = [Obj || {_IdxNode, Obj} <- Replies],
     lists:any(different(MObj), Objs).
 
 %% @pure
@@ -345,13 +344,13 @@ different(A) -> fun(B) -> A =/= B end.
 repair(_, _, _, []) -> ok;
 repair(_, _, not_found, _) -> ok;
 repair(_, _, Events, _) when is_list(Events) -> ok;
-repair(Time, {Bkt, {Met, _}} = MetAndTime, {_, Data} = MObj, [{IdxNode, Obj}|T])
+repair(Time, {Bkt, {Met, _}} = MetAndTime, MObj, [{IdxNode, Obj}|T])
   when not is_list(Obj)->
     case MObj == Obj of
         true ->
             repair(Time, MetAndTime, MObj, T);
         false ->
-            metric_vnode:repair(IdxNode, {Bkt, Met}, {Time, Data}),
+            metric_vnode:repair(IdxNode, {Bkt, Met}, {Time, MObj}),
             repair(Time, MetAndTime, MObj, T)
     end.
 
