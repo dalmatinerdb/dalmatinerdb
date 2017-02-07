@@ -13,10 +13,10 @@
 -include_lib("mmath/include/mmath.hrl").
 
 %% API
--export([start_link/1, count/1, get_bitmap/6,
+-export([start_link/1, count/1, get_bitmap/6, update_env/1,
          empty/1, fold/3, delete/1, delete/2, delete/3, close/1,
          buckets/1, metrics/2, metrics/3,
-         read/7, read_rest/8, write/5, write/6]).
+         read/7, read_rest/8, write/6]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -24,12 +24,11 @@
 
 -define(SERVER, ?MODULE).
 -define(WEEK, 604800). %% Seconds in a week.
--define(MAX_Q_LEN, 20).
 
 -type entry() :: {non_neg_integer(), pos_integer(), mstore:mstore()}.
 
 -record(state, {
-          compression :: snappy | none,
+          compression :: snappy | none | undefined,
           partition,
           node,
           mstores = gb_trees:empty() :: gb_trees:tree(binary(), entry()),
@@ -55,9 +54,6 @@
 start_link(Partition) ->
     gen_server:start_link(?MODULE, [Partition], []).
 
-write(Pid, Bucket, Metric, Time, Value) ->
-    write(Pid, Bucket, Metric, Time, Value, ?MAX_Q_LEN).
-
 write(Pid, Bucket, Metric, Time, Value, MaxLen) ->
     case erlang:process_info(Pid, message_queue_len) of
         {message_queue_len, N} when N > MaxLen ->
@@ -65,6 +61,9 @@ write(Pid, Bucket, Metric, Time, Value, MaxLen) ->
         _ ->
             gen_server:cast(Pid, {write, Bucket, Metric, Time, Value})
     end.
+
+update_env(Pid) ->
+    gen_server:cast(Pid, update_env).
 
 swrite(Pid, Bucket, Metric, Time, Value) ->
     gen_server:call(Pid, {write, Bucket, Metric, Time, Value}).
@@ -126,27 +125,16 @@ delete(Pid, Bucket, Before) ->
 %%--------------------------------------------------------------------
 init([Partition]) ->
     process_flag(trap_exit, true),
-    Compression = application:get_env(dalmatiner_db,
-                                      metric_transport_compression, snappy),
     DataDir = case application:get_env(riak_core, platform_data_dir) of
                   {ok, DD} ->
                       DD;
                   _ ->
                       "data"
               end,
-    FoldSize = case application:get_env(metric_vnode, handoff_chunk) of
-                   {ok, FS} ->
-                       FS;
-                   _ ->
-                       10*1024
-               end,
     PartitionDir = filename:join([DataDir,  integer_to_list(Partition)]),
-    {ok, #state{ partition = Partition,
-                 compression = Compression,
-                 node = node(),
-                 dir = PartitionDir,
-                 fold_size = FoldSize
-               }}.
+    {ok, do_update_env(#state{partition = Partition,
+                              node = node(),
+                              dir = PartitionDir})}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -426,6 +414,13 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+maybe_async_read(Bucket, Metric, Time, Count, ReqID, Sender,
+                 State = #state{node = N, partition = P}) ->
+    {D, State1} = do_read(Bucket, Metric, Time, Count, State),
+    Dc = compress(D, State),
+    riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
+    State1.
+
 handle_cast({write, Bucket, Metric, Time, Value}, State) ->
     State1 = do_write(Bucket, Metric, Time, Value, State),
     {noreply, State1};
@@ -435,33 +430,32 @@ handle_cast({get_bitmap, Bucket, Metric, Time, Ref, Sender}, State) ->
     Sender ! {reply, Ref, D},
     {noreply, State1};
 handle_cast({read, Bucket, Metric, Time, Count, ReqID, Sender},
-            State = #state{node = N, partition = P}) ->
-    {{Res, D}, State1} = do_read(Bucket, Metric, Time, Count, State),
-    Dc = compress(D, State),
-    riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, {Res, Dc}}),
+            State) ->
+    State1 = maybe_async_read(Bucket, Metric, Time, Count, ReqID,
+                              Sender, State),
     {noreply, State1};
 
 handle_cast({read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender},
             State = #state{node = N, partition = P}) ->
-    {{ResR, Data}, State1} =
+    {Data, State1} =
         case Part of
             {Offset, Len, Bin} when Offset =:= 0 ->
-                {{Res, D}, S} =
+                {D, S} =
                     do_read(Bucket, Metric, Time + Len, Count - Len, State),
-                {{Res, <<Bin/binary, D/binary>>}, S};
+                {<<Bin/binary, D/binary>>, S};
             {Offset, Len, Bin} when Offset + Len =:= Count ->
-                {{Res, D}, S} =
+                {D, S} =
                     do_read(Bucket, Metric, Time, Count - Len, State),
-                {{Res, <<D/binary, Bin/binary>>}, S};
+                {<<D/binary, Bin/binary>>, S};
             {Offset, Len, Bin} ->
-                {{Res, D}, S} = do_read(Bucket, Metric, Time, Count, State),
+                {D, S} = do_read(Bucket, Metric, Time, Count, State),
                 D1 = binary_part(D, 0, Offset * ?DATA_SIZE),
                 D2 = binary_part(D, Count * ?DATA_SIZE,
                                  (Offset + Len - Count) * ?DATA_SIZE),
-                {{Res, <<D1/binary, Bin/binary, D2/binary>>}, S}
+                {<<D1/binary, Bin/binary, D2/binary>>, S}
         end,
     Dc = compress(Data, State),
-    riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, {ResR, Dc}}),
+    riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
     {noreply, State1};
 
 handle_cast(_Msg, State) ->
@@ -517,6 +511,21 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+-spec do_update_env(state()) -> state().
+
+do_update_env(State) ->
+    Compression = application:get_env(dalmatiner_db,
+                                      metric_transport_compression, snappy),
+    FoldSize = case application:get_env(metric_vnode, handoff_chunk) of
+                   {ok, FS} ->
+                       FS;
+                   _ ->
+                       10*1024
+               end,
+    State#state{
+      compression = Compression,
+      fold_size = FoldSize
+     }.
 
 -spec bucket_dir(binary(), non_neg_integer()) -> string().
 
@@ -619,17 +628,16 @@ do_read_bitmap(Bucket, Metric, Time, State) ->
             {{error, not_found}, State}
     end.
 -spec do_read(binary(), binary(), non_neg_integer(), pos_integer(), state()) ->
-                      {{pos_integer(), bitstring()}, state()}.
+                      {bitstring(), state()}.
 do_read(Bucket, Metric, Time, Count, State = #state{})
   when is_binary(Bucket), is_binary(Metric), is_integer(Count) ->
     case get_set(Bucket, State) of
-        {ok, {{_LastWritten, Resolution, MSet}, S2}} ->
+        {ok, {{_LastWritten, _Resolution, MSet}, S2}} ->
             {ok, Data} = mstore:get(MSet, Metric, Time, Count),
-            {{Resolution, Data}, S2};
+            {Data, S2};
         _ ->
             lager:warning("[IO] Unknown metric: ~p/~p", [Bucket, Metric]),
-            Resolution = dalmatiner_opt:resolution(Bucket),
-            {{Resolution, mmath_bin:empty(Count)}, State}
+            {mmath_bin:empty(Count), State}
     end.
 
 list_buckets(#state{dir = PartitionDir}) ->
