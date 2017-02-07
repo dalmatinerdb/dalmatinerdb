@@ -496,16 +496,11 @@ code_change(_OldVsn, State, _Extra) ->
 do_update_env(State) ->
     Compression = application:get_env(dalmatiner_db,
                                       metric_transport_compression, snappy),
-    AsyncRead = application:get_env(dalmatiner_db,
+    AsyncRead = application:get_env(metric_vnode,
                                     async_read, false),
-    AsyncMinSize = application:get_env(dalmatiner_db,
-                                       async_min_Size, 4069),
-    FoldSize = case application:get_env(metric_vnode, handoff_chunk) of
-                   {ok, FS} ->
-                       FS;
-                   _ ->
-                       10*1024
-               end,
+    AsyncMinSize = application:get_env(metric_vnode,
+                                       async_min_size, 1000),
+    FoldSize = application:get_env(metric_vnode, handoff_chunk, 10*1024),
     State#state{
       async_min_size = AsyncMinSize,
       compression = Compression,

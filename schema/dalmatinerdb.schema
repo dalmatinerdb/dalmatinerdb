@@ -138,6 +138,24 @@
 %% and the reading node.
 {mapping, "metrics.transport_compression",
  "dalmatiner_db.metric_transport_compression",
- [{default, snappy},
-  {enum, [snappy, none]
-  }.
+ [{default, "snappy"},
+  {enum, [snappy, none]}]}.
+
+%% @doc Number of asyncronous IO requests that won't block the vnode.
+%% A highter number reduces blockage but can lead to piling up of requests.
+{mapping, "io.max_async", "metric_vnode.max_async_io",
+ [{datatype, integer},
+  {default, 20}]}.
+
+%% @doc Async reads are performed out of band of writes, this way
+%% larger reads can be performed without blocking other actions.
+{mapping, "io.async_reads", "metric_vnode.async_read",
+ [{default, off},
+  {datatype, flag}]}.
+
+%% @doc Minimal size of read requests to be considered for asyncronous
+%% reads, this has no effect when async_reads is set to off
+{mapping, "io.async_reads.min_size", "metric_vnode.async_min_size",
+ [{datatype, integer},
+  {default, 1000}]}.
+
