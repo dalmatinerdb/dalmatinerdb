@@ -250,8 +250,7 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
             %% How many bytes can we skip?
             SkipBytes = (Time - Start) * ?DATA_SIZE,
             Data = k6_bytea:get(Array, SkipBytes, (Count * ?DATA_SIZE)),
-            {Resolution, State1} = get_resolution(Bucket, State),
-            {reply, {ok, ReqID, {P, N}, {Resolution, Data}}, State1};
+            {reply, {ok, ReqID, {P, N}, Data}, State};
         %% The request is neither before, after nor entirely inside the cache
         %% we have to read data, but apply cached part on top of it.
         [{BM, Start, Size, _Time, Array}]
