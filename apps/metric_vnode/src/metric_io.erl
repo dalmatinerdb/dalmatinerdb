@@ -301,13 +301,13 @@ handle_call(empty, _From, State) ->
 
 handle_call(delete, _From, State = #state{dir = PartitionDir}) ->
     lager:warning("[metric] deleting io node: ~s.", [PartitionDir]),
-    gb_trees:map(fun(Bucket, {_, _, MSet}) ->
+    gb_trees:map(fun(Bucket, {_, MSet}) ->
                          lager:warning("[metric] deleting bucket: ~s.",
                                        [Bucket]),
                          mstore:delete(MSet),
                          file:del_dir(filename:join([PartitionDir, Bucket]))
                  end, State#state.mstores),
-    gb_trees:map(fun(Bucket, {_, _, MSet}) ->
+    gb_trees:map(fun(Bucket, {_, MSet}) ->
                          lager:warning("[metric] deleting bucket: ~s.",
                                        [Bucket]),
                          mstore:delete(MSet),
@@ -333,7 +333,7 @@ handle_call(delete, _From, State = #state{dir = PartitionDir}) ->
                             closed_mstores = gb_trees:empty()}};
 
 handle_call(close, _From, State) ->
-    gb_trees:map(fun(_, {_, _, MSet}) ->
+    gb_trees:map(fun(_, {_, MSet}) ->
                          mstore:close(MSet)
                  end, State#state.mstores),
     State1 = State#state{mstores = gb_trees:empty(),
