@@ -104,7 +104,7 @@ loop(Socket, Transport, State) ->
 do_send(Socket, Transport, B, M, T, C) ->
     PPF = dalmatiner_opt:ppf(B),
     [{T0, C0} | Splits] = mstore:make_splits(T, C, PPF),
-    {ok, _Resolution, Points} = metric:get(B, M, PPF, T0, C0),
+    {ok, Points} = metric:get(B, M, PPF, T0, C0),
     %% Set the socket to no package control so we can do that ourselfs.
     %% TODO: make this math for configureable length
     %% 8 (resolution + points)
@@ -117,7 +117,7 @@ send_parts(Socket, Transport, _PPF, _B, _M, []) ->
     Transport:send(Socket, <<0>>);
 
 send_parts(Socket, Transport, PPF, B, M, [{T, C} | Splits]) ->
-    {ok, _Resolution, Points} = metric:get(B, M, PPF, T, C),
+    {ok, Points} = metric:get(B, M, PPF, T, C),
     send_part(Socket, Transport, C, Points),
     send_parts(Socket, Transport, PPF, B, M, Splits).
 

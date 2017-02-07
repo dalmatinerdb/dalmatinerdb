@@ -8,10 +8,11 @@
          delete/1,
          list/1,
          list/2,
-         update_ttl/2
+         update_ttl/2,
+         update_env/0
         ]).
 
--ignore_xref([update_ttl/2, get/4, put/4]).
+-ignore_xref([update_ttl/2, get/4, put/4, update_env/0]).
 
 
 mput(Nodes, Acc, W) ->
@@ -50,6 +51,9 @@ get(Bucket, Metric, PPF, Time, Count) when
 update_ttl(Bucket, TTL) ->
     dalmatiner_opt:set_lifetime(Bucket, TTL),
     metric_coverage:start({update_ttl, Bucket}).
+
+update_env() ->
+    metric_coverage:start(update_env).
 
 list(Bucket) ->
     folsom_metrics:histogram_timed_update(

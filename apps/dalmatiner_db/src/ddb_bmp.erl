@@ -24,7 +24,7 @@ repair([TimeS, BucketS | MetricS]) ->
     Metric = dproto:metric_from_list(MetricL),
     PPF = dalmatiner_opt:ppf(Bucket),
     Base = Time div PPF,
-    {ok, _, M} = metric:get(Bucket, Metric, PPF, Base*PPF, PPF),
+    {ok, M} = metric:get(Bucket, Metric, PPF, Base*PPF, PPF),
     io:format("Read ~p datapoints.~n", [mmath_bin:length(M)]).
 
 
