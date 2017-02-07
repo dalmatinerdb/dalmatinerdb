@@ -396,7 +396,7 @@ handle_coverage({update_ttl, Bucket}, _KeySpaces, _Sender,
 handle_coverage(update_env, _KeySpaces, _Sender,
                 State = #state{partition=P, node=N, io = IO}) ->
     metric_io:update_env(IO),
-    Reply = {ok, undefined, {P, N}, []},
+    Reply = {ok, undefined, {P, N}, btrie:new()},
     {reply, Reply, update_env(State)};
 
 handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
