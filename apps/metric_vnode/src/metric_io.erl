@@ -28,6 +28,8 @@
 -type entry() :: {non_neg_integer(), mstore:mstore()}.
 
 -record(state, {
+          async_read = false :: boolean(),
+          async_min_size = 4069 :: non_neg_integer(),
           compression :: snappy | none | undefined,
           partition,
           node,
@@ -414,12 +416,7 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-maybe_async_read(Bucket, Metric, Time, Count, ReqID, Sender,
-                 State = #state{node = N, partition = P}) ->
-    {D, State1} = do_read(Bucket, Metric, Time, Count, State),
-    Dc = compress(D, State),
-    riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
-    State1.
+
 
 handle_cast({write, Bucket, Metric, Time, Value}, State) ->
     State1 = do_write(Bucket, Metric, Time, Value, State),
@@ -430,33 +427,15 @@ handle_cast({get_bitmap, Bucket, Metric, Time, Ref, Sender}, State) ->
     Sender ! {reply, Ref, D},
     {noreply, State1};
 
-handle_cast({read, Bucket, Metric, Time, Count, ReqID, Sender},
-            State) ->
+handle_cast({read, Bucket, Metric, Time, Count, ReqID, Sender}, State) ->
     State1 = maybe_async_read(Bucket, Metric, Time, Count, ReqID,
                               Sender, State),
     {noreply, State1};
 
 handle_cast({read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender},
-            State = #state{node = N, partition = P}) ->
-    {Data, State1} =
-        case Part of
-            {Offset, Len, Bin} when Offset =:= 0 ->
-                {D, S} =
-                    do_read(Bucket, Metric, Time + Len, Count - Len, State),
-                {<<Bin/binary, D/binary>>, S};
-            {Offset, Len, Bin} when Offset + Len =:= Count ->
-                {D, S} =
-                    do_read(Bucket, Metric, Time, Count - Len, State),
-                {<<D/binary, Bin/binary>>, S};
-            {Offset, Len, Bin} ->
-                {D, S} = do_read(Bucket, Metric, Time, Count, State),
-                D1 = binary_part(D, 0, Offset * ?DATA_SIZE),
-                D2 = binary_part(D, Count * ?DATA_SIZE,
-                                 (Offset + Len - Count) * ?DATA_SIZE),
-                {<<D1/binary, Bin/binary, D2/binary>>, S}
-        end,
-    Dc = compress(Data, State),
-    riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
+            State) ->
+    State1 = maybe_async_read_rest(Bucket, Metric, Time, Count, Part, ReqID,
+                                   Sender, State),
     {noreply, State1};
 
 handle_cast(_Msg, State) ->
@@ -517,6 +496,10 @@ code_change(_OldVsn, State, _Extra) ->
 do_update_env(State) ->
     Compression = application:get_env(dalmatiner_db,
                                       metric_transport_compression, snappy),
+    AsyncRead = application:get_env(dalmatiner_db,
+                                    async_read, false),
+    AsyncMinSize = application:get_env(dalmatiner_db,
+                                       async_min_Size, 4069),
     FoldSize = case application:get_env(metric_vnode, handoff_chunk) of
                    {ok, FS} ->
                        FS;
@@ -524,8 +507,10 @@ do_update_env(State) ->
                        10*1024
                end,
     State#state{
+      async_min_size = AsyncMinSize,
       compression = Compression,
-      fold_size = FoldSize
+      fold_size = FoldSize,
+      async_read = AsyncRead
      }.
 
 -spec bucket_dir(binary(), non_neg_integer()) -> string().
@@ -648,3 +633,103 @@ compress(Data, #state{compression = snappy}) ->
     Dc;
 compress(Data, #state{compression = none}) ->
     Data.
+
+%% We only read asyncronously when:
+%% 1) read_async is enabled
+%% 2) we read at least async_min_size entries
+%%
+%% async_min_size is meant to prevent many tiny reads to create a
+%% insane ammount of processes where it becomes more exensive
+%% to create and tear down then it is to do the reads themselfs.
+maybe_async_read(Bucket, Metric, Time, Count, ReqID, Sender,
+                 State = #state{node = N, partition = P, async_read = true,
+                                async_min_size = MinSize})
+  when Count >= MinSize->
+    case get_set(Bucket, State) of
+        {ok, {{_LastWritten, MSet}, State1}} ->
+            MSetc = mstore:clone(MSet),
+            spawn(
+              fun() ->
+                      {ok, Data} = mstore:get(MSetc, Metric, Time, Count),
+                      mstore:close(MSetc),
+                      Dc = compress(Data, State),
+                      riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc})
+              end),
+            State1;
+        _ ->
+            lager:warning("[IO] Unknown metric: ~p/~p", [Bucket, Metric]),
+            D = mmath_bin:empty(Count),
+            Dc = compress(D, State),
+            riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
+            State
+    end;
+
+maybe_async_read(Bucket, Metric, Time, Count, ReqID, Sender,
+                 State = #state{node = N, partition = P}) ->
+    {D, State1} = do_read(Bucket, Metric, Time, Count, State),
+    Dc = compress(D, State),
+    riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
+    State1.
+
+maybe_async_read_rest(Bucket, Metric, Time, Count, Part, ReqID, Sender,
+                      State = #state{node = N, partition = P, async_read = true,
+                                     async_min_size = MinSize})
+  when Count >= MinSize ->
+    {ReadTime, ReadCount, MergeFn} = read_rest_prepare_part(Time, Count, Part),
+    case get_set(Bucket, State) of
+        {ok, {{_LastWritten, MSet}, State1}} ->
+            MSetc = mstore:clone(MSet),
+            spawn(
+              fun() ->
+                      {ok, D} = mstore:get(MSetc, Metric, ReadTime, ReadCount),
+                      mstore:close(MSetc),
+                      Data = MergeFn(D),
+                      Dc = compress(Data, State1),
+                      riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc})
+              end),
+            State1;
+        _ ->
+            D = mmath_bin:empty(Count),
+            Data = MergeFn(D),
+            Dc = compress(Data, State),
+            riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
+            State
+    end;
+
+maybe_async_read_rest(Bucket, Metric, Time, Count, Part, ReqID, Sender,
+                      State = #state{node = N, partition = P}) ->
+    {ReadTime, ReadCount, MergeFn} = read_rest_prepare_part(Time, Count, Part),
+    {D, State1} = do_read(Bucket, Metric, ReadTime, ReadCount, State),
+    Data = MergeFn(D),
+    Dc = compress(Data, State),
+    riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
+    State1.
+
+read_rest_prepare_part(Time, Count, Part) ->
+    case Part of
+        {Offset, Len, Bin} when Offset =:= 0 ->
+            ReadTime = Time + Len,
+            ReadCount = Count - Len,
+            MergeFn = fun(ReadData) ->
+                              <<Bin/binary, ReadData/binary>>
+                      end,
+            {ReadTime, ReadCount, MergeFn};
+        {Offset, Len, Bin} when Offset + Len =:= Count ->
+            ReadTime = Time,
+            ReadCount = Count - Len,
+            MergeFn = fun(ReadData) ->
+                              <<ReadData/binary, Bin/binary>>
+                      end,
+            {ReadTime, ReadCount, MergeFn};
+        {Offset, Len, Bin} ->
+            ReadTime = Time,
+                ReadCount = Count,
+            MergeFn = fun(ReadData) ->
+                              S = ?DATA_SIZE,
+                              D1 = binary_part(ReadData, 0, Offset * S),
+                              D2 = binary_part(ReadData, Count * S,
+                                               (Offset + Len - Count) * S),
+                              <<D1/binary, Bin/binary, D2/binary>>
+                      end,
+            {ReadTime, ReadCount, MergeFn}
+    end.
