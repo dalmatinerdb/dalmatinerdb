@@ -86,7 +86,7 @@ start(VNodeInfo, Op, User, Val) ->
         {ReqID, ok} ->
             ok;
         {ReqID, ok, Result} ->
-            {ok, 0, Result}
+            {ok, Result}
     after ?DEFAULT_TIMEOUT ->
             {error, timeout}
     end.
