@@ -21,6 +21,8 @@
          encode_handoff_item/2,
          handle_coverage/4,
          handle_info/2,
+         handle_overload_command/3,
+         handle_overload_info/2,
          handle_exit/3]).
 
 -export([mput/3, put/5, get/4]).
@@ -32,7 +34,9 @@
               get/4,
               repair/4,
               handle_info/2,
-              repair/3
+              repair/3,
+              handle_overload_command/3,
+              handle_overload_info/2
              ]).
 
 -record(state, {
@@ -599,3 +603,9 @@ update_env(State) ->
                 20
          end,
     State#state{ct = CT, max_q_len = Q}.
+
+handle_overload_command(_Req, Sender, Idx) ->
+    riak_core_vnode:reply(Sender, {fail, Idx, overload}).
+
+handle_overload_info(_, _Idx) ->
+    ok.
