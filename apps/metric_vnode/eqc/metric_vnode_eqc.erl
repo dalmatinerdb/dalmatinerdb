@@ -78,15 +78,23 @@ get(S, T, C) ->
         {noreply, _S1} ->
             receive
                 {ReqID, {ok, ReqID, {_Partition, ReplyNode}, D}} ->
-                    D
+                    decompress(D)
             after
                 1000 ->
                     timeout
             end;
         {reply, {ok, _, {_Partition, ReplyNode}, Reply}, _S1} ->
-            Reply
+            decompress(Reply)
     end.
 
+decompress(D) ->
+    case snappy:is_valid(D) of
+        true ->
+            {ok, D1} = snappy:decompress(D),
+            D1;
+        false ->
+            D
+    end.
 vnode() ->
     ?SIZED(Size, vnode(Size)).
 
@@ -121,7 +129,7 @@ prop_gb_comp() ->
                    {S, T} = eval(D),
                    List = gb_trees:to_list(T),
                    List1 = [{get(S, Time, 1), V} || {Time, V} <- List],
-                   List2 = [{unlist(Vs), Vt} || {{_ , Vs}, Vt} <- List1],
+                   List2 = [{unlist(Vs), Vt} || {Vs, Vt} <- List1],
                    List3 = [true || {_V, _V} <- List2],
                    Len = length(List),
                    metric_vnode:terminate(normal, S),
@@ -188,7 +196,7 @@ prop_handoff() ->
                    List = gb_trees:to_list(T),
 
                    List1 = [{get(S, Time, 1), V} || {Time, V} <- List],
-                   List2 = [{unlist(Vs), Vt} || {{_ , Vs}, Vt} <- List1],
+                   List2 = [{unlist(Vs), Vt} || {Vs, Vt} <- List1],
                    List3 = [true || {_V, _V} <- List2],
 
                    Fun = fun(K, V, A) ->
@@ -207,7 +215,7 @@ prop_handoff() ->
                                     end, C, L1),
 
                    List4 = [{get(C1, Time, 1), V} || {Time, V} <- List],
-                   List5 = [{unlist(Vs), Vt} || {{_ , Vs}, Vt} <- List1],
+                   List5 = [{unlist(Vs), Vt} || {Vs, Vt} <- List1],
                    List6 = [true || {_V, _V} <- List2],
 
                    {async, {fold, AsyncHc, _}, _, C2} =
@@ -229,9 +237,15 @@ prop_handoff() ->
                    metric_vnode:terminate(normal, S1),
                    metric_vnode:terminate(normal, C2),
 
-                   ?WHENFAIL(io:format(user, "L: ~p /= ~p~n"
-                                       "M: ~p /= ~p~n",
-                                       [Lc1, L1, MsC, Ms]),
+                   ?WHENFAIL(begin
+                                 io:format(user, "L: ~p /= ~p~n"
+                                           "M: ~p /= ~p~n",
+                                           [Lc1, L1, MsC, Ms]),
+                                 io:format(user, "Lists: ~p~n",
+                                           [[List,
+                                             List1, List2, List3,
+                                             List4, List5, List6]])
+                             end,
                              Lc1 == L1 andalso
                              fetch_keys(MsC) == fetch_keys(Ms) andalso
                              length(List1) == Len andalso
@@ -271,10 +285,15 @@ setup() ->
     meck:expect(dalmatiner_opt, lifetime, fun(_) -> infinity end),
     meck:new(dalmatiner_vacuum, [passthrough]),
     meck:expect(dalmatiner_vacuum, register, fun() ->ok end),
+    meck:new(folsom_metrics),
+    meck:expect(folsom_metrics, notify, fun(_) -> ok end),
+    meck:expect(folsom_metrics, histogram_timed_update,
+                fun(_, Mod, Fn, Args) -> apply(Mod, Fn, Args) end),
     ok.
 
 cleanup() ->
     meck:unload(riak_core_metadata),
     meck:unload(dalmatiner_opt),
     meck:unload(dalmatiner_vacuum),
+    meck:unload(folsom_metrics),
     ok.
