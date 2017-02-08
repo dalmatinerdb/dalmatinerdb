@@ -438,6 +438,9 @@ handle_cast({read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender},
                                    Sender, State),
     {noreply, State1};
 
+handle_cast(update_env, State) ->
+    {noreply, do_update_env(State)};
+
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -663,7 +666,6 @@ maybe_async_read(Bucket, Metric, Time, Count, ReqID, Sender,
             riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
             State
     end;
-
 maybe_async_read(Bucket, Metric, Time, Count, ReqID, Sender,
                  State = #state{node = N, partition = P}) ->
     {D, State1} = do_read(Bucket, Metric, Time, Count, State),
