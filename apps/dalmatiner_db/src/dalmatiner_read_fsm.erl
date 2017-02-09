@@ -32,7 +32,8 @@
                 r,
                 n,
                 preflist,
-                num_r=0,
+                num_r = 0,
+                overloaded = 0,
                 size,
                 timeout=?DEFAULT_TIMEOUT,
                 val,
@@ -166,29 +167,48 @@ execute(timeout, SD0=#state{req_id=ReqId,
 %% reply
 %% TODO: read repair...or another blog post?
 
-waiting({ok, ReqID, IdxNode, Obj},
-        SD0=#state{from=From, num_r=NumR0,
-                   r=R, n=N, timeout=Timeout}) ->
-    NumR = NumR0 + 1,
-    SD = save_reply(IdxNode, Obj, SD0#state{num_r = NumR}),
-    Replies = SD#state.replies,
-    case NumR of
-        Min when Min >= R ->
-            case merge(SD0, Replies) of
-                not_found ->
-                    From ! {ReqID, ok, not_found};
-                Merged ->
-                    From ! {ReqID, ok, Merged}
-            end,
-            case NumR of
-                N ->
-                    {next_state, finalize, SD, 0};
-                _ ->
-                    {next_state, wait_for_n, SD, Timeout}
-            end;
-        _ ->
-            {next_state, waiting, SD}
+is_done(#state{num_r = NumR, overloaded = O, n = N})
+  when NumR + O == N ->
+    finished;
+is_done(#state{num_r = NumR, r = R})
+  when NumR >= R ->
+    waiting;
+is_done(_) ->
+    false.
+
+reply(SD = #state{from = From, replies = Replies, req_id=ReqID}) ->
+    case merge(SD, Replies) of
+        not_found ->
+            From ! {ReqID, ok, not_found};
+        Merged ->
+            From ! {ReqID, ok, Merged}
     end.
+
+check_waiting(SD = #state{timeout = Timeout}) ->
+    case is_done(SD) of
+        false ->
+            {next_state, waiting, SD};
+        finished ->
+            reply(SD),
+            {next_state, finalize, SD, 0};
+        waiting ->
+            reply(SD),
+            {next_state, wait_for_n, SD, Timeout}
+    end.
+
+waiting({fail, _ReqID, _Idx, overload},
+        SD = #state{overloaded = O}) ->
+    check_waiting(SD#state{overloaded = O + 1});
+
+waiting({ok, _ReqID, IdxNode, Obj},
+        SD0 = #state{num_r=NumR0}) ->
+    SD1 = save_reply(IdxNode, Obj, SD0#state{num_r = NumR0 + 1}),
+    check_waiting(SD1).
+
+wait_for_n({fail, _ReqID, _Idx, overload}, SD) ->
+    %% If we have a overload situation we simply won't repair
+    %% this prevents escalating the overload
+    {stop, normal, SD};
 
 wait_for_n({ok, _ReqID, IdxNode, Obj},
            SD0=#state{n = N, num_r = NumR}) when NumR == N - 1 ->

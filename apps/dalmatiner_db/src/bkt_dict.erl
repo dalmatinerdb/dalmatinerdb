@@ -27,9 +27,9 @@ add(Metric, Time, Points, BD = #bkt_dict{ppf = PPF}) ->
 
 -spec flush(bkt_dict()) ->
                  bkt_dict().
-flush(BD = #bkt_dict{dict = Dict, w = W}) ->
+flush(BD = #bkt_dict{dict = Dict, w = W, n = N}) ->
     BD1 = #bkt_dict{nodes = Nodes} = update_chash(BD),
-    metric:mput(Nodes, Dict, W),
+    metric:mput(Nodes, Dict, W, N),
     BD1#bkt_dict{dict = dict:new()}.
 
 

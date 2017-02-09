@@ -106,8 +106,6 @@ get(Preflist, ReqID, {Bucket, Metric}, {Time, Count}) ->
                                    {get, ReqID, Bucket, Metric, {Time, Count}},
                                    {fsm, undefined, self()},
                                    ?MASTER).
-
-
 init([Partition]) ->
     ok = dalmatiner_vacuum:register(),
     process_flag(trap_exit, true),
@@ -599,6 +597,20 @@ update_env(State) ->
          end,
     State#state{ct = CT, max_q_len = Q}.
 
+
+%% Handling a get request overload
+handle_overload_command({get, ReqID, _Bucket, _Metric, {_Time, _Count}},
+                        Sender, Idx) ->
+    riak_core_vnode:reply(Sender, {fail, ReqID, Idx, overload});
+
+%% Handling write failures
+handle_overload_command({put, _Bucket, _Metric, {_Time, _Value}},
+                        {raw, ReqID, _PID} = Sender, Idx) ->
+    riak_core_vnode:reply(Sender, {fail, ReqID, Idx, overload});
+handle_overload_command(_, {raw, ReqID, _PID} = Sender, Idx) ->
+    riak_core_vnode:reply(Sender, {fail, ReqID, Idx, overload});
+
+%% Handling other failures
 handle_overload_command(_Req, Sender, Idx) ->
     riak_core_vnode:reply(Sender, {fail, Idx, overload}).
 
