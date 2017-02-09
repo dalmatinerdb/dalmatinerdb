@@ -270,13 +270,15 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
             Offset = PartStart - Time,
             Part = {Offset, PartCount, Bin},
             metric_io:read_rest(
-              IO, Bucket, Metric, Time, Count, Part, ReqID, Sender),
+              IO, Bucket, Metric, Time, Count, Part, ReqID, Sender,
+              State#state.max_q_len),
             {noreply, State};
         %% If we are here we know that there is either no cahce or the requested
         %% window and the cache do not overlap, so we can simply serve it from
         %% the io servers
         _ ->
-            metric_io:read(IO, Bucket, Metric, Time, Count, ReqID, Sender),
+            metric_io:read(IO, Bucket, Metric, Time, Count, ReqID, Sender,
+                           State#state.max_q_len),
             {noreply, State}
     end.
 
