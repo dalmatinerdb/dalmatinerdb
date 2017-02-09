@@ -438,6 +438,9 @@ handle_cast({read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender},
                                    Sender, State),
     {noreply, State1};
 
+handle_cast(update_env, State) ->
+    {noreply, do_update_env(State)};
+
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -591,7 +594,9 @@ calc_empty(I) ->
                       state().
 do_write(Bucket, Metric, Time, Value, State) ->
     {{_, MSet}, State1} = get_or_create_set(Bucket, State),
-    MSet1 = mstore:put(MSet, Metric, Time, Value),
+    MSet1 = folsom_metrics:histogram_timed_update(
+              {mstore, write},
+              mstore, put, [MSet, Metric, Time, Value]),
     LastWritten = erlang:system_time(),
     Store1 = gb_trees:enter(Bucket, {LastWritten, MSet1},
                             State1#state.mstores),
@@ -612,7 +617,9 @@ do_read(Bucket, Metric, Time, Count, State = #state{})
   when is_binary(Bucket), is_binary(Metric), is_integer(Count) ->
     case get_set(Bucket, State) of
         {ok, {{_LastWritten, MSet}, S2}} ->
-            {ok, Data} = mstore:get(MSet, Metric, Time, Count),
+            {ok, Data} = folsom_metrics:histogram_timed_update(
+                           {mstore, read},
+                           mstore, get, [MSet, Metric, Time, Count]),
             {Data, S2};
         _ ->
             lager:warning("[IO] Unknown metric: ~p/~p", [Bucket, Metric]),
@@ -644,7 +651,9 @@ maybe_async_read(Bucket, Metric, Time, Count, ReqID, Sender,
             MSetc = mstore:clone(MSet),
             spawn(
               fun() ->
-                      {ok, Data} = mstore:get(MSetc, Metric, Time, Count),
+                      {ok, Data} = folsom_metrics:histogram_timed_update(
+                                     {mstore, read},
+                                     mstore, get, [MSetc, Metric, Time, Count]),
                       mstore:close(MSetc),
                       Dc = compress(Data, State),
                       riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc})
@@ -657,7 +666,6 @@ maybe_async_read(Bucket, Metric, Time, Count, ReqID, Sender,
             riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
             State
     end;
-
 maybe_async_read(Bucket, Metric, Time, Count, ReqID, Sender,
                  State = #state{node = N, partition = P}) ->
     {D, State1} = do_read(Bucket, Metric, Time, Count, State),
@@ -675,7 +683,10 @@ maybe_async_read_rest(Bucket, Metric, Time, Count, Part, ReqID, Sender,
             MSetc = mstore:clone(MSet),
             spawn(
               fun() ->
-                      {ok, D} = mstore:get(MSetc, Metric, ReadTime, ReadCount),
+                      {ok, D} = folsom_metrics:histogram_timed_update(
+                                  {mstore, read},
+                                  mstore, get, [MSetc, Metric, ReadTime,
+                                                ReadCount]),
                       mstore:close(MSetc),
                       Data = MergeFn(D),
                       Dc = compress(Data, State1),

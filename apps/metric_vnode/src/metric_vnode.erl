@@ -21,6 +21,8 @@
          encode_handoff_item/2,
          handle_coverage/4,
          handle_info/2,
+         handle_overload_command/3,
+         handle_overload_info/2,
          handle_exit/3]).
 
 -export([mput/3, put/5, get/4]).
@@ -32,7 +34,9 @@
               get/4,
               repair/4,
               handle_info/2,
-              repair/3
+              repair/3,
+              handle_overload_command/3,
+              handle_overload_info/2
              ]).
 
 -record(state, {
@@ -313,11 +317,12 @@ handoff_finished(_TargetNode, State) ->
 
 -dialyzer({no_return, handle_handoff_data/2}).
 handle_handoff_data(Compressed, State) ->
-    Data = case riak_core_capability:get({ddb, handoff}) of
-               snappy ->
+    Data = case snappy:is_valid(Compressed) of
+               true ->
                    {ok, Decompressed} = snappy:decompress(Compressed),
                    Decompressed;
-               _ ->
+               false ->
+                   io:format(user, "bad compressed: ~p~n", [Compressed]),
                    Compressed
            end,
     {{Bucket, Metric}, ValList} = binary_to_term(Data),
@@ -330,13 +335,8 @@ handle_handoff_data(Compressed, State) ->
 
 -dialyzer({no_return, encode_handoff_item/2}).
 encode_handoff_item(Key, Value) ->
-    case riak_core_capability:get({ddb, handoff}) of
-        snappy ->
-            {ok, R} = snappy:compress(term_to_binary({Key, Value})),
-            R;
-        _ ->
-            term_to_binary({Key, Value})
-    end.
+    {ok, R} = snappy:compress(term_to_binary({Key, Value})),
+    R.
 
 is_empty(State = #state{tbl = T, io=IO}) ->
     case ets:first(T) == '$end_of_table' andalso metric_io:empty(IO) of
@@ -598,3 +598,9 @@ update_env(State) ->
                 20
          end,
     State#state{ct = CT, max_q_len = Q}.
+
+handle_overload_command(_Req, Sender, Idx) ->
+    riak_core_vnode:reply(Sender, {fail, Idx, overload}).
+
+handle_overload_info(_, _Idx) ->
+    ok.

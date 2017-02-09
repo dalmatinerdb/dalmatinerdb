@@ -270,20 +270,8 @@ do_metrics(Prefix, [{N, [{type, meter} | _]} | Spec], Fun, Acc) ->
                       [<<"one_to_fifteen">>], OneToFifteen, Fun, Acc8),
     do_metrics(Prefix, Spec, Fun, Acc9).
 
-add_metric(Prefix, Name, Value, Fun, Acc) when is_integer(Value) ->
-    Fun({[Prefix, metric_name(Name)], Value}, Acc);
-
-add_metric(Prefix, Name, Value, Fun, Acc) when is_float(Value) ->
-    Scale = 1000*1000,
-    add_metric(Prefix, Name, round(Value * Scale), Fun, Acc).
-
-%% -spec add_to_dict([binary() | [binary()]], integer(), integer(),
-%%                   bkt_dict:bkt_dict()) ->
-%%                          bkt_dict:bkt_dict().
-%% add_to_dict(MetricL, Time, Value, Dict) when is_integer(Value) ->
-%%     Metric = dproto:metric_from_list(lists:flatten(MetricL)),
-%%     Data = mmath_bin:from_list([Value]),
-%%     bkt_dict:add(Metric, Time, Data, Dict).
+add_metric(Prefix, Name, Value, Fun, Acc)  ->
+    Fun({[Prefix, metric_name(Name)], Value}, Acc).
 
 %% timestamp() ->
 %%     os:system_time(seconds).
@@ -315,54 +303,52 @@ build_histogram([], _Prefix, _Fun, Acc) ->
     Acc;
 
 build_histogram([{min, V} | H], Prefix, Fun, Acc) ->
-    Acc1 = add_metric(Prefix, <<"min">>, round(V), Fun, Acc),
+    Acc1 = add_metric(Prefix, <<"min">>, V, Fun, Acc),
     build_histogram(H, Prefix, Fun, Acc1);
 
 build_histogram([{max, V} | H], Prefix, Fun, Acc) ->
-    Acc1 = add_metric(Prefix, <<"max">>, round(V), Fun, Acc),
+    Acc1 = add_metric(Prefix, <<"max">>, V, Fun, Acc),
     build_histogram(H, Prefix, Fun, Acc1);
 
 build_histogram([{arithmetic_mean, V} | H], Prefix, Fun, Acc) ->
-    Acc1 = add_metric(Prefix, <<"arithmetic_mean">>, round(V), Fun, Acc),
+    Acc1 = add_metric(Prefix, <<"arithmetic_mean">>, V, Fun, Acc),
     build_histogram(H, Prefix, Fun, Acc1);
 
 build_histogram([{geometric_mean, V} | H], Prefix, Fun, Acc) ->
-    Acc1 = add_metric(Prefix, <<"geometric_mean">>, round(V), Fun, Acc),
+    Acc1 = add_metric(Prefix, <<"geometric_mean">>, V, Fun, Acc),
     build_histogram(H, Prefix, Fun, Acc1);
 
 build_histogram([{harmonic_mean, V} | H], Prefix, Fun, Acc) ->
-    Acc1 = add_metric(Prefix, <<"harmonic_mean">>, round(V), Fun, Acc),
+    Acc1 = add_metric(Prefix, <<"harmonic_mean">>, V, Fun, Acc),
     build_histogram(H, Prefix, Fun, Acc1);
 
 build_histogram([{median, V} | H], Prefix, Fun, Acc) ->
-    Acc1 = add_metric(Prefix, <<"median">>, round(V), Fun, Acc),
+    Acc1 = add_metric(Prefix, <<"median">>, V, Fun, Acc),
     build_histogram(H, Prefix, Fun, Acc1);
 
 build_histogram([{variance, V} | H], Prefix, Fun, Acc) ->
-    Acc1 = add_metric(Prefix, <<"variance">>, round(V), Fun, Acc),
+    Acc1 = add_metric(Prefix, <<"variance">>, V, Fun, Acc),
     build_histogram(H, Prefix, Fun, Acc1);
 
 build_histogram([{standard_deviation, V} | H], Prefix, Fun, Acc) ->
-    Acc1 = add_metric(Prefix, <<"standard_deviation">>, round(V), Fun, Acc),
+    Acc1 = add_metric(Prefix, <<"standard_deviation">>, V, Fun, Acc),
     build_histogram(H, Prefix, Fun, Acc1);
 
 build_histogram([{skewness, V} | H], Prefix, Fun, Acc) ->
-    Acc1 = add_metric(Prefix, <<"skewness">>, round(V), Fun, Acc),
+    Acc1 = add_metric(Prefix, <<"skewness">>, V, Fun, Acc),
     build_histogram(H, Prefix, Fun, Acc1);
 
 build_histogram([{kurtosis, V} | H], Prefix, Fun, Acc) ->
-    Acc1 = add_metric(Prefix, <<"kurtosis">>, round(V), Fun, Acc),
+    Acc1 = add_metric(Prefix, <<"kurtosis">>, V, Fun, Acc),
     build_histogram(H, Prefix, Fun, Acc1);
 
-build_histogram([{percentile,
-                  [{50, P50}, {75, P75}, {95, P95}, {99, P99}, {999, P999}]
-                 } | H], Prefix, Fun, Acc) ->
-    Acc1 = add_metric(Prefix, <<"p50">>, round(P50), Fun, Acc),
-    Acc2 = add_metric(Prefix, <<"p75">>, round(P75), Fun, Acc1),
-    Acc3 = add_metric(Prefix, <<"p95">>, round(P95), Fun, Acc2),
-    Acc4 = add_metric(Prefix, <<"p99">>, round(P99), Fun, Acc3),
-    Acc5 = add_metric(Prefix, <<"p999">>, round(P999), Fun, Acc4),
-    build_histogram(H, Prefix, Fun, Acc5);
+build_histogram([{percentile, Ps} | H], Prefix, Fun, Acc) ->
+    Acc1 = lists:foldl(
+             fun({N, V}, AccIn) ->
+                     P = integer_to_binary(N),
+                     add_metric(Prefix, <<"p", P/binary>>, V, Fun, AccIn)
+             end, Acc, Ps),
+    build_histogram(H, Prefix, Fun, Acc1);
 
 build_histogram([{n, V} | H], Prefix, Fun, Acc) ->
     Acc1 = add_metric(Prefix, <<"count">>, V, Fun, Acc),

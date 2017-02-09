@@ -14,11 +14,16 @@ start(_StartType, _StartArgs) ->
     folsom_metrics:new_gauge(port_count),
     folsom_metrics:new_gauge(process_count),
     folsom_metrics:new_gauge(tcp_connections),
-    folsom_metrics:new_histogram(put, slide, 60),
-    folsom_metrics:new_histogram({event, put}, slide, 60),
-    folsom_metrics:new_histogram(mput, slide, 60),
     folsom_metrics:new_histogram(get, slide, 60),
+    folsom_metrics:new_histogram(put, slide, 60),
+    folsom_metrics:new_histogram(mput, slide, 60),
+
+    folsom_metrics:new_histogram({event, put}, slide, 60),
     folsom_metrics:new_histogram({event, get}, slide, 60),
+
+    folsom_metrics:new_histogram({mstore, read}, slide, 60),
+    folsom_metrics:new_histogram({mstore, write}, slide, 60),
+
     folsom_metrics:new_histogram(list_buckets, slide, 60),
     folsom_metrics:new_histogram(list_metrics, slide, 60),
     spawn(fun delay_tcp_anouncement/0),
@@ -35,6 +40,7 @@ delay_tcp_anouncement() ->
 delay_tcp_anouncement([S | R]) ->
     riak_core:wait_for_service(S),
     delay_tcp_anouncement(R);
+
 delay_tcp_anouncement([]) ->
     lager:info("[ddb] Enabling TCP listener."),
     Port = case application:get_env(dalmatiner_db, tcp_port) of
