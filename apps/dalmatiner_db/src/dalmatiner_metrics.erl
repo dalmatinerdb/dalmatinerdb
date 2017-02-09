@@ -27,7 +27,6 @@
 -define(BUCKET, <<"dalmatinerdb">>).
 -define(COUNTERS_MPS, ddb_counters_mps).
 
-
 -record(state, {running = false, dict, prefix}).
 
 %%%===================================================================
@@ -357,6 +356,7 @@ build_histogram([_ | H], Prefix, Time, Acc) ->
 delay_tick() ->
     riak_core:wait_for_application(dalmatiner_db),
     Services = riak_core_node_watcher:services(),
+    dalmatiner_db_app:wait_for_metadata(),
     delay_tick(Services).
 
 delay_tick([S | R]) ->
