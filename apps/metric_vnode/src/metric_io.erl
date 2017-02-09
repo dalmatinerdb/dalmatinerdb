@@ -16,7 +16,7 @@
 -export([start_link/1, count/1, get_bitmap/6, update_env/1,
          empty/1, fold/3, delete/1, delete/2, delete/3, close/1,
          buckets/1, metrics/2, metrics/3,
-         read/7, read_rest/8, write/6]).
+         read/8, read_rest/9, write/6]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -73,10 +73,28 @@ swrite(Pid, Bucket, Metric, Time, Value) ->
 get_bitmap(Pid, Bucket, Metric, Time, Ref, Sender) ->
     gen_server:cast(Pid, {get_bitmap, Bucket, Metric, Time, Ref, Sender}).
 
-read(Pid, Bucket, Metric, Time, Count, ReqID, Sender) ->
+read(Pid, Bucket, Metric, Time, Count, ReqID, Sender, MaxLen) ->
+    case erlang:process_info(Pid, message_queue_len) of
+        {message_queue_len, N} when N > MaxLen ->
+            sread(Pid, Bucket, Metric, Time, Count, ReqID, Sender);
+        _ ->
+            gen_server:cast(Pid, {read, Bucket, Metric, Time, Count,
+                                  ReqID, Sender})
+    end.
+
+read_rest(Pid, Bucket, Metric, Time, Count, Part, ReqID, Sender, MaxLen) ->
+    case erlang:process_info(Pid, message_queue_len) of
+        {message_queue_len, N} when N > MaxLen ->
+            sread_rest(Pid, Bucket, Metric, Time, Count, Part, ReqID, Sender);
+        _ ->
+            gen_server:cast(Pid, {read_rest, Bucket, Metric, Time, Count,
+                                  Part, ReqID, Sender})
+    end.
+
+sread(Pid, Bucket, Metric, Time, Count, ReqID, Sender) ->
     gen_server:cast(Pid, {read, Bucket, Metric, Time, Count, ReqID, Sender}).
 
-read_rest(Pid, Bucket, Metric, Time, Count, Part, ReqID, Sender) ->
+sread_rest(Pid, Bucket, Metric, Time, Count, Part, ReqID, Sender) ->
     gen_server:cast(
       Pid, {read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender}).
 
@@ -402,6 +420,20 @@ handle_call({write, Bucket, Metric, Time, Value}, _From, State) ->
     State1 = do_write(Bucket, Metric, Time, Value, State),
     {reply, ok, State1};
 
+handle_call({read, Bucket, Metric, Time, Count, ReqID, Sender},
+            _From, State = #state{async_read = Async}) ->
+    State1 = maybe_async_read(Bucket, Metric, Time, Count, ReqID,
+                              Sender, State#state{async_read = false}),
+    State2 = State1#state{async_read = Async},
+    {reply, ok, State2};
+
+handle_call({read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender},
+            _From, State = #state{async_read = Async}) ->
+    State1 = maybe_async_read_rest(Bucket, Metric, Time, Count, Part, ReqID,
+                                   Sender, State#state{async_read = false}),
+    State2 = State1#state{async_read = Async},
+    {reply, ok, State2};
+
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -431,7 +463,6 @@ handle_cast({read, Bucket, Metric, Time, Count, ReqID, Sender}, State) ->
     State1 = maybe_async_read(Bucket, Metric, Time, Count, ReqID,
                               Sender, State),
     {noreply, State1};
-
 handle_cast({read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender},
             State) ->
     State1 = maybe_async_read_rest(Bucket, Metric, Time, Count, Part, ReqID,
