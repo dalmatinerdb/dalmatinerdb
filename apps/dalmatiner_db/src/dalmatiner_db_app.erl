@@ -3,7 +3,7 @@
 -behaviour(application).
 
 %% Application callbacks
--export([start/2, stop/1]).
+-export([start/2, stop/1, wait_for_metadata/0]).
 
 %% ===================================================================
 %% Application callbacks
@@ -31,6 +31,7 @@ stop(_State) ->
 delay_tcp_anouncement() ->
     riak_core:wait_for_application(dalmatiner_db),
     Services = riak_core_node_watcher:services(),
+    wait_for_metadata(),
     delay_tcp_anouncement(Services).
 
 delay_tcp_anouncement([S | R]) ->
@@ -57,3 +58,13 @@ delay_tcp_anouncement([]) ->
                                    [{port, Port},
                                     {max_connections, MaxConn}],
                                    dalmatiner_tcp, []).
+
+%% Wait for the metadata manager to be started
+wait_for_metadata() ->
+    case whereis(riak_core_metadata_manager) of
+        Pid when is_pid(Pid) ->
+            ok;
+        _ ->
+            timer:sleep(500),
+            wait_for_metadata()
+    end.
