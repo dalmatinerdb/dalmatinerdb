@@ -20,7 +20,7 @@ start(_StartType, _StartArgs) ->
             ok = riak_core_node_watcher:service_up(metric, self()),
             ok = riak_core_capability:register({ddb, handoff},
                                                [handoff_v2, plain],
-                                               handoff_v2),
+                                               plain),
             {ok, Pid};
         {error, Reason} ->
             {error, Reason}
