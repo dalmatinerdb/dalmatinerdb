@@ -38,7 +38,8 @@
  {<<"riak_ensemble">>,{pkg,<<"riak_ensemble_ng">>,<<"2.4.0">>},1},
  {<<"riak_sysmon">>,{pkg,<<"riak_sysmon">>,<<"2.1.3">>},1},
  {<<"setup">>,{pkg,<<"setup">>,<<"1.7.0">>},2},
- {<<"snappy">>,{pkg,<<"snappy">>,<<"1.1.1">>},0},
+ {<<"snappy">>,{pkg,<<"snappy">>,<<"1.1.1">>},1},
+ {<<"snappyer">>,{pkg,<<"snappyer">>,<<"1.1.3-1.0.5">>},0},
  {<<"trie">>,{pkg,<<"trie">>,<<"1.6.0">>},0},
  {<<"uuid">>,{pkg,<<"uuid_erl">>,<<"1.5.4">>},1}]}.
 [
@@ -79,6 +80,7 @@
  {<<"riak_sysmon">>, <<"2E81AF5763336C0B136D7ECEFFBEC3540DB20D54459C9F2AE1275FEE4927FB7B">>},
  {<<"setup">>, <<"15DF8E57C6DF9755E22BFB1AEF0C640BD97E9889396FDFB2A85A5536A9043674">>},
  {<<"snappy">>, <<"D63449A58F1358046B7ADAEC166AE8929C2B19881E76C4E13284304FE887C39A">>},
+ {<<"snappyer">>, <<"A02E343245212CB52749EE2392444084CCBE41EB7BBDD6E99235399197683670">>},
  {<<"trie">>, <<"8D2B0C850A01B46FC4711AA1862D45D6AE3A0DA963127E44E6535EA88274D7D3">>},
  {<<"uuid">>, <<"06240EFF3EAF013CC22274689B0C1FF6345645EE5D47A9E4ED7545EEB7698B23">>}]}
 ].

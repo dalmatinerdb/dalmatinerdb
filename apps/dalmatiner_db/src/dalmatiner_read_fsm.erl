@@ -335,12 +335,11 @@ merge_metrics(Replies) ->
 
 
 %% Snappy :(
--dialyzer({nowarn_function, decompress/2}).
 -spec decompress(binary(), state()) -> binary().
 decompress(D, #state{compression = snappy}) ->
-    case snappy:is_valid(D) of
+    case snappyer:is_valid(D) of
         true ->
-            {ok, Res} = snappy:decompress(D),
+            {ok, Res} = snappyer:decompress(D),
             Res;
         _ ->
             D
