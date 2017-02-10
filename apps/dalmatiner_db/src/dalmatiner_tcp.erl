@@ -38,7 +38,6 @@ init(Ref, Socket, Transport, _Opts = []) ->
     loop(Socket, Transport, State).
 
 -spec loop(port(), term(), state()) -> ok.
--dialyzer({nowarn_function, loop/3}).
 
 loop(Socket, Transport, State) ->
     case Transport:recv(Socket, 0, 5000) of
@@ -68,9 +67,9 @@ loop(Socket, Transport, State) ->
                     do_send(Socket, Transport, B, M, T, C,
                             State#state.rr_min_time),
                     loop(Socket, Transport, State);
-                {get_dirty, B, M, T, C} ->
-                    do_send_opt(Socket, Transport, B, M, T, C, [no_rr]),
-                    loop(Socket, Transport, State);
+                %% {get_dirty, B, M, T, C} ->
+                %%     do_send_opt(Socket, Transport, B, M, T, C, [no_rr]),
+                %%     loop(Socket, Transport, State);
                 {ttl, Bucket, TTL} ->
                     ok = metric:update_ttl(Bucket, TTL),
                     loop(Socket, Transport, State);
@@ -106,7 +105,6 @@ loop(Socket, Transport, State) ->
             ok = Transport:close(Socket)
     end.
 
--dialyzer({nowarn_function, do_send/7}).
 %% If MinRRT is 0 we always read repair
 do_send(Socket, Transport, B, M, T, C, 0) ->
     do_send_opt(Socket, Transport, B, M, T, C, []);
@@ -123,7 +121,6 @@ do_send(Socket, Transport, B, M, T, C, MinRTT) ->
             do_send_opt(Socket, Transport, B, M, T, C, [no_rr])
     end.
 
--dialyzer({nowarn_function, do_send_opt/7}).
 do_send_opt(Socket, Transport, B, M, T, C, Opts) ->
     PPF = dalmatiner_opt:ppf(B),
     [{T0, C0} | Splits] = mstore:make_splits(T, C, PPF),
@@ -134,7 +131,6 @@ do_send_opt(Socket, Transport, B, M, T, C, Opts) ->
     send_part(Socket, Transport, C0, Points),
     send_parts(Socket, Transport, PPF, B, M, Opts, Splits).
 
--dialyzer({nowarn_function, send_parts/7}).
 send_parts(Socket, Transport, _PPF, _B, _M, _Opts, []) ->
     %% Reset the socket to 4 byte packages
     Transport:send(Socket, <<0>>);
@@ -144,11 +140,9 @@ send_parts(Socket, Transport, PPF, B, M, Opts, [{T, C} | Splits]) ->
     send_part(Socket, Transport, C, Points),
     send_parts(Socket, Transport, PPF, B, M, Opts, Splits).
 
-%% Got to ignore this 'cause snappy isn't using propper warnings
--dialyzer({nowarn_function, send_part/4}).
 send_part(Socket, Transport, C, Points) when is_integer(C),
                                               is_binary(Points)->
-    {ok, Compressed} = snappy:compress(Points),
+    {ok, Compressed} = snappyer:compress(Points),
     case C - mmath_bin:length(Points) of
         0 ->
             Transport:send(Socket, <<1, Compressed/binary>>);
@@ -264,7 +258,6 @@ error(E, Transport, Socket, #sstate{dict = Dict}) ->
     lager:error("[tcp:stream] Error: ~p~n", [E]),
     bkt_dict:flush(Dict),
     ok = Transport:close(Socket).
--dialyzer({nowarn_function, get_events/6}).
 get_events(_Bucket, _Filter, [], Socket, Transport, State) ->
     Transport:send(Socket, dproto_tcp:encode(events_end)),
     loop(Socket, Transport, State);

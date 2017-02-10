@@ -310,18 +310,16 @@ handoff_cancelled(State) ->
 handoff_finished(_TargetNode, State) ->
     {ok, State}.
 
--dialyzer({no_return, handle_handoff_data/2}).
-handle_handoff_data(Compressed, State) ->
+decode_v2_handoff_data(<<02:16, Compressed/binary>>) ->
+    {ok, Decompressed} = snappyer:decompress(Compressed),
+    Decompressed.
+
+handle_handoff_data(In, State) ->
     Data = case riak_core_capability:get({ddb, handoff}) of
-               snappy ->
-                   case snappy:decompress(Compressed) of
-                       {ok, Decompressed} ->
-                           Decompressed;
-                       {error, data_not_compressed} ->
-                           Compressed
-                   end;
+               handoff_v2 ->
+                   decode_v2_handoff_data(In);
                plain ->
-                   Compressed
+                   In
            end,
     {{Bucket, Metric}, ValList} = binary_to_term(Data),
     true = is_binary(Bucket),
@@ -331,12 +329,11 @@ handle_handoff_data(Compressed, State) ->
                          end, State, ValList),
     {reply, ok, State1}.
 
--dialyzer({no_return, encode_handoff_item/2}).
 encode_handoff_item(Key, Value) ->
     case riak_core_capability:get({ddb, handoff}) of
-        snappy ->
-            {ok, R} = snappy:compress(term_to_binary({Key, Value})),
-            R;
+        handoff_v2 ->
+            {ok, R} = snappyer:compress(term_to_binary({Key, Value})),
+            <<02:16, R/binary>>;
         plain ->
             term_to_binary({Key, Value})
     end.

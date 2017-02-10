@@ -88,9 +88,9 @@ get(S, T, C) ->
     end.
 
 decompress(D) ->
-    case snappy:is_valid(D) of
+    case snappyer:is_valid(D) of
         true ->
-            {ok, D1} = snappy:decompress(D),
+            {ok, D1} = snappyer:decompress(D),
             D1;
         false ->
             D
