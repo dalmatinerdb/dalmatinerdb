@@ -10,7 +10,8 @@
 
 -record(state,
         {n = 1 :: pos_integer(),
-         w = 1 :: pos_integer()
+         w = 1 :: pos_integer(),
+         rr_min_time = 0 :: non_neg_integer()
         }).
 
 -record(sstate,
@@ -30,7 +31,8 @@ start_link(Ref, Socket, Transport, Opts) ->
 init(Ref, Socket, Transport, _Opts = []) ->
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, W} = application:get_env(dalmatiner_db, w),
-    State = #state{n=N, w=W},
+    RRTime = application:get_env(dalmatiner_db, read_repair_min_time, 0),
+    State = #state{n = N, w = W, rr_min_time = RRTime},
     ok = Transport:setopts(Socket, [{packet, 4}]),
     ok = ranch:accept_ack(Ref),
     loop(Socket, Transport, State).
@@ -63,7 +65,11 @@ loop(Socket, Transport, State) ->
                     Transport:send(Socket, InfoBin),
                     loop(Socket, Transport, State);
                 {get, B, M, T, C} ->
-                    do_send(Socket, Transport, B, M, T, C),
+                    do_send(Socket, Transport, B, M, T, C,
+                            State#state.rr_min_time),
+                    loop(Socket, Transport, State);
+                {get_dirty, B, M, T, C} ->
+                    do_send_opt(Socket, Transport, B, M, T, C, [no_rr]),
                     loop(Socket, Transport, State);
                 {ttl, Bucket, TTL} ->
                     ok = metric:update_ttl(Bucket, TTL),
@@ -100,26 +106,43 @@ loop(Socket, Transport, State) ->
             ok = Transport:close(Socket)
     end.
 
--dialyzer({nowarn_function, do_send/6}).
-do_send(Socket, Transport, B, M, T, C) ->
+-dialyzer({nowarn_function, do_send/7}).
+%% If MinRRT is 0 we always read repair
+do_send(Socket, Transport, B, M, T, C, 0) ->
+    do_send_opt(Socket, Transport, B, M, T, C, []);
+
+do_send(Socket, Transport, B, M, T, C, MinRTT) ->
+    Now = erlang:system_time(seconds) div dalmatiner_opt:resolution(B),
+    case Now - MinRTT of
+        %% If the cutoff date (now - min RTT) is larger then
+        %% the first timestamp of the read we have data that is older
+        %% and will performa  read repair.
+        Cutoff when Cutoff > T ->
+            do_send_opt(Socket, Transport, B, M, T, C, []);
+        _ ->
+            do_send_opt(Socket, Transport, B, M, T, C, [no_rr])
+    end.
+
+-dialyzer({nowarn_function, do_send_opt/7}).
+do_send_opt(Socket, Transport, B, M, T, C, Opts) ->
     PPF = dalmatiner_opt:ppf(B),
     [{T0, C0} | Splits] = mstore:make_splits(T, C, PPF),
-    {ok, Points} = metric:get(B, M, PPF, T0, C0),
+    {ok, Points} = metric:get(B, M, PPF, T0, C0, Opts),
     %% Set the socket to no package control so we can do that ourselfs.
     %% TODO: make this math for configureable length
     %% 8 (resolution + points)
     send_part(Socket, Transport, C0, Points),
-    send_parts(Socket, Transport, PPF, B, M, Splits).
+    send_parts(Socket, Transport, PPF, B, M, Opts, Splits).
 
--dialyzer({nowarn_function, send_parts/6}).
-send_parts(Socket, Transport, _PPF, _B, _M, []) ->
+-dialyzer({nowarn_function, send_parts/7}).
+send_parts(Socket, Transport, _PPF, _B, _M, _Opts, []) ->
     %% Reset the socket to 4 byte packages
     Transport:send(Socket, <<0>>);
 
-send_parts(Socket, Transport, PPF, B, M, [{T, C} | Splits]) ->
-    {ok, Points} = metric:get(B, M, PPF, T, C),
+send_parts(Socket, Transport, PPF, B, M, Opts, [{T, C} | Splits]) ->
+    {ok, Points} = metric:get(B, M, PPF, T, C, Opts),
     send_part(Socket, Transport, C, Points),
-    send_parts(Socket, Transport, PPF, B, M, Splits).
+    send_parts(Socket, Transport, PPF, B, M, Opts, Splits).
 
 %% Got to ignore this 'cause snappy isn't using propper warnings
 -dialyzer({nowarn_function, send_part/4}).

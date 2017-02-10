@@ -3,8 +3,8 @@
 -export([
          put/4,
          mput/4,
-         get/4,
          get/5,
+         get/6,
          delete/1,
          list/1,
          list/2,
@@ -38,15 +38,18 @@ put(Bucket, Metric, Time, Value) ->
 put(Bucket, Metric, PPF, Time, Value, N, W) ->
     do_put(Bucket, Metric, PPF, Time, Value, N, W).
 
-get(Bucket, Metric, Time, Count) ->
-    get(Bucket, Metric, dalmatiner_opt:ppf(Bucket), Time, Count).
+get(Bucket, Metric, Time, Count, Opts) ->
+    get(Bucket, Metric, dalmatiner_opt:ppf(Bucket), Time, Count, Opts).
 
-get(Bucket, Metric, PPF, Time, Count) when
+get(Bucket, Metric, PPF, Time, Count, Opts) when
       Time div PPF =:= (Time + Count - 1) div PPF->
     folsom_metrics:histogram_timed_update(
       get, dalmatiner_read_fsm, start,
-      [{metric_vnode, metric}, get, {Bucket, {Metric, Time div PPF}},
-       {Time, Count}]).
+      [{metric_vnode, metric},
+       get,
+       {Bucket, {Metric, Time div PPF}},
+       {Time, Count},
+       Opts]).
 
 update_ttl(Bucket, TTL) ->
     dalmatiner_opt:set_lifetime(Bucket, TTL),
