@@ -25,7 +25,7 @@
 -define(SERVER, ?MODULE).
 -define(WEEK, 604800). %% Seconds in a week.
 -define(MAX_Q_LEN, 20).
--define(EXTENDED_TIMEOUT, 30000).
+-define(EXTENDED_TIMEOUT, 5000).
 
 -type entry() :: {non_neg_integer(), pos_integer(), mstore:mstore()}.
 
