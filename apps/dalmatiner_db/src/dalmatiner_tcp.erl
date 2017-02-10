@@ -112,7 +112,7 @@ do_send(Socket, Transport, B, M, T, C, 0) ->
     do_send_opt(Socket, Transport, B, M, T, C, []);
 
 do_send(Socket, Transport, B, M, T, C, MinRTT) ->
-    Now = erlang:system_time(seconds) div dalmatiner_opt:resolution(B),
+    Now = erlang:system_time(milli_seconds) div dalmatiner_opt:resolution(B),
     case Now - MinRTT of
         %% If the cutoff date (now - min RTT) is larger then
         %% the first timestamp of the read we have data that is older
