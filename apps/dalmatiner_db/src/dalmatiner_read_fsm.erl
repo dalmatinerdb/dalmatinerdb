@@ -7,7 +7,7 @@
 -define(DEFAULT_TIMEOUT, 5000).
 
 %% API
--export([start_link/6, start/2, start/3, start/4]).
+-export([start_link/7, start/2, start/3, start/5]).
 
 
 -export([reconcile/1, different/1, needs_repair/2, unique/1]).
@@ -18,13 +18,16 @@
 
 %% States
 -export([prepare/2, execute/2, waiting/2, wait_for_n/2, finalize/2]).
+-export_type([read_opts/0]).
 
 -type partition() :: chash:index_as_int().
 -type reply_src() :: {partition(), term()}.
 -type metric_element() :: binary().
+-type read_opts() :: [no_repair | {n, pos_integer()} | {r, pos_integer()}].
 %%-type metric_reply() :: {partition(), metric_element()}.
 
 -record(state, {req_id,
+                read_repair = true,
                 compression :: snappy | none,
                 from,
                 entity,
@@ -56,8 +59,8 @@
               reconcile/1,
               repair/5,
               start/2,
-              start/4,
-              start_link/6,
+              start/5,
+              start_link/7,
               terminate/3,
               unique/1,
               wait_for_n/2,
@@ -69,20 +72,21 @@
 %%% API
 %%%===================================================================
 
-start_link(ReqID, {VNode, System}, Op, From, Entity, Val) ->
-    gen_fsm:start_link(?MODULE,
-                       [ReqID, {VNode, System}, Op, From, Entity, Val], []).
-
+start_link(ReqID, {VNode, System}, Op, From, Entity, Val, Opts) ->
+    gen_fsm:start_link(
+      ?MODULE, [ReqID, {VNode, System}, Op, From, Entity, Val, Opts], []).
 start(VNodeInfo, Op) ->
     start(VNodeInfo, Op, undefined).
 
-start(VNodeInfo, Op, User) ->
-    start(VNodeInfo, Op, User, undefined).
+start(VNodeInfo, Op, Entity) ->
+    start(VNodeInfo, Op, Entity, undefined, []).
 
-start(VNodeInfo, Op, User, Val) ->
+-spec start({atom(), atom()}, atom(), atom(), term(), read_opts()) ->
+                   ok | {ok, term()} | {error, timeout}.
+start(VNodeInfo, Op, Entity, Val, Opts) ->
     ReqID = mk_reqid(),
     dalmatiner_read_fsm_sup:start_read_fsm(
-      [ReqID, VNodeInfo, Op, self(), User, Val]),
+      [ReqID, VNodeInfo, Op, self(), Entity, Val, Opts]),
     receive
         {ReqID, ok} ->
             ok;
@@ -101,19 +105,21 @@ start(VNodeInfo, Op, User, Val) ->
                   {ok, prepare, state(), 0}.
 
 init([ReqId, {VNode, System}, Op, From]) ->
-    init([ReqId, {VNode, System}, Op, From, undefined, undefined]);
+    init([ReqId, {VNode, System}, Op, From, undefined, undefined, []]);
 
 init([ReqId, {VNode, System}, Op, From, Entity]) ->
-    init([ReqId, {VNode, System}, Op, From, Entity, undefined]);
+    init([ReqId, {VNode, System}, Op, From, Entity, undefined, []]);
 
-init([ReqId, {VNode, System}, Op, From, Entity, Val]) ->
-    {ok, N} = application:get_env(dalmatiner_db, n),
-    {ok, R} = application:get_env(dalmatiner_db, r),
+init([ReqId, {VNode, System}, Op, From, Entity, Val, Opts]) ->
+    RR = not proplists:get_bool(no_repair, Opts),
+    {ok, N} = get_opt_or_env(dalmatiner_db, n, Opts),
+    {ok, R} = get_opt_or_env(dalmatiner_db, r, Opts),
     Compression = application:get_env(dalmatiner_db,
                                       metric_transport_compression, snappy),
 
     SD = #state{req_id = ReqId,
                 compression = Compression,
+                read_repair = RR,
                 r = R,
                 n = N,
                 from = From,
@@ -170,6 +176,9 @@ execute(timeout, SD0=#state{req_id=ReqId,
 is_done(#state{num_r = NumR, overloaded = O, n = N})
   when NumR + O == N ->
     finished;
+is_done(#state{num_r = NumR, r = R, read_repair = false})
+  when NumR >= R ->
+    finished;
 is_done(#state{num_r = NumR, r = R})
   when NumR >= R ->
     waiting;
@@ -225,7 +234,10 @@ wait_for_n({ok, _ReqID, IdxNode, Obj},
 wait_for_n(timeout, SD) ->
     {stop, timeout, SD}.
 
-%% TODO: We need to read-repair events
+finalize(timeout, SD=#state{read_repair = false}) ->
+    {stop, normal, SD};
+
+
 finalize(timeout, SD=#state{system = event,
                             replies = Replies,
                             entity = {Bucket, _Time}}) ->
@@ -383,3 +395,11 @@ unique(L) ->
 
 mk_reqid() ->
     erlang:unique_integer().
+
+get_opt_or_env(App, Key, Opts) ->
+    case proplists:get_value(Key, Opts) of
+        undefined ->
+            application:get_env(App, Key);
+        Value ->
+            {ok, Value}
+    end.

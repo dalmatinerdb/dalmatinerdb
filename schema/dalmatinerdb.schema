@@ -49,10 +49,9 @@
 
 %% @doc Maximum number of files kept open per mstore, settings
 %% over two have no effect, settings below 0 eqal to 0.
-{mapping, "mstore.max_files", "metric_vnode.max_files", [
-                                                         {default, 2},
-                                                         {datatype, integer}
-                                                        ]}.
+{mapping, "mstore.max_files", "metric_vnode.max_files",
+ [{default, 2},
+  {datatype, integer}]}.
 
 %% @doc How often a pertition will be picked to be vacuumed.
 {mapping, "vacuum_interval", "dalmatiner_vacuum.interval",
@@ -141,6 +140,14 @@
  [{default, snappy},
   {datatype, {enum, [snappy, none]}}]}.
 
+%% @doc Weather to exclude repairs for reads done over the most
+%% recent period of time. This can significanty reduce the number
+%% of reads repairs when queries are executed against very recent data.
+{mapping, "read_repair.delay",
+ "dalmatiner_db.read_repair_min_time",
+ [{default, "1m"},
+  {datatype, {duration, ms}}]}.
+
 
 %% @doc Number of asyncronous IO requests that won't block the vnode.
 %% A highter number reduces blockage but can lead to piling up of requests.
@@ -159,4 +166,5 @@
 {mapping, "io.async_reads.min_size", "metric_vnode.async_min_size",
  [{datatype, integer},
   {default, 1000}]}.
+
 
