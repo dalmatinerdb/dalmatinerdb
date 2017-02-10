@@ -12,6 +12,7 @@
                   lager,
                   dalmatiner_vacuum,
                   riak_core,
+                  snappyer,
                   jsxd
                  ]},
   {mod, { event_vnode_app, []}},

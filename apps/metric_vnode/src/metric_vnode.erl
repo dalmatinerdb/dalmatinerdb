@@ -44,9 +44,8 @@
           node,
           tbl,
           ct,
-          io,
+          io :: metric_io:io_handle(),
           now,
-          max_q_len = 20,
           resolutions = btrie:new(),
           lifetimes  = btrie:new()
          }).
@@ -128,7 +127,7 @@ init([Partition]) ->
      [FoldWorkerPool]}.
 
 repair_update_cache(Bucket, Metric, Time, Count, Value,
-                    #state{tbl = T, max_q_len = Q} = State) ->
+                    #state{tbl = T} = State) ->
     case ets:lookup(T, {Bucket, Metric}) of
         %% ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐
         %% │Cache│     │     │     │     │     │Start│ ... │St+Si│     │
@@ -140,7 +139,7 @@ repair_update_cache(Bucket, Metric, Time, Count, Value,
         %% write it!
         [{{Bucket, Metric}, Start, _Size, _Time, _Array}]
           when Time + Count < Start ->
-            metric_io:write(State#state.io, Bucket, Metric, Time, Value, Q),
+            metric_io:write(State#state.io, Bucket, Metric, Time, Value),
             State;
         %% ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐
         %% │Cache│     │Start│ ... │St+Si│     │     │     │     │     │
@@ -155,7 +154,7 @@ repair_update_cache(Bucket, Metric, Time, Count, Value,
             Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
             k6_bytea:delete(Array),
             ets:delete(T, {Bucket, Metric}),
-            metric_io:write(State#state.io, Bucket, Metric, Start, Bin, Q),
+            metric_io:write(State#state.io, Bucket, Metric, Start, Bin),
             do_put(Bucket, Metric, Time, Value, State);
         %% ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐
         %% │Cache│     │     │     │Start│ ... │St+Si│     │     │     │
@@ -184,8 +183,8 @@ repair_update_cache(Bucket, Metric, Time, Count, Value,
             Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
             k6_bytea:delete(Array),
             ets:delete(T, {Bucket, Metric}),
-            metric_io:write(State#state.io, Bucket, Metric, Start, Bin, Q),
-            metric_io:write(State#state.io, Bucket, Metric, Time, Value, Q),
+            metric_io:write(State#state.io, Bucket, Metric, Start, Bin),
+            metric_io:write(State#state.io, Bucket, Metric, Time, Value),
             State;
         %% If we had no privious cache we can safely cache the
         %% repair.
@@ -195,7 +194,7 @@ repair_update_cache(Bucket, Metric, Time, Count, Value,
 
 
 handle_command({bitmap, From, Ref, Bucket, Metric, Time},
-               _Sender, State = #state{io = IO, tbl=T, max_q_len = Q})
+               _Sender, State = #state{io = IO, tbl = T})
   when is_binary(Bucket), is_binary(Metric), is_integer(Time),
        Time >= 0 ->
     BM = {Bucket, Metric},
@@ -206,7 +205,7 @@ handle_command({bitmap, From, Ref, Bucket, Metric, Time},
             ets:delete(T, {Bucket, Metric}),
             Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
             k6_bytea:delete(Array),
-            metric_io:write(IO, Bucket, Metric, Start, Bin, Q);
+            metric_io:write(IO, Bucket, Metric, Start, Bin);
         _ ->
             ok
     end,
@@ -270,15 +269,13 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
             Offset = PartStart - Time,
             Part = {Offset, PartCount, Bin},
             metric_io:read_rest(
-              IO, Bucket, Metric, Time, Count, Part, ReqID, Sender,
-              State#state.max_q_len),
+              IO, Bucket, Metric, Time, Count, Part, ReqID, Sender),
             {noreply, State};
         %% If we are here we know that there is either no cahce or the requested
         %% window and the cache do not overlap, so we can simply serve it from
         %% the io servers
         _ ->
-            metric_io:read(IO, Bucket, Metric, Time, Count, ReqID, Sender,
-                           State#state.max_q_len),
+            metric_io:read(IO, Bucket, Metric, Time, Count, ReqID, Sender),
             {noreply, State}
     end.
 
@@ -287,8 +284,7 @@ handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, Sender,
     ets:foldl(fun({{Bucket, Metric}, Start, Size, _, Array}, _) ->
                       Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
                       k6_bytea:delete(Array),
-                      metric_io:write(IO, Bucket, Metric, Start, Bin,
-                                      State#state.max_q_len)
+                      metric_io:write(IO, Bucket, Metric, Start, Bin)
               end, ok, T),
     ets:delete_all_objects(T),
     FinishFun =
@@ -315,28 +311,33 @@ handoff_cancelled(State) ->
 handoff_finished(_TargetNode, State) ->
     {ok, State}.
 
--dialyzer({no_return, handle_handoff_data/2}).
-handle_handoff_data(Compressed, State) ->
-    Data = case snappy:is_valid(Compressed) of
-               true ->
-                   {ok, Decompressed} = snappy:decompress(Compressed),
-                   Decompressed;
-               false ->
-                   io:format(user, "bad compressed: ~p~n", [Compressed]),
-                   Compressed
+decode_v2_handoff_data(<<02:16, Compressed/binary>>) ->
+    {ok, Decompressed} = snappyer:decompress(Compressed),
+    Decompressed.
+
+handle_handoff_data(In, State) ->
+    Data = case riak_core_capability:get({ddb, handoff}) of
+               handoff_v2 ->
+                   decode_v2_handoff_data(In);
+               plain ->
+                   In
            end,
     {{Bucket, Metric}, ValList} = binary_to_term(Data),
     true = is_binary(Bucket),
     true = is_binary(Metric),
     State1 = lists:foldl(fun ({T, Bin}, StateAcc) ->
-                                 do_put(Bucket, Metric, T, Bin, StateAcc, 2)
+                                 do_put(Bucket, Metric, T, Bin, StateAcc)
                          end, State, ValList),
     {reply, ok, State1}.
 
--dialyzer({no_return, encode_handoff_item/2}).
 encode_handoff_item(Key, Value) ->
-    {ok, R} = snappy:compress(term_to_binary({Key, Value})),
-    R.
+    case riak_core_capability:get({ddb, handoff}) of
+        handoff_v2 ->
+            {ok, R} = snappyer:compress(term_to_binary({Key, Value})),
+            <<02:16, R/binary>>;
+        plain ->
+            term_to_binary({Key, Value})
+    end.
 
 is_empty(State = #state{tbl = T, io=IO}) ->
     case ets:first(T) == '$end_of_table' andalso metric_io:empty(IO) of
@@ -395,9 +396,9 @@ handle_coverage({update_ttl, Bucket}, _KeySpaces, _Sender,
 
 handle_coverage(update_env, _KeySpaces, _Sender,
                 State = #state{partition=P, node=N, io = IO}) ->
-    metric_io:update_env(IO),
+    IO1 = metric_io:update_env(IO),
     Reply = {ok, undefined, {P, N}, btrie:new()},
-    {reply, Reply, update_env(State)};
+    {reply, Reply, update_env(State#state{io = IO1})};
 
 handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
                 State = #state{partition=P, node=N, tbl=T, io = IO}) ->
@@ -405,8 +406,7 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
                     when Bkt /= Bucket ->
                       Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
                       k6_bytea:delete(Array),
-                      metric_io:write(IO, Bkt, Metric, Start, Bin,
-                                      State#state.max_q_len);
+                      metric_io:write(IO, Bkt, Metric, Start, Bin);
                  ({_, _, _, _, Array}, _) ->
                       k6_bytea:delete(Array)
               end, ok, T),
@@ -452,22 +452,18 @@ handle_exit(IO, E, State = #state{io = IO}) ->
 handle_exit(_PID, _Reason, State) ->
     {noreply, State}.
 
-terminate(_Reason, #state{tbl = T, io = IO, max_q_len = Q}) ->
+terminate(_Reason, #state{tbl = T, io = IO}) ->
     ets:foldl(fun({{Bucket, Metric}, Start, Size, _, Array}, _) ->
                       Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
                       k6_bytea:delete(Array),
-                      metric_io:write(IO, Bucket, Metric, Start, Bin, Q)
+                      metric_io:write(IO, Bucket, Metric, Start, Bin)
               end, ok, T),
     ets:delete(T),
     metric_io:close(IO),
     ok.
 
-do_put(Bucket, Metric, Time, Value, State) ->
-    do_put(Bucket, Metric, Time, Value, State, State#state.max_q_len).
-
-do_put(Bucket, Metric, Time, Value,
-       State = #state{tbl = T, ct = CT, io = IO},
-       Sync) when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
+do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO})
+  when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     Len = mmath_bin:length(Value),
     BM = {Bucket, Metric},
 
@@ -483,7 +479,7 @@ do_put(Bucket, Metric, Time, Value,
                 %% written data.
                 [{BM, _Start, _Size, _End, _V}]
                   when Time < _Start ->
-                    metric_io:write(IO, Bucket, Metric, Time, Value, Sync);
+                    metric_io:write(IO, Bucket, Metric, Time, Value);
                 %% When the Delta of start time and this package is greater
                 %% then the cache time we flush the cache and start a new cache
                 %% with a new package
@@ -495,7 +491,7 @@ do_put(Bucket, Metric, Time, Value,
                                  <<0:(?DATA_SIZE * 8 * (CT - Len))>>),
                     ets:update_element(T, BM, [{2, Time}, {3, Len},
                                                {4, Time + CT}]),
-                    metric_io:write(IO, Bucket, Metric, Start, Bin, Sync);
+                    metric_io:write(IO, Bucket, Metric, Start, Bin);
                 %% In the case the data is already longer then the cache we
                 %% flush the cache
                 [{BM, Start, Size, _End, Array}]
@@ -503,8 +499,8 @@ do_put(Bucket, Metric, Time, Value,
                     ets:delete(T, {Bucket, Metric}),
                     Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
                     k6_bytea:delete(Array),
-                    metric_io:write(IO, Bucket, Metric, Start, Bin, Sync),
-                    metric_io:write(IO, Bucket, Metric, Time, Value, Sync);
+                    metric_io:write(IO, Bucket, Metric, Start, Bin),
+                    metric_io:write(IO, Bucket, Metric, Time, Value);
                 [{BM, Start, _Size, _End, Array}] ->
                     Idx = Time - Start,
                     k6_bytea:set(Array, Idx * ?DATA_SIZE, Value),
@@ -519,7 +515,7 @@ do_put(Bucket, Metric, Time, Value,
                 %% If we don't have a cache but our data is too big for the
                 %% cache we happiely write it directly
                 [] ->
-                    metric_io:write(IO, Bucket, Metric, Time, Value, Sync)
+                    metric_io:write(IO, Bucket, Metric, Time, Value)
             end,
             State1
     end.
@@ -585,19 +581,8 @@ get_lifetime(Bucket, State = #state{lifetimes = Lifetimes}) ->
     end.
 
 update_env(State) ->
-    CT = case application:get_env(metric_vnode, cache_points) of
-             {ok, V} ->
-                 V;
-             _ ->
-                 10
-         end,
-    Q = case application:get_env(metric_vnode, max_async_io) of
-            {ok, Qx} ->
-                Qx;
-             _ ->
-                20
-         end,
-    State#state{ct = CT, max_q_len = Q}.
+    CT = application:get_env(metric_vnode, cache_points, 120),
+    State#state{ct = CT}.
 
 
 %% Handling a get request overload
