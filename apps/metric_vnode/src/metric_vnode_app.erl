@@ -25,7 +25,7 @@ start(_StartType, _StartArgs) ->
             %%         metric_node_event_handler, []),
             ok = riak_core_node_watcher:service_up(metric, self()),
             ok = riak_core_capability:register({ddb, handoff},
-                                               [plain, snappy],
+                                               [snappy, plain],
                                                snappy),
             {ok, Pid};
         {error, Reason} ->

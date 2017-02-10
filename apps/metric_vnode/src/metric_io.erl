@@ -41,6 +41,16 @@
 
 -type state() :: #state{}.
 
+%W%arning: metric_vnode:handle_command/3 calls undefined function metric_io:read/8 (Xref)
+%%Warning: metric_vnode:handle_command/3 calls undefined function metric_io:read_rest/9 (Xref)
+%%Warning: metric_vnode:handle_coverage/4 calls undefined function metric_io:update_env/1 (Xref)
+-export([read/8, read_rest/9, update_env/1]).
+update_env(_) -> ok.
+read(Pid, Bucket, Metric, Time, Count, ReqID, Sender, _) ->
+    read(Pid, Bucket, Metric, Time, Count, ReqID, Sender).
+read_rest(Pid, Bucket, Metric, Time, Count, Part, ReqID, Sender, _) ->
+    read_rest(Pid, Bucket, Metric, Time, Count, Part, ReqID, Sender).
+
 %%%===================================================================
 %%% API
 %%%===================================================================

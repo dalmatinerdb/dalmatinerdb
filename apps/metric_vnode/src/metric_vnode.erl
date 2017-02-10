@@ -106,8 +106,6 @@ get(Preflist, ReqID, {Bucket, Metric}, {Time, Count}) ->
                                    {get, ReqID, Bucket, Metric, {Time, Count}},
                                    {fsm, undefined, self()},
                                    ?MASTER).
-
-
 init([Partition]) ->
     ok = dalmatiner_vacuum:register(),
     process_flag(trap_exit, true),
@@ -272,13 +270,15 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
             Offset = PartStart - Time,
             Part = {Offset, PartCount, Bin},
             metric_io:read_rest(
-              IO, Bucket, Metric, Time, Count, Part, ReqID, Sender),
+              IO, Bucket, Metric, Time, Count, Part, ReqID, Sender,
+              State#state.max_q_len),
             {noreply, State};
         %% If we are here we know that there is either no cahce or the requested
         %% window and the cache do not overlap, so we can simply serve it from
         %% the io servers
         _ ->
-            metric_io:read(IO, Bucket, Metric, Time, Count, ReqID, Sender),
+            metric_io:read(IO, Bucket, Metric, Time, Count, ReqID, Sender,
+                           State#state.max_q_len),
             {noreply, State}
     end.
 
@@ -319,9 +319,13 @@ handoff_finished(_TargetNode, State) ->
 handle_handoff_data(Compressed, State) ->
     Data = case riak_core_capability:get({ddb, handoff}) of
                snappy ->
-                   {ok, Decompressed} = snappy:decompress(Compressed),
-                   Decompressed;
-               _ ->
+                   case snappy:decompress(Compressed) of
+                       {ok, Decompressed} ->
+                           Decompressed;
+                       {error, data_not_compressed} ->
+                           Compressed
+                   end;
+               plain ->
                    Compressed
            end,
     {{Bucket, Metric}, ValList} = binary_to_term(Data),
@@ -338,7 +342,7 @@ encode_handoff_item(Key, Value) ->
         snappy ->
             {ok, R} = snappy:compress(term_to_binary({Key, Value})),
             R;
-        _ ->
+        plain ->
             term_to_binary({Key, Value})
     end.
 
@@ -398,9 +402,8 @@ handle_coverage({update_ttl, Bucket}, _KeySpaces, _Sender,
     {reply, Reply, State#state{lifetimes = LT1}};
 
 handle_coverage(update_env, _KeySpaces, _Sender,
-                State = #state{partition=P, node=N, io = _IO}) ->
-    %% Need to wait with this one untill metric_io gets upgraded
-    %%metric_io:update_env(IO),
+                State = #state{partition=P, node=N, io = IO}) ->
+    metric_io:update_env(IO),
     Reply = {ok, undefined, {P, N}, btrie:new()},
     {reply, Reply, update_env(State)};
 
@@ -604,6 +607,20 @@ update_env(State) ->
          end,
     State#state{ct = CT, max_q_len = Q}.
 
+
+%% Handling a get request overload
+handle_overload_command({get, ReqID, _Bucket, _Metric, {_Time, _Count}},
+                        Sender, Idx) ->
+    riak_core_vnode:reply(Sender, {fail, ReqID, Idx, overload});
+
+%% Handling write failures
+handle_overload_command({put, _Bucket, _Metric, {_Time, _Value}},
+                        {raw, ReqID, _PID} = Sender, Idx) ->
+    riak_core_vnode:reply(Sender, {fail, ReqID, Idx, overload});
+handle_overload_command(_, {raw, ReqID, _PID} = Sender, Idx) ->
+    riak_core_vnode:reply(Sender, {fail, ReqID, Idx, overload});
+
+%% Handling other failures
 handle_overload_command(_Req, Sender, Idx) ->
     riak_core_vnode:reply(Sender, {fail, Idx, overload}).
 
