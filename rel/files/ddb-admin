@@ -129,7 +129,7 @@ usage() {
     echo "                    reip | wait-for-service | ringready | transfers | force-remove | down |"
     echo "                    cluster-info | member-status | ring-status | vnode-status |"
     echo "                    diag | stat | status | transfer-limit | downgrade-objects | services"
-    echo "                    ensemble-status | handoff | set | show | describe }"
+    echo "                    ensemble-status | handoff | set | show | describe | refresh }"
     echo "               connections                        - shows the current connections to other srivces."
     echo "               ring                               - shows the ring."
 
@@ -139,6 +139,11 @@ usage() {
 stat_admin()
 {
     case "$1" in
+        refresh)
+            shift
+            node_up_check
+            $NODETOOL rpc dalmatiner_console refresh
+            ;;
         show)
             shift
             node_up_check
