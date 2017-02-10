@@ -14,9 +14,9 @@
 
 
 %% API
--export([start_link/0, inc/1, inc/0, start/0, stop/0]).
+-export([start_link/0, inc/2, inc/1, start/0, stop/0]).
 
--ignore_xref([start_link/0, inc/0, start/0, stop/0]).
+-ignore_xref([start_link/0, inc/1, start/0, stop/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -49,15 +49,18 @@ start() ->
 stop() ->
     gen_server:call(?SERVER, stop).
 
-inc() ->
-    inc(1).
+inc(Type) ->
+    inc(Type, 1).
 
-inc(N) ->
+inc(Type, N) when is_atom(Type) ->
+    inc(atom_to_binary(Type, utf8), N);
+
+inc(Type, N) when is_binary(Type) ->
     try
-        ets:update_counter(?COUNTERS_MPS, self(), N)
+        ets:update_counter(?COUNTERS_MPS, {self(), Type}, N)
     catch
         error:badarg ->
-            ets:insert(?COUNTERS_MPS, {self(), N})
+            ets:insert(?COUNTERS_MPS, {{self(), Type}, N})
     end,
     ok.
 
@@ -150,17 +153,43 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 
+
+-record(fold_acc,
+        {
+          type,
+          count,
+          time,
+          prefix,
+          dict
+        }).
+
+write_fold_acc(#fold_acc{type = Type, count = Count,
+                         dict = Dict, prefix = Prefix,
+                         time = Time}) ->
+    add_to_dict([Prefix, Type], Time, Count, Dict).
+
+fold_count({Type, Count}, Acc = #fold_acc{type = Type, count = CountAcc}) ->
+    Acc#fold_acc{count = CountAcc + Count};
+fold_count({Type, Count}, Acc) ->
+    Acc#fold_acc{dict = write_fold_acc(Acc), type = Type, count = Count}.
 handle_info(tick,
             State = #state{running = true, prefix = Prefix, dict = Dict}) ->
     Dict1 = bkt_dict:update_chash(Dict),
     Time = timestamp(),
     Spec = folsom_metrics:get_metrics_info(),
 
-    MPS = ets:tab2list(?COUNTERS_MPS),
-    ets:delete_all_objects(?COUNTERS_MPS),
-    P = lists:sum([Cnt || {_, Cnt} <- MPS]),
-
-    Dict2 = add_to_dict([Prefix, <<"mps">>], Time, P, Dict1),
+    Dict2 = case ets:tab2list(?COUNTERS_MPS) of
+                [] ->
+                    Dict1;
+                Counts ->
+                    ets:delete_all_objects(?COUNTERS_MPS),
+                    Counts1 = [{Type, Cnt} || {{_, Type}, Cnt} <- Counts],
+                    [{Type0, Count0} | Counts2] = lists:sort(Counts1),
+                    AccIn = #fold_acc{type = Type0, count = Count0, dict= Dict1,
+                                      time = Time, prefix = Prefix},
+                    AccOut = lists:foldl(fun fold_count/2, AccIn, Counts2),
+                    write_fold_acc(AccOut)
+            end,
     Dict3 = do_metrics(Prefix, Time, Spec, Dict2),
     Dict4 = bkt_dict:flush(Dict3),
 
