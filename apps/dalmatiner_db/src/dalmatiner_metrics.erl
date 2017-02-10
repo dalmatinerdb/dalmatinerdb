@@ -191,10 +191,17 @@ handle_info(tick,
                     write_fold_acc(AccOut)
             end,
     Dict3 = do_metrics(Prefix, Time, Spec, Dict2),
-    Dict4 = bkt_dict:flush(Dict3),
+    Inbound = riak_core_handoff_manager:status({direction, inbound}),
+    Outbound = riak_core_handoff_manager:status({direction, outbound}),
 
+    Dict4 = add_to_dict([Prefix, <<"handoffs">>, <<"inbound">>],
+                        Time, length(Inbound), Dict3),
+    Dict5 = add_to_dict([Prefix, <<"handoffs">>, <<"outbound">>],
+                        Time, length(Outbound), Dict4),
+    %% Send
+    Dict6 = bkt_dict:flush(Dict5),
     erlang:send_after(?INTERVAL, self(), tick),
-    {noreply, State#state{dict = Dict4}};
+    {noreply, State#state{dict = Dict6}};
 
 handle_info(_Info, State) ->
     {noreply, State}.
