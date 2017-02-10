@@ -9,8 +9,8 @@
 ├─ eper─0.94.0
 ├─ estore─0.1.9
 ├─ event_vnode─0.1.0
-├─ fifo_utils─0.1.30
-│  ├─ jsone─1.4.0
+├─ fifo_utils─0.1.32
+│  ├─ jsone─1.4.1
 │  └─ uuid─1.5.4
 │     └─ quickrand─1.5.4
 ├─ jsxd─0.2.4
