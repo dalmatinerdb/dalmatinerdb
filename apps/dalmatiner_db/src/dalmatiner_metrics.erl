@@ -69,8 +69,10 @@ statistics() ->
     Prefix = [],
     Inbound = riak_core_handoff_manager:status({direction, inbound}),
     Outbound = riak_core_handoff_manager:status({direction, outbound}),
-    Ms = [{Prefix ++ [<<"handoffs">>, <<"inbound">>], Inbound},
-          {Prefix ++ [<<"handoffs">>, <<"outbound">>], Outbound}],
+    InCount = length(Inbound),
+    OutCount = length(Outbound),
+    Ms = [{Prefix ++ [<<"handoffs">>, <<"inbound">>], InCount},
+          {Prefix ++ [<<"handoffs">>, <<"outbound">>], OutCount}],
     do_metrics(Prefix, Spec, fun (KeyValue, Acc) -> [KeyValue | Acc] end, Ms).
 
 %%%===================================================================
