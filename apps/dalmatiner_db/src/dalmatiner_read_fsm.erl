@@ -251,6 +251,7 @@ finalize(timeout, SD=#state{
     MObj = merge_metrics(Replies),
     case needs_repair(MObj, Replies) of
         true ->
+            dalmatiner_metrics:inc(<<"read_repair">>),
             repair(Time, Entity, MObj, Replies),
             {stop, normal, SD};
         false ->
