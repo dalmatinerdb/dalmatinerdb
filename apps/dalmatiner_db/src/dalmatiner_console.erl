@@ -4,15 +4,20 @@
          delete/1,
          ttl/1,
          buckets/1,
-         create/1
+         create/1,
+         refresh/1
         ]).
 
 -ignore_xref([
               delete/1,
               ttl/1,
               buckets/1,
-              create/1
+              create/1,
+              refresh/1
              ]).
+
+refresh([]) ->
+    metric:update_env().
 
 delete([BucketS]) ->
     Bucket = list_to_binary(BucketS),
