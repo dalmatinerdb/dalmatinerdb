@@ -317,12 +317,15 @@ handoff_finished(_TargetNode, State) ->
 
 -dialyzer({no_return, handle_handoff_data/2}).
 handle_handoff_data(Compressed, State) ->
-    Data = case snappy:is_valid(Compressed) of
-               true ->
-                   {ok, Decompressed} = snappy:decompress(Compressed),
-                   Decompressed;
-               false ->
-                   io:format(user, "bad compressed: ~p~n", [Compressed]),
+    Data = case riak_core_capability:get({ddb, handoff}) of
+               snappy ->
+                   case snappy:decompress(Compressed) of
+                       {ok, Decompressed} ->
+                           Decompressed;
+                       {error, data_not_compressed} ->
+                           Compressed
+                   end;
+               plain ->
                    Compressed
            end,
     {{Bucket, Metric}, ValList} = binary_to_term(Data),
@@ -335,8 +338,13 @@ handle_handoff_data(Compressed, State) ->
 
 -dialyzer({no_return, encode_handoff_item/2}).
 encode_handoff_item(Key, Value) ->
-    {ok, R} = snappy:compress(term_to_binary({Key, Value})),
-    R.
+    case riak_core_capability:get({ddb, handoff}) of
+        snappy ->
+            {ok, R} = snappy:compress(term_to_binary({Key, Value})),
+            R;
+        plain ->
+            term_to_binary({Key, Value})
+    end.
 
 is_empty(State = #state{tbl = T, io=IO}) ->
     case ets:first(T) == '$end_of_table' andalso metric_io:empty(IO) of
