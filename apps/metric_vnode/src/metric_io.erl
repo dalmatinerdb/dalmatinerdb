@@ -16,7 +16,7 @@
 -export([start_link/1, count/1, get_bitmap/6, update_env/1,
          empty/1, fold/3, delete/1, delete/2, delete/3, close/1,
          buckets/1, metrics/2, metrics/3,
-         read/8, read_rest/9, write/6]).
+         read/7, read_rest/8, write/5]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -26,7 +26,7 @@
 -define(WEEK, 604800). %% Seconds in a week.
 
 -type entry() :: {non_neg_integer(), mstore:mstore()}.
-
+-type read_part() :: {non_neg_integer(), pos_integer(), binary()}.
 -record(state, {
           async_read = false :: boolean(),
           async_min_size = 4069 :: non_neg_integer(),
@@ -39,6 +39,28 @@
           fold_size,
           max_open_stores
          }).
+
+-record(io_handle, {
+          pid :: pid(),
+          max_async_read
+          = application:get_env(metric_vnode, max_async_io, 20)
+          :: non_neg_integer(),
+          max_async_write
+          = application:get_env(metric_vnode, max_async_io, 20)
+          :: non_neg_integer(),
+          read_timeout
+          = application:get_env(metric_vnode, sync_timeout, 30000)
+          :: non_neg_integer(),
+          write_timeout
+          = application:get_env(metric_vnode, sync_timeout, 30000)
+          :: non_neg_integer(),
+          other_timeout
+          = application:get_env(metric_vnode, sync_timeout, 30000)
+          :: non_neg_integer()
+         }).
+
+-opaque io_handle() :: #io_handle{}.
+-export_type([io_handle/0]).
 
 -type state() :: #state{}.
 
@@ -53,80 +75,125 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
+-spec start_link(pos_integer()) -> {ok, io_handle()} | ignore | {error, _}.
+
 start_link(Partition) ->
-    gen_server:start_link(?MODULE, [Partition], []).
+    case gen_server:start_link(?MODULE, [Partition], []) of
+        {ok, PID} ->
+            {ok, #io_handle{pid = PID}};
+        Error ->
+            Error
+    end.
+-spec update_handle(io_handle()) -> io_handle().
+update_handle(#io_handle{pid = PID}) ->
+    #io_handle{pid = PID}.
 
-write(Pid, Bucket, Metric, Time, Value, MaxLen) ->
+update_env(Hdl) ->
+    io_cast(Hdl, update_env),
+    update_handle(Hdl).
+
+-spec write(io_handle(), binary(), binary(), non_neg_integer(), binary()) ->
+                   ok.
+write(Hdl = #io_handle{pid = Pid, max_async_write = MaxLen},
+      Bucket, Metric, Time, Value) ->
     case erlang:process_info(Pid, message_queue_len) of
         {message_queue_len, N} when N > MaxLen ->
-            swrite(Pid, Bucket, Metric, Time, Value);
+            swrite(Hdl, Bucket, Metric, Time, Value);
         _ ->
-            gen_server:cast(Pid, {write, Bucket, Metric, Time, Value})
+            io_cast(Hdl, {write, Bucket, Metric, Time, Value})
     end.
 
-update_env(Pid) ->
-    gen_server:cast(Pid, update_env).
+-spec swrite(io_handle(), binary(), binary(), non_neg_integer(), binary()) ->
+                    ok.
+swrite(Hdl, Bucket, Metric, Time, Value) ->
+    io_call_w(Hdl, {write, Bucket, Metric, Time, Value}).
 
-swrite(Pid, Bucket, Metric, Time, Value) ->
-    gen_server:call(Pid, {write, Bucket, Metric, Time, Value}).
+-spec get_bitmap(io_handle(), binary(), binary(), non_neg_integer(), term(),
+                 term()) ->
+                        ok.
+get_bitmap(Hdl, Bucket, Metric, Time, Ref, Sender) ->
+    io_cast(Hdl, {get_bitmap, Bucket, Metric, Time, Ref, Sender}).
 
-get_bitmap(Pid, Bucket, Metric, Time, Ref, Sender) ->
-    gen_server:cast(Pid, {get_bitmap, Bucket, Metric, Time, Ref, Sender}).
-
-read(Pid, Bucket, Metric, Time, Count, ReqID, Sender, MaxLen) ->
+-spec read(io_handle(), binary(), binary(), non_neg_integer(),
+                 pos_integer(), term(), term()) ->
+                  ok | {error, _}.
+read(Hdl = #io_handle{pid = Pid, max_async_write = MaxLen},
+     Bucket, Metric, Time, Count, ReqID, Sender) ->
     case erlang:process_info(Pid, message_queue_len) of
         {message_queue_len, N} when N > MaxLen ->
-            sread(Pid, Bucket, Metric, Time, Count, ReqID, Sender);
+            sread(Hdl, Bucket, Metric, Time, Count, ReqID, Sender);
         _ ->
-            gen_server:cast(Pid, {read, Bucket, Metric, Time, Count,
-                                  ReqID, Sender})
+            io_cast(Hdl, {read, Bucket, Metric, Time, Count,
+                          ReqID, Sender})
     end.
 
-read_rest(Pid, Bucket, Metric, Time, Count, Part, ReqID, Sender, MaxLen) ->
+-spec read_rest(io_handle(), binary(), binary(), non_neg_integer(),
+                pos_integer(), read_part(), term(), term()) ->
+                       ok | {error, _}.
+read_rest(Hdl = #io_handle{pid = Pid, max_async_write = MaxLen},
+          Bucket, Metric, Time, Count, Part, ReqID, Sender) ->
     case erlang:process_info(Pid, message_queue_len) of
         {message_queue_len, N} when N > MaxLen ->
-            sread_rest(Pid, Bucket, Metric, Time, Count, Part, ReqID, Sender);
+            sread_rest(Hdl, Bucket, Metric, Time, Count, Part, ReqID, Sender);
         _ ->
-            gen_server:cast(Pid, {read_rest, Bucket, Metric, Time, Count,
-                                  Part, ReqID, Sender})
+            io_cast(Hdl, {read_rest, Bucket, Metric, Time, Count,
+                          Part, ReqID, Sender})
     end.
 
-sread(Pid, Bucket, Metric, Time, Count, ReqID, Sender) ->
-    gen_server:cast(Pid, {read, Bucket, Metric, Time, Count, ReqID, Sender}).
+-spec sread(io_handle(), binary(), binary(), non_neg_integer(),
+            pos_integer(), term(), term()) ->
+                   ok | {error, _}.
+sread(Hdl, Bucket, Metric, Time, Count, ReqID, Sender) ->
+    io_call_r(Hdl, {read, Bucket, Metric, Time, Count, ReqID, Sender}).
 
-sread_rest(Pid, Bucket, Metric, Time, Count, Part, ReqID, Sender) ->
-    gen_server:cast(
-      Pid, {read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender}).
+-spec sread_rest(io_handle(), binary(), binary(), non_neg_integer(),
+            pos_integer(), read_part(), term(), term()) ->
+                   ok | {error, _}.
+sread_rest(Hdl, Bucket, Metric, Time, Count, Part, ReqID, Sender) ->
+    io_call_r(
+      Hdl, {read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender}).
 
-count(Pid) ->
-    gen_server:call(Pid, count).
+count(Hdl) ->
+    io_call_r(Hdl, count).
 
-buckets(Pid) ->
-    gen_server:call(Pid, buckets).
+buckets(Hdl) ->
+    io_call_r(Hdl, buckets).
 
-metrics(Pid, Bucket) ->
-    gen_server:call(Pid, {metrics, Bucket}).
+metrics(Hdl, Bucket) ->
+    io_call_r(Hdl, {metrics, Bucket}).
 
-metrics(Pid, Bucket, Prefix) ->
-    gen_server:call(Pid, {metrics, Bucket, Prefix}).
+metrics(Hdl, Bucket, Prefix) ->
+    io_call_r(Hdl, {metrics, Bucket, Prefix}).
 
-fold(Pid, Fun, Acc0) ->
-    gen_server:call(Pid, {fold, Fun, Acc0}).
+fold(Hdl, Fun, Acc0) ->
+    io_call_r(Hdl, {fold, Fun, Acc0}).
 
-empty(Pid) ->
-    gen_server:call(Pid, empty).
+empty(Hdl) ->
+    io_call_r(Hdl, empty).
 
-delete(Pid) ->
-    gen_server:call(Pid, delete).
+delete(Hdl) ->
+    io_call_w(Hdl, delete).
 
-close(Pid) ->
-    gen_server:call(Pid, close).
+close(Hdl) ->
+    io_call_w(Hdl, close).
 
-delete(Pid, Bucket) ->
-    gen_server:call(Pid, {delete, Bucket}).
+delete(Hdl, Bucket) ->
+    io_call_w(Hdl, {delete, Bucket}).
 
-delete(Pid, Bucket, Before) ->
-    gen_server:call(Pid, {delete, Bucket, Before}).
+delete(Hdl, Bucket, Before) ->
+    io_call_w(Hdl, {delete, Bucket, Before}).
+
+-spec io_call_w(io_handle(), term()) -> term().
+io_call_w(#io_handle{pid = Pid, write_timeout = Timeout}, Msg) ->
+    gen_server:call(Pid, Msg, Timeout).
+
+-spec io_call_r(io_handle(), term()) -> term().
+io_call_r(#io_handle{pid = Pid, read_timeout = Timeout}, Msg) ->
+    gen_server:call(Pid, Msg, Timeout).
+
+-spec io_cast(io_handle(), term()) -> ok.
+io_cast(#io_handle{pid = Pid}, Msg) ->
+    gen_server:cast(Pid, Msg).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -295,8 +362,8 @@ handle_call(count, _From, State = #state{dir = PartitionDir}) ->
             Buckets1 = [filename:join([PartitionDir, BucketS])
                         || BucketS <- Buckets],
             Count = lists:foldl(fun(Bucket, Acc) ->
-                                   Acc + mstore:count(Bucket)
-                                   end, 0, Buckets1),
+                                        Acc + mstore:count(Bucket)
+                                end, 0, Buckets1),
 
             {reply, Count, State};
         _ ->
@@ -304,7 +371,7 @@ handle_call(count, _From, State = #state{dir = PartitionDir}) ->
     end;
 
 handle_call({fold, Fun, Acc0}, _From, State = #state{dir = PartitionDir}) ->
-  case file:list_dir(PartitionDir) of
+    case file:list_dir(PartitionDir) of
         {ok, Buckets} ->
             AsyncWork = fold_buckets_fun(PartitionDir, Buckets, Fun, Acc0),
             {reply, {ok, AsyncWork}, State};
@@ -643,7 +710,7 @@ do_read_bitmap(Bucket, Metric, Time, State) ->
             {{error, not_found}, State}
     end.
 -spec do_read(binary(), binary(), non_neg_integer(), pos_integer(), state()) ->
-                      {bitstring(), state()}.
+                     {bitstring(), state()}.
 do_read(Bucket, Metric, Time, Count, State = #state{})
   when is_binary(Bucket), is_binary(Metric), is_integer(Count) ->
     case get_set(Bucket, State) of
@@ -759,7 +826,7 @@ read_rest_prepare_part(Time, Count, Part) ->
             {ReadTime, ReadCount, MergeFn};
         {Offset, Len, Bin} ->
             ReadTime = Time,
-                ReadCount = Count,
+            ReadCount = Count,
             MergeFn = fun(ReadData) ->
                               S = ?DATA_SIZE,
                               D1 = binary_part(ReadData, 0, Offset * S),

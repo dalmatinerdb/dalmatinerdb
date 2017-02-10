@@ -155,6 +155,13 @@
  [{datatype, integer},
   {default, 20}]}.
 
+%% @doc How long a syncronous IO request is allowed to take before
+%% considering it crashed.
+{mapping, "io.timeout", "metric_vnode.sync_io_timeout",
+ [{default, "30s"},
+  {datatype, {duration, ms}}]}.
+
+
 %% @doc Async reads are performed out of band of writes, this way
 %% larger reads can be performed without blocking other actions.
 {mapping, "io.async_reads", "metric_vnode.async_read",
