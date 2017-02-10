@@ -317,7 +317,7 @@ decode_v2_handoff_data(<<02:16, Compressed/binary>>) ->
 
 handle_handoff_data(In, State) ->
     Data = case riak_core_capability:get({ddb, handoff}) of
-               handoff_v2 ->
+               v2 ->
                    decode_v2_handoff_data(In);
                plain ->
                    In
@@ -332,7 +332,7 @@ handle_handoff_data(In, State) ->
 
 encode_handoff_item(Key, Value) ->
     case riak_core_capability:get({ddb, handoff}) of
-        handoff_v2 ->
+        v2 ->
             {ok, R} = snappyer:compress(term_to_binary({Key, Value})),
             <<02:16, R/binary>>;
         plain ->
