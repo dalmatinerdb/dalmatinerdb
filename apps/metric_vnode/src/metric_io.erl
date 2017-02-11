@@ -216,6 +216,7 @@ init([Partition]) ->
     process_flag(trap_exit, true),
     DataDir = application:get_env(riak_core, platform_data_dir, "data"),
     Strategy = application:get_env(metric_vnode, queue_strategy, fifo),
+    PoolSize = application:get_env(metric_vnode, io_queue_size, 5),
     PartitionDir = filename:join([DataDir,  integer_to_list(Partition)]),
 
     WorkerMod = metric_io_worker,
