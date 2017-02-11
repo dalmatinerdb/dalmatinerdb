@@ -2,6 +2,8 @@
 -behavior(clique_handler).
 -module(riak_core_handoff_cli).
 
+-export([register_cli/0]).
+
 -spec register_cli() -> ok.
 register_cli() ->
     register_cli_usage(),
