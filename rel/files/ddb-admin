@@ -144,6 +144,11 @@ stat_admin()
             node_up_check
             $NODETOOL rpc dalmatiner_console refresh
             ;;
+        io)
+            shift
+            node_up_check
+            $NODETOOL rpc riak_core_console stat_show "$*"
+            ;;
         show)
             shift
             node_up_check
@@ -737,6 +742,11 @@ case "$1" in
     stat)
         shift
         stat_admin "$@"
+        ;;
+    io)
+        # New pattern for command line. Use nodetool for RPC
+        node_up_check
+        exec $NODETOOL rpc riak_core_console command ddb-admin $@
         ;;
     handoff)
         # New pattern for command line. Use nodetool for RPC

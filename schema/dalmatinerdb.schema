@@ -164,19 +164,19 @@
 
 %% @doc Async reads are performed out of band of writes, this way
 %% larger reads can be performed without blocking other actions.
-{mapping, "io.async_reads", "metric_vnode.async_read",
+{mapping, "io.paralell_reads", "metric_vnode.async_read",
  [{default, off},
   {datatype, flag}]}.
 
 %% @doc Minimal size of read requests to be considered for asyncronous
 %% reads, this has no effect when async_reads is set to off
-{mapping, "io.async_reads.min_size", "metric_vnode.async_min_size",
+{mapping, "io.paralell_reads.min_size", "metric_vnode.async_min_size",
  [{datatype, integer},
   {default, 1000}]}.
 
 %% @doc The size of the async worker pool, more workers mean more possible
 %% paralellism
-{mapping, "io.async_reads.min_size", "metric_vnode.io_queue_size_size",
+{mapping, "io.paralell_reads.min_size", "metric_vnode.io_queue_size_size",
  [{datatype, integer},
   {default, 5}]}.
 
@@ -193,6 +193,6 @@
 %% As a very rought rule of thumb:
 %%  - fifo will lead to lower extremes
 %%  - filo will lead to lower medians/mediums
-{mapping, "io.queue_strategy", "metric_vnode.queue_strategy",
+{mapping, "io.paralell_reads.queue_strategy", "metric_vnode.queue_strategy",
  [{default, fifo},
   {datatype, {enum, [fifo, filo]}}]}.

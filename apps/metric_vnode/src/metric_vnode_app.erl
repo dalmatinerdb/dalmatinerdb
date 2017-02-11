@@ -12,6 +12,7 @@
 start(_StartType, _StartArgs) ->
     case metric_vnode_sup:start_link() of
         {ok, Pid} ->
+            clique:register([metric_io_cli]),
             ok = riak_core:register([{vnode_module, metric_vnode}]),
             %%ok = riak_core_ring_events:add_guarded_handler(
             %%         metric_ring_event_handler, []),
