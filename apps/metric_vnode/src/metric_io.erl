@@ -757,7 +757,6 @@ maybe_async_read(Bucket, Metric, Time, Count, ReqID, Sender,
   when Count >= MinSize->
     case get_set(Bucket, State) of
         {ok, {{_LastWritten, MSet}, State1}} ->
-            lager:info("Async IO!"),
             Work = #read_req{
                       mstore      = mstore:clone(MSet),
                       metric      = Metric,
