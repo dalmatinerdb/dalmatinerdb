@@ -22,10 +22,10 @@ register_cli_cfg() ->
       end,
       [["io", "timeout"],
        ["io", "max_async"],
-       ["io", "paralell_reads"],
-       ["io", "paralell_reads", "min_size"],
-       ["io", "paralell_reads", "min_size"],
-       ["io", "paralell_reads", "queue_strategy"]]).
+       ["io", "parallel_reads"],
+       ["io", "parallel_reads", "min_size"],
+       ["io", "parallel_reads", "min_size"],
+       ["io", "parallel_reads", "queue_strategy"]]).
 
 node_and_all_flags() ->
     [{node, [{shortname, "n"}, {longname, "node"},
@@ -44,8 +44,8 @@ io_config(_CmdBase, _Args, [{node, Node}]) ->
 
 
 config_vars() ->
-    ["io.paralell_reads", "io.max_async", "io.paralell_reads.min_size",
-     "io.paralell_reads.min_size", "io.paralell_reads.queue_strategy",
+    ["io.parallel_reads", "io.max_async", "io.parallel_reads.min_size",
+     "io.parallel_reads.min_size", "io.parallel_reads.queue_strategy",
      "io.timeout"].
 
 io_cfg_change_callback(_, _) ->
@@ -55,6 +55,6 @@ register_config_whitelist() ->
     ok = clique:register_config_whitelist(
            ["io.max_async",
             "io.timeout",
-            "io.paralell_reads",
-            "io.paralell_reads.min_size",
-            "io.paralell_reads.min_size"]).
+            "io.parallel_reads",
+            "io.parallel_reads.min_size",
+            "io.parallel_reads.min_size"]).
