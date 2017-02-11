@@ -1,6 +1,5 @@
 -module(metric_io_cli).
 -behavior(clique_handler).
--module(riak_core_handoff_cli).
 
 -export([register_cli/0]).
 
