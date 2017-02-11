@@ -768,15 +768,6 @@ maybe_async_read(Bucket, Metric, Time, Count, ReqID, Sender,
                       req_id      = ReqID
                      },
             riak_core_vnode_worker_pool:handle_work(Pool, Work, Sender),
-            %% spawn(
-            %%   fun() ->
-            %%           {ok, Data} = folsom_metrics:histogram_timed_update(
-            %%                          {mstore, read},
-            %%                       mstore, get, [MSetc, Metric, Time, Count]),
-            %%           mstore:close(MSetc),
-            %%           Dc = compress(Data, State),
-            %%           riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc})
-            %%   end),
             State1;
         _ ->
             lager:warning("[IO] Unknown metric: ~p/~p", [Bucket, Metric]),
@@ -794,23 +785,22 @@ maybe_async_read(Bucket, Metric, Time, Count, ReqID, Sender,
 
 maybe_async_read_rest(Bucket, Metric, Time, Count, Part, ReqID, Sender,
                       State = #state{node = N, partition = P, async_read = true,
+                                     reader_pool = Pool,
                                      async_min_size = MinSize})
   when Count >= MinSize ->
     {ReadTime, ReadCount, MergeFn} = read_rest_prepare_part(Time, Count, Part),
     case get_set(Bucket, State) of
         {ok, {{_LastWritten, MSet}, State1}} ->
-            MSetc = mstore:clone(MSet),
-            spawn(
-              fun() ->
-                      {ok, D} = folsom_metrics:histogram_timed_update(
-                                  {mstore, read},
-                                  mstore, get, [MSetc, Metric, ReadTime,
-                                                ReadCount]),
-                      mstore:close(MSetc),
-                      Data = MergeFn(D),
-                      Dc = compress(Data, State1),
-                      riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc})
-              end),
+            Work = #read_req{
+                      mstore      = mstore:clone(MSet),
+                      metric      = Metric,
+                      time        = ReadTime,
+                      count       = ReadCount,
+                      map_fn      = MergeFn,
+                      compression = State#state.compression,
+                      req_id      = ReqID
+                     },
+            riak_core_vnode_worker_pool:handle_work(Pool, Work, Sender),
             State1;
         _ ->
             D = mmath_bin:empty(Count),
