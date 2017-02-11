@@ -214,12 +214,8 @@ io_cast(#io_handle{pid = Pid}, Msg) ->
 %%--------------------------------------------------------------------
 init([Partition]) ->
     process_flag(trap_exit, true),
-    DataDir = case application:get_env(riak_core, platform_data_dir) of
-                  {ok, DD} ->
-                      DD;
-                  _ ->
-                      "data"
-              end,
+    DataDir = application:get_env(riak_core, platform_data_dir, "data"),
+    Strategy = application:get_env(metric_vnode, queue_strategy, fifo),
     PartitionDir = filename:join([DataDir,  integer_to_list(Partition)]),
 
     WorkerMod = metric_io_worker,
@@ -227,8 +223,10 @@ init([Partition]) ->
     VNodeIndex = Partition,
     WorkerArgs = [],
     WorkerProps = [],
+    PoolOpts = [{strategy, Strategy}],
     {ok, Pool} = riak_core_vnode_worker_pool:start_link(
-                   WorkerMod, PoolSize, VNodeIndex, WorkerArgs, WorkerProps),
+                   WorkerMod, PoolSize, VNodeIndex, WorkerArgs, WorkerProps,
+                   PoolOpts),
     {ok, do_update_env(#state{partition = Partition,
                               reader_pool = Pool,
                               node = node(),
