@@ -5,14 +5,13 @@
 
 -spec register_cli() -> ok.
 register_cli() ->
-    register_cli_usage(),
+    %register_cli_usage(),
     register_cli_cfg(),
     register_cli_cmds(),
     register_config_whitelist(),
     ok.
 
 register_cli_cmds() ->
-    register_enable_disable_commands(),
     ok = clique:register_command(["ddb-admin", "io", "config"], [],
                                  node_and_all_flags(), fun io_config/3).
 

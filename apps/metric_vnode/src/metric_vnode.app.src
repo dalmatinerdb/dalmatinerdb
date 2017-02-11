@@ -13,6 +13,7 @@
                   lager,
                   dalmatiner_vacuum,
                   snappyer,
+                  clique,
                   riak_core
                  ]},
   {included_applications, [k6_bytea]},
