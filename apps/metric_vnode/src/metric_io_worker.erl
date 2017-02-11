@@ -24,13 +24,18 @@ handle_work(#read_req{
                time        = Time,
                count       = Count,
                compression = Compression,
+               map_fn      = Map,
                req_id      = ReqID
               }, _Sender, State = #state{index = P, node = N}) ->
     {ok, Data} = folsom_metrics:histogram_timed_update(
                    {mstore, read},
                    mstore, get, [MSetc, Metric, Time, Count]),
     mstore:close(MSetc),
-    Dc = compress(Data, Compression),
+    Data1 = case Map of
+                undefined -> Data;
+                _         -> Map(Data)
+            end,
+    Dc = compress(Data1, Compression),
     {reply, {ok, ReqID, {P, N}, Dc}, State}.
 
 compress(Data, snappy) ->
