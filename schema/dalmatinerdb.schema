@@ -168,18 +168,18 @@
  [{default, off},
   {datatype, flag}]}.
 
+%% @doc The size of the async worker pool, more workers mean more possible
+%% parallelism
+{mapping, "io.parallel_reads.queue_size", "metric_vnode.io_queue_size_size",
+ [{datatype, integer},
+  {default, 5}]}.
+
+
 %% @doc Minimal size of read requests to be considered for asyncronous
 %% reads, this has no effect when async_reads is set to off
 {mapping, "io.parallel_reads.min_size", "metric_vnode.async_min_size",
  [{datatype, integer},
   {default, 1000}]}.
-
-%% @doc The size of the async worker pool, more workers mean more possible
-%% parallelism
-{mapping, "io.parallel_reads.min_size", "metric_vnode.io_queue_size_size",
- [{datatype, integer},
-  {default, 5}]}.
-
 
 %% @doc Some requests to the vnodes are handled by an asyncronous worker pool.
 %% This parameter allows for tuning this pools behaviour when it comes dealing
