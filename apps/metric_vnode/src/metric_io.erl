@@ -11,6 +11,7 @@
 -behaviour(gen_server).
 
 -include_lib("mmath/include/mmath.hrl").
+-include("metric_io.hrl").
 
 %% API
 -export([start_link/1, count/1, get_bitmap/6, update_env/1,
@@ -36,6 +37,7 @@
           mstores = gb_trees:empty() :: gb_trees:tree(binary(), entry()),
           closed_mstores = gb_trees:empty() :: gb_trees:tree(binary(), entry()),
           dir,
+          reader_pool :: pid(),
           fold_size,
           max_open_stores
          }).
@@ -219,7 +221,16 @@ init([Partition]) ->
                       "data"
               end,
     PartitionDir = filename:join([DataDir,  integer_to_list(Partition)]),
+
+    WorkerMod = metric_io_worker,
+    PoolSize = 5,
+    VNodeIndex = Partition,
+    WorkerArgs = [],
+    WorkerProps = [],
+    {ok, Pool} = riak_core_vnode_worker_pool:start_link(
+                   WorkerMod, PoolSize, VNodeIndex, WorkerArgs, WorkerProps),
     {ok, do_update_env(#state{partition = Partition,
+                              reader_pool = Pool,
                               node = node(),
                               dir = PartitionDir})}.
 
@@ -741,21 +752,31 @@ compress(Data, #state{compression = none}) ->
 %% insane ammount of processes where it becomes more exensive
 %% to create and tear down then it is to do the reads themselfs.
 maybe_async_read(Bucket, Metric, Time, Count, ReqID, Sender,
-                 State = #state{node = N, partition = P, async_read = true,
+                 State = #state{async_read = true, reader_pool = Pool,
+                                node = N, partition = P,
                                 async_min_size = MinSize})
   when Count >= MinSize->
     case get_set(Bucket, State) of
         {ok, {{_LastWritten, MSet}, State1}} ->
-            MSetc = mstore:clone(MSet),
-            spawn(
-              fun() ->
-                      {ok, Data} = folsom_metrics:histogram_timed_update(
-                                     {mstore, read},
-                                     mstore, get, [MSetc, Metric, Time, Count]),
-                      mstore:close(MSetc),
-                      Dc = compress(Data, State),
-                      riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc})
-              end),
+            lager:info("Async IO!"),
+            Work = #read_req{
+                      mstore      = mstore:clone(MSet),
+                      metric      = Metric,
+                      time        = Time,
+                      count       = Count,
+                      compression = State#state.compression,
+                      req_id      = ReqID
+                     },
+            riak_core_vnode_worker_pool:handle_work(Pool, Work, Sender),
+            %% spawn(
+            %%   fun() ->
+            %%           {ok, Data} = folsom_metrics:histogram_timed_update(
+            %%                          {mstore, read},
+            %%                       mstore, get, [MSetc, Metric, Time, Count]),
+            %%           mstore:close(MSetc),
+            %%           Dc = compress(Data, State),
+            %%           riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc})
+            %%   end),
             State1;
         _ ->
             lager:warning("[IO] Unknown metric: ~p/~p", [Bucket, Metric]),
