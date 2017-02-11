@@ -18,7 +18,7 @@ register_cli_cmds() ->
 register_cli_cfg() ->
     lists:foreach(
       fun(K) ->
-              clique:register_config(K, fun io_cfg_change_callback/2)
+              clique:register_config(K, fun io_cfg_change_callback/3)
       end,
       [["io", "timeout"],
        ["io", "max_async"],
@@ -48,7 +48,7 @@ config_vars() ->
      "io.parallel_reads.min_size", "io.parallel_reads.queue_strategy",
      "io.timeout"].
 
-io_cfg_change_callback(_, _) ->
+io_cfg_change_callback(_, _, _) ->
     metric:update_env().
 
 register_config_whitelist() ->
