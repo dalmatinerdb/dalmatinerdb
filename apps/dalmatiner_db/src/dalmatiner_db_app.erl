@@ -10,18 +10,18 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    folsom_metrics:new_histogram(get, slide, 60),
-    folsom_metrics:new_histogram(put, slide, 60),
-    folsom_metrics:new_histogram(mput, slide, 60),
+    ddb_histogram:register(get),
+    ddb_histogram:register(put),
+    ddb_histogram:register(mput),
 
-    folsom_metrics:new_histogram({event, put}, slide, 60),
-    folsom_metrics:new_histogram({event, get}, slide, 60),
+    ddb_histogram:register({event, put}),
+    ddb_histogram:register({event, get}),
 
-    folsom_metrics:new_histogram({mstore, read}, slide, 60),
-    folsom_metrics:new_histogram({mstore, write}, slide, 60),
+    ddb_histogram:register({mstore, read}),
+    ddb_histogram:register({mstore, write}),
 
-    folsom_metrics:new_histogram(list_buckets, slide, 60),
-    folsom_metrics:new_histogram(list_metrics, slide, 60),
+    ddb_histogram:register(list_buckets),
+    ddb_histogram:register(list_metrics),
     spawn(fun delay_tcp_anouncement/0),
     dalmatiner_db_sup:start_link().
 

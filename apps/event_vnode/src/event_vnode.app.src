@@ -11,6 +11,7 @@
                   trie,
                   lager,
                   dalmatiner_vacuum,
+                  dalmatiner_metric,
                   riak_core,
                   snappyer,
                   jsxd

@@ -10,7 +10,7 @@
 -ignore_xref([get/4]).
 
 delete(Bucket) ->
-    folsom_metrics:histogram_timed_update(
+    ddb_histogram:timed_update(
       list_metrics, event_coverage, start, [{delete, Bucket}]).
 
 append(_Bucket, []) ->
@@ -43,7 +43,7 @@ do_append(N, W, Bucket, C, Events) ->
     Preflist = riak_core_apl:get_apl(DocIdx, N, event),
     ReqID = make_ref(),
     event_vnode:put(Preflist, ReqID, Bucket, Events),
-    folsom_metrics:histogram_timed_update(
+    ddb_histogram:timed_update(
       {event, put},
       fun() ->
               do_wait(W, ReqID)
@@ -55,7 +55,7 @@ get(Bucket, Start, End, Filter) ->
 
 get(Bucket, Split, Start, End, Filter) when
       Start div Split =:= End div Split->
-    folsom_metrics:histogram_timed_update(
+    ddb_histogram:timed_update(
       {event, get}, dalmatiner_read_fsm, start,
       [{event_vnode, event}, get, {Bucket, Start div Split},
        {Start, End, Filter}]).

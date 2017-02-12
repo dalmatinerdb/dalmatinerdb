@@ -11,7 +11,6 @@
                   mmath,
                   trie,
                   lager,
-                  folsom,
                   dalmatiner_vacuum,
                   dalmatiner_metric,
                   snappyer,
