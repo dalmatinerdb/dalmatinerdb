@@ -36,7 +36,7 @@ get_and_clean() ->
             [];
         Results ->
             ets:delete_all_objects(?COUNTERS),
-            Results1 = [{Name, Cnt} || {{_, Name}, Cnt} <- Results],
+            Results1 = [{Name, Cnt} || {{Name, _}, Cnt} <- Results],
             collaps_counters(lists:sort(Results1))
     end.
 
