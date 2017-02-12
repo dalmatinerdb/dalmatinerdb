@@ -27,7 +27,7 @@ handle_work(#read_req{
                map_fn      = Map,
                req_id      = ReqID
               }, _Sender, State = #state{index = P, node = N}) ->
-    {ok, Data} = folsom_metrics:histogram_timed_update(
+    {ok, Data} = ddb_histogram:timed_update(
                    {mstore, read},
                    mstore, get, [MSetc, Metric, Time, Count]),
     mstore:close(MSetc),

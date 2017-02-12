@@ -29,9 +29,6 @@ init([]) ->
     ReadFSMs = {dalmatiner_read_fsm_sup,
                 {dalmatiner_read_fsm_sup, start_link, []},
                 permanent, infinity, supervisor, [dalmatiner_read_fsm_sup]},
-    Metrics = {dalmatiner_metrics,
-               {dalmatiner_metrics, start_link, []},
-               permanent, infinity, worker, [dalmatiner_metrics]},
     {ok, {{one_for_one, 5, 10},
-          [Metrics, WriteFSMs, ReadFSMs]}}.
+          [WriteFSMs, ReadFSMs]}}.
 

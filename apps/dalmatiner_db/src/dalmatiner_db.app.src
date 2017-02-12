@@ -17,6 +17,7 @@
                   mstore,
                   mmath,
                   dalmatiner_vacuum,
+                  dalmatiner_metric,
                   snappyer,
                   ranch
                  ]},
