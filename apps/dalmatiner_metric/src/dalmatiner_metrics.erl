@@ -101,7 +101,9 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call(get_list, _From, State = #state{list = List}) ->
-    {reply, {ok, List}, State#state{running = true}};
+    List1 = [{dproto:metric_to_list(M), lists:nth(1, mmath_bin:to_list(V))}
+             || {_, M, _, V} <- List],
+    {reply, {ok, List1}, State#state{running = true}};
 handle_call(start, _From, State = #state{running = false}) ->
     erlang:send_after(?INTERVAL, self(), tick),
     Reply = ok,
