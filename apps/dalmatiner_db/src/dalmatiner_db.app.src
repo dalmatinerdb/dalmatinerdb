@@ -16,7 +16,10 @@
                   dproto,
                   mstore,
                   mmath,
+                  bkt_dict,
+                  folsom,
                   dalmatiner_vacuum,
+                  dalmatiner_metric,
                   snappyer,
                   ranch
                  ]},

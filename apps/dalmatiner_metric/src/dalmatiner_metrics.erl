@@ -25,7 +25,7 @@
 -define(SERVER, ?MODULE).
 -define(INTERVAL, 1000).
 -define(BUCKET, <<"dalmatinerdb">>).
--define(COUNTERS_MPS, ddb_counters_mps).
+-define(COUNTERS, ddb_counters).
 
 -record(state, {running = false, dict, prefix}).
 
@@ -57,10 +57,10 @@ inc(Type, N) when is_atom(Type) ->
 
 inc(Type, N) when is_binary(Type) ->
     try
-        ets:update_counter(?COUNTERS_MPS, {self(), Type}, N)
+        ets:update_counter(?COUNTERS, {self(), Type}, N)
     catch
         error:badarg ->
-            ets:insert(?COUNTERS_MPS, {{self(), Type}, N})
+            ets:insert(?COUNTERS, {{self(), Type}, N})
     end,
     ok.
 
@@ -84,7 +84,7 @@ init([]) ->
     %% We want a high priority so we don't get scheduled back and have false
     %% reporting.
     process_flag(priority, high),
-    ets:new(?COUNTERS_MPS,
+    ets:new(?COUNTERS,
             [named_table, set, public, {write_concurrency, true}]),
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, W} = application:get_env(dalmatiner_db, w),
@@ -178,11 +178,11 @@ handle_info(tick,
     Time = timestamp(),
     Spec = folsom_metrics:get_metrics_info(),
 
-    Dict2 = case ets:tab2list(?COUNTERS_MPS) of
+    Dict2 = case ets:tab2list(?COUNTERS) of
                 [] ->
                     Dict1;
                 Counts ->
-                    ets:delete_all_objects(?COUNTERS_MPS),
+                    ets:delete_all_objects(?COUNTERS),
                     Counts1 = [{Type, Cnt} || {{_, Type}, Cnt} <- Counts],
                     [{Type0, Count0} | Counts2] = lists:sort(Counts1),
                     AccIn = #fold_acc{type = Type0, count = Count0, dict= Dict1,
