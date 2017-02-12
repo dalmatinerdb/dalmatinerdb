@@ -148,7 +148,8 @@ handle_info(tick,
     %% Add our own counters
     Counts = ddb_counter:get_and_clean(),
     DictC = lists:foldl(fun ({Name, Count}, Acc) ->
-                                add_to_dict([Prefix, Name], Time, Count, Acc)
+                                add_metric(Prefix, metric_name(Name),
+                                           Time, Count, Acc)
                         end, Dict, Counts),
 
     %% Add our own histograms
@@ -157,7 +158,8 @@ handle_info(tick,
               fun ({Name, Vals}, Acc1) ->
                       lists:foldl(
                         fun({K, V}, Acc2) ->
-                                add_to_dict([Prefix, Name, K], Time, V, Acc2)
+                                add_metric(Prefix, [metric_name(Name), K],
+                                           Time, V, Acc2)
                         end, Acc1, Vals)
               end, DictC, Hists),
 
