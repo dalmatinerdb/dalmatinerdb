@@ -158,10 +158,10 @@ handle_info(tick,
     Hists = ddb_histogram:get(),
     DictH = lists:foldl(
               fun ({Name, Vals}, Acc1) ->
+                      Pfx1 = [Prefix, metric_name(Name)],
                       lists:foldl(
                         fun({K, V}, Acc2) ->
-                                add_metric(Prefix, [metric_name(Name), K],
-                                           Time, V, Acc2)
+                                add_metric(Pfx1, [K], Time, V, Acc2)
                         end, Acc1, Vals)
               end, DictC, Hists),
 
@@ -278,9 +278,6 @@ do_metrics(Prefix, Time, [{N, [{type, meter} | _]} | Spec], Acc) ->
     Acc9 = add_metric(Prefix1,
                       [<<"one_to_fifteen">>], Time, OneToFifteen, Acc8),
     do_metrics(Prefix, Time, Spec, Acc9).
-
-add_metric(Prefix, Name, Time, Value, Acc) when is_integer(Value) ->
-    add_to_dict([Prefix, metric_name(Name)], Time, Value, Acc);
 
 add_metric(Prefix, Name, Time, Value, Acc) when is_float(Value) ->
     add_to_dict([Prefix, metric_name(Name)], Time, Value, Acc).
