@@ -31,8 +31,11 @@ init([]) ->
     Metrics = {dalmatiner_metrics,
                {dalmatiner_metrics, start_link, []},
                permanent, infinity, worker, [dalmatiner_metrics]},
+    HistogramSup = {ddb_histogram_sup,
+                    {ddb_histogram_sup, start_link, []},
+                    permanent, infinity, supervisor, [ddb_histogram_sup]},
     {ok, { {one_for_all, 0, 1},
-           [Metrics]} }.
+           [HistogramSup, Metrics]} }.
 
 %%====================================================================
 %% Internal functions
