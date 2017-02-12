@@ -279,7 +279,7 @@ do_metrics(Prefix, Time, [{N, [{type, meter} | _]} | Spec], Acc) ->
                       [<<"one_to_fifteen">>], Time, OneToFifteen, Acc8),
     do_metrics(Prefix, Time, Spec, Acc9).
 
-add_metric(Prefix, Name, Time, Value, Acc) when is_float(Value) ->
+add_metric(Prefix, Name, Time, Value, Acc) ->
     add_to_dict([Prefix, metric_name(Name)], Time, Value, Acc).
 
 -spec add_to_dict([binary() | [binary()]], integer(), integer() | float(),
