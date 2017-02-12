@@ -137,7 +137,7 @@ repair_update_cache(Bucket, Metric, Time, Count, Value,
         %% write it!
         [{{Bucket, Metric}, Start, _Size, _Time, _Array}]
           when Time + Count < Start ->
-            dalmatiner_metrics:inc(<<"ooo-write">>),
+            ddb_counter:inc(<<"ooo_write">>),
             metric_io:write(State#state.io, Bucket, Metric, Time, Value),
             State;
         %% ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐
@@ -477,7 +477,7 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO})
                 %% written data.
                 [{BM, _Start, _Size, _End, _V}]
                   when Time < _Start ->
-                    dalmatiner_metrics:inc(<<"ooo-write">>),
+                    ddb_counter:inc(<<"ooo_write">>),
                     metric_io:write(IO, Bucket, Metric, Time, Value);
                 %% When the Delta of start time and this package is greater
                 %% then the cache time we flush the cache and start a new cache

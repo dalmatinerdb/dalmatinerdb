@@ -16,7 +16,6 @@
                   dproto,
                   mstore,
                   mmath,
-                  bkt_dict,
                   dalmatiner_vacuum,
                   dalmatiner_metric,
                   snappyer,

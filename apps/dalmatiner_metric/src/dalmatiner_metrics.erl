@@ -14,9 +14,9 @@
 
 
 %% API
--export([start_link/0, inc/2, inc/1, start/0, stop/0]).
+-export([start_link/0, start/0, stop/0]).
 
--ignore_xref([start_link/0, inc/1, start/0, stop/0]).
+-ignore_xref([start_link/0, start/0, stop/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -25,7 +25,6 @@
 -define(SERVER, ?MODULE).
 -define(INTERVAL, 1000).
 -define(BUCKET, <<"dalmatinerdb">>).
--define(COUNTERS, ddb_counters).
 
 -record(state, {running = false, dict, prefix}).
 
@@ -49,22 +48,6 @@ start() ->
 stop() ->
     gen_server:call(?SERVER, stop).
 
-inc(Type) ->
-    inc(Type, 1).
-
-inc(Type, N) when is_atom(Type) ->
-    inc(atom_to_binary(Type, utf8), N);
-
-inc(Type, N) when is_binary(Type) ->
-    try
-        ets:update_counter(?COUNTERS, {self(), Type}, N)
-    catch
-        error:badarg ->
-            ets:insert(?COUNTERS, {{self(), Type}, N})
-    end,
-    ok.
-
-
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -83,9 +66,8 @@ inc(Type, N) when is_binary(Type) ->
 init([]) ->
     %% We want a high priority so we don't get scheduled back and have false
     %% reporting.
+    ddb_counter:init(),
     process_flag(priority, high),
-    ets:new(?COUNTERS,
-            [named_table, set, public, {write_concurrency, true}]),
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, W} = application:get_env(dalmatiner_db, w),
     lager:info("[metrics] Initializing metric watcher with N: ~p, W: ~p at an "
@@ -154,57 +136,42 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 
 
--record(fold_acc,
-        {
-          type,
-          count,
-          time,
-          prefix,
-          dict
-        }).
-
-write_fold_acc(#fold_acc{type = Type, count = Count,
-                         dict = Dict, prefix = Prefix,
-                         time = Time}) ->
-    add_to_dict([Prefix, Type], Time, Count, Dict).
-
-fold_count({Type, Count}, Acc = #fold_acc{type = Type, count = CountAcc}) ->
-    Acc#fold_acc{count = CountAcc + Count};
-fold_count({Type, Count}, Acc) ->
-    Acc#fold_acc{dict = write_fold_acc(Acc), type = Type, count = Count}.
 handle_info(tick,
-            State = #state{running = true, prefix = Prefix, dict = Dict}) ->
-    Dict1 = bkt_dict:update_chash(Dict),
+            State = #state{running = true, prefix = Prefix, dict = Dict0}) ->
+    %% Initialize what we need
+    Dict = bkt_dict:update_chash(Dict0),
     Time = timestamp(),
+
+    %% Add our own counters
+    Counts = ddb_counter:get_and_clean(),
+    DictC = lists:foldl(fun ({Name, Count}, Acc) ->
+                                add_to_dict([Prefix, Name], Time, Count, Acc)
+                        end, Dict, Counts),
+
+
+    %% Add folsom data to the dict
     Spec = folsom_metrics:get_metrics_info(),
+    DictF = do_metrics(Prefix, Time, Spec, DictC),
 
-    Dict2 = case ets:tab2list(?COUNTERS) of
-                [] ->
-                    Dict1;
-                Counts ->
-                    ets:delete_all_objects(?COUNTERS),
-                    Counts1 = [{Type, Cnt} || {{_, Type}, Cnt} <- Counts],
-                    [{Type0, Count0} | Counts2] = lists:sort(Counts1),
-                    AccIn = #fold_acc{type = Type0, count = Count0, dict= Dict1,
-                                      time = Time, prefix = Prefix},
-                    AccOut = lists:foldl(fun fold_count/2, AccIn, Counts2),
-                    write_fold_acc(AccOut)
-            end,
-    Dict3 = do_metrics(Prefix, Time, Spec, Dict2),
-    Inbound = riak_core_handoff_manager:status({direction, inbound}),
-    Outbound = riak_core_handoff_manager:status({direction, outbound}),
+    %% Add riak_core related data
+    DictR = get_handoff_metrics(Prefix, Time, DictF),
 
-    Dict4 = add_to_dict([Prefix, <<"handoffs">>, <<"inbound">>],
-                        Time, length(Inbound), Dict3),
-    Dict5 = add_to_dict([Prefix, <<"handoffs">>, <<"outbound">>],
-                        Time, length(Outbound), Dict4),
     %% Send
-    Dict6 = bkt_dict:flush(Dict5),
+    DictFlushed = bkt_dict:flush(DictR),
     erlang:send_after(?INTERVAL, self(), tick),
-    {noreply, State#state{dict = Dict6}};
+    {noreply, State#state{dict = DictFlushed}};
 
 handle_info(_Info, State) ->
     {noreply, State}.
+
+get_handoff_metrics(Prefix, Time, Dict) ->
+    Inbound = riak_core_handoff_manager:status({direction, inbound}),
+    Outbound = riak_core_handoff_manager:status({direction, outbound}),
+
+    Dict1 = add_to_dict([Prefix, <<"handoffs">>, <<"inbound">>],
+                        Time, length(Inbound), Dict),
+    add_to_dict([Prefix, <<"handoffs">>, <<"outbound">>],
+                Time, length(Outbound), Dict1).
 
 %%--------------------------------------------------------------------
 %% @private

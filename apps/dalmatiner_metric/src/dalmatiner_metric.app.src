@@ -6,7 +6,9 @@
   {applications,
    [kernel,
     stdlib,
-    bkt_dict,
+    %% For core counters
+    riak_core,
+    %% For folsom counters
     folsom
    ]},
   {env,[]},

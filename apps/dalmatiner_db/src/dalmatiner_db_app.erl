@@ -22,6 +22,7 @@ start(_StartType, _StartArgs) ->
 
     ddb_histogram:register(list_buckets),
     ddb_histogram:register(list_metrics),
+    ddb_counter:register(read_repair),
     spawn(fun delay_tcp_anouncement/0),
     dalmatiner_db_sup:start_link().
 
