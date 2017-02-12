@@ -66,7 +66,6 @@ stop() ->
 init([]) ->
     %% We want a high priority so we don't get scheduled back and have false
     %% reporting.
-    ddb_counter:init(),
     process_flag(priority, high),
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, W} = application:get_env(dalmatiner_db, w),
@@ -148,10 +147,19 @@ handle_info(tick,
                                 add_to_dict([Prefix, Name], Time, Count, Acc)
                         end, Dict, Counts),
 
+    %% Add our own histograms
+    Hists = ddb_histogram:get(),
+    DictH = lists:foldl(
+              fun ({Name, Vals}, Acc1) ->
+                      lists:foldl(
+                        fun({K, V}, Acc2) ->
+                                add_to_dict([Prefix, Name, K], Time, V, Acc2)
+                        end, Acc1, Vals)
+              end, DictC, Hists),
 
     %% Add folsom data to the dict
     Spec = folsom_metrics:get_metrics_info(),
-    DictF = do_metrics(Prefix, Time, Spec, DictC),
+    DictF = do_metrics(Prefix, Time, Spec, DictH),
 
     %% Add riak_core related data
     DictR = get_handoff_metrics(Prefix, Time, DictF),

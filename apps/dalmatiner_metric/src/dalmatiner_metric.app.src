@@ -8,6 +8,8 @@
     stdlib,
     %% For core counters
     riak_core,
+    %% for hdr histograms
+    hdr_histogram,
     %% For folsom counters
     folsom
    ]},
