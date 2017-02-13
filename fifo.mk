@@ -43,6 +43,10 @@ tree: $(REBAR)
 tree-diff: tree
 	git diff test -- tree
 
+update-fifo.mk:
+	cp _build/default/lib/fifo_utils/priv/fifo.mk .
+	
+
 ###
 ### Docs
 ###
