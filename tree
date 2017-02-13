@@ -1,6 +1,7 @@
 [0m├─ bitmap─0.1.4
 │  └─ cf─0.2.2
 ├─ dalmatiner_db─0.3.1
+├─ dalmatiner_metric─0.1.0
 ├─ dalmatiner_opt─0.1.0
 ├─ dalmatiner_vacuum─0.1.2
 ├─ dproto─0.2.3
@@ -9,10 +10,11 @@
 ├─ eper─0.94.0
 ├─ estore─0.1.9
 ├─ event_vnode─0.1.0
-├─ fifo_utils─0.1.32
-│  ├─ jsone─1.4.1
+├─ fifo_utils─0.1.34
+│  ├─ jsone─1.4.2
 │  └─ uuid─1.5.4
 │     └─ quickrand─1.5.4
+├─ hdr_histogram─0.2.0
 ├─ jsxd─0.2.4
 ├─ k6_bytea─1.1.5
 ├─ lager─3.2.4
