@@ -164,14 +164,35 @@
 
 %% @doc Async reads are performed out of band of writes, this way
 %% larger reads can be performed without blocking other actions.
-{mapping, "io.async_reads", "metric_vnode.async_read",
+{mapping, "io.parallel_reads", "metric_vnode.async_read",
  [{default, off},
   {datatype, flag}]}.
 
+%% @doc The size of the async worker pool, more workers mean more possible
+%% parallelism
+{mapping, "io.parallel_reads.queue_size", "metric_vnode.io_queue_size_size",
+ [{datatype, integer},
+  {default, 5}]}.
+
+
 %% @doc Minimal size of read requests to be considered for asyncronous
 %% reads, this has no effect when async_reads is set to off
-{mapping, "io.async_reads.min_size", "metric_vnode.async_min_size",
+{mapping, "io.parallel_reads.min_size", "metric_vnode.async_min_size",
  [{datatype, integer},
   {default, 1000}]}.
 
-
+%% @doc Some requests to the vnodes are handled by an asyncronous worker pool.
+%% This parameter allows for tuning this pools behaviour when it comes dealing
+%% with requests that are queued.
+%% The default (fifo) will serve requests in the order they arrive at the worker
+%% pool. The alternative is to serve the requests in the reverse order, dealing
+%% with the most recent request first.
+%% There are pro's and con's for both aproaches, it is best to test out what
+%% works best for the desired characteristics.
+%%
+%% As a very rought rule of thumb:
+%%  - fifo will lead to lower extremes
+%%  - filo will lead to lower medians/mediums
+{mapping, "io.parallel_reads.queue_strategy", "metric_vnode.queue_strategy",
+ [{default, fifo},
+  {datatype, {enum, [fifo, filo]}}]}.

@@ -34,9 +34,7 @@
               get/4,
               repair/4,
               handle_info/2,
-              repair/3,
-              handle_overload_command/3,
-              handle_overload_info/2
+              repair/3
              ]).
 
 -record(state, {

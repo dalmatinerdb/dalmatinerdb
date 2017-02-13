@@ -9,7 +9,7 @@
 ├─ eper─0.94.0
 ├─ estore─0.1.9
 ├─ event_vnode─0.1.0
-├─ fifo_utils─0.1.30
+├─ fifo_utils─0.1.32
 │  ├─ jsone─1.4.1
 │  └─ uuid─1.5.4
 │     └─ quickrand─1.5.4
@@ -23,7 +23,7 @@
 ├─ mstore_inspector─0.1.0
 ├─ ranch─1.1.0
 ├─ recon─2.3.2
-├─ riak_core─3.0.1
+├─ riak_core─3.0.2
 │  ├─ basho_stats─1.0.3
 │  ├─ blume─0.1.0
 │  ├─ chash─0.1.2

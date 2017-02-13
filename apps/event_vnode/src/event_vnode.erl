@@ -20,6 +20,8 @@
          encode_handoff_item/2,
          handle_coverage/4,
          handle_info/2,
+         handle_overload_command/3,
+         handle_overload_info/2,
          handle_exit/3]).
 
 -export([put/4, get/4]).
@@ -264,3 +266,10 @@ get_lifetime(Bucket, State = #state{lifetimes = Lifetimes}) ->
             Lifetimes1 = btrie:store(Bucket, TTL, Lifetimes),
             {TTL, State#state{lifetimes = Lifetimes1}}
     end.
+
+%% Handling other failures
+handle_overload_command(_Req, Sender, Idx) ->
+    riak_core_vnode:reply(Sender, {fail, Idx, overload}).
+
+handle_overload_info(_, _Idx) ->
+    ok.

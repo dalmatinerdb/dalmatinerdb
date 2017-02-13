@@ -11,6 +11,7 @@
 -behaviour(gen_server).
 
 -include_lib("mmath/include/mmath.hrl").
+-include("metric_io.hrl").
 
 %% API
 -export([start_link/1, count/1, get_bitmap/6, update_env/1,
@@ -36,6 +37,7 @@
           mstores = gb_trees:empty() :: gb_trees:tree(binary(), entry()),
           closed_mstores = gb_trees:empty() :: gb_trees:tree(binary(), entry()),
           dir,
+          reader_pool :: pid(),
           fold_size,
           max_open_stores
          }).
@@ -212,14 +214,22 @@ io_cast(#io_handle{pid = Pid}, Msg) ->
 %%--------------------------------------------------------------------
 init([Partition]) ->
     process_flag(trap_exit, true),
-    DataDir = case application:get_env(riak_core, platform_data_dir) of
-                  {ok, DD} ->
-                      DD;
-                  _ ->
-                      "data"
-              end,
+    DataDir = application:get_env(riak_core, platform_data_dir, "data"),
+    Strategy = application:get_env(metric_vnode, queue_strategy, fifo),
+    PoolSize = application:get_env(metric_vnode, io_queue_size, 5),
     PartitionDir = filename:join([DataDir,  integer_to_list(Partition)]),
+
+    WorkerMod = metric_io_worker,
+    PoolSize = 5,
+    VNodeIndex = Partition,
+    WorkerArgs = [],
+    WorkerProps = [],
+    PoolOpts = [{strategy, Strategy}],
+    {ok, Pool} = riak_core_vnode_worker_pool:start_link(
+                   WorkerMod, PoolSize, VNodeIndex, WorkerArgs, WorkerProps,
+                   PoolOpts),
     {ok, do_update_env(#state{partition = Partition,
+                              reader_pool = Pool,
                               node = node(),
                               dir = PartitionDir})}.
 
@@ -741,21 +751,21 @@ compress(Data, #state{compression = none}) ->
 %% insane ammount of processes where it becomes more exensive
 %% to create and tear down then it is to do the reads themselfs.
 maybe_async_read(Bucket, Metric, Time, Count, ReqID, Sender,
-                 State = #state{node = N, partition = P, async_read = true,
+                 State = #state{async_read = true, reader_pool = Pool,
+                                node = N, partition = P,
                                 async_min_size = MinSize})
   when Count >= MinSize->
     case get_set(Bucket, State) of
         {ok, {{_LastWritten, MSet}, State1}} ->
-            MSetc = mstore:clone(MSet),
-            spawn(
-              fun() ->
-                      {ok, Data} = folsom_metrics:histogram_timed_update(
-                                     {mstore, read},
-                                     mstore, get, [MSetc, Metric, Time, Count]),
-                      mstore:close(MSetc),
-                      Dc = compress(Data, State),
-                      riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc})
-              end),
+            Work = #read_req{
+                      mstore      = mstore:clone(MSet),
+                      metric      = Metric,
+                      time        = Time,
+                      count       = Count,
+                      compression = State#state.compression,
+                      req_id      = ReqID
+                     },
+            riak_core_vnode_worker_pool:handle_work(Pool, Work, Sender),
             State1;
         _ ->
             lager:warning("[IO] Unknown metric: ~p/~p", [Bucket, Metric]),
@@ -773,23 +783,22 @@ maybe_async_read(Bucket, Metric, Time, Count, ReqID, Sender,
 
 maybe_async_read_rest(Bucket, Metric, Time, Count, Part, ReqID, Sender,
                       State = #state{node = N, partition = P, async_read = true,
+                                     reader_pool = Pool,
                                      async_min_size = MinSize})
   when Count >= MinSize ->
     {ReadTime, ReadCount, MergeFn} = read_rest_prepare_part(Time, Count, Part),
     case get_set(Bucket, State) of
         {ok, {{_LastWritten, MSet}, State1}} ->
-            MSetc = mstore:clone(MSet),
-            spawn(
-              fun() ->
-                      {ok, D} = folsom_metrics:histogram_timed_update(
-                                  {mstore, read},
-                                  mstore, get, [MSetc, Metric, ReadTime,
-                                                ReadCount]),
-                      mstore:close(MSetc),
-                      Data = MergeFn(D),
-                      Dc = compress(Data, State1),
-                      riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc})
-              end),
+            Work = #read_req{
+                      mstore      = mstore:clone(MSet),
+                      metric      = Metric,
+                      time        = ReadTime,
+                      count       = ReadCount,
+                      map_fn      = MergeFn,
+                      compression = State#state.compression,
+                      req_id      = ReqID
+                     },
+            riak_core_vnode_worker_pool:handle_work(Pool, Work, Sender),
             State1;
         _ ->
             D = mmath_bin:empty(Count),
