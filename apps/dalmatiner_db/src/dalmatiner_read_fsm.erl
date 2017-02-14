@@ -23,7 +23,7 @@
 -type partition() :: chash:index_as_int().
 -type reply_src() :: {partition(), term()}.
 -type metric_element() :: binary().
--type read_opts() :: [no_repair | {n, pos_integer()} | {r, pos_integer()}].
+-type read_opts() :: [no_rr | {n, pos_integer()} | {r, pos_integer()}].
 %%-type metric_reply() :: {partition(), metric_element()}.
 
 -record(state, {req_id,
@@ -111,7 +111,7 @@ init([ReqId, {VNode, System}, Op, From, Entity]) ->
     init([ReqId, {VNode, System}, Op, From, Entity, undefined, []]);
 
 init([ReqId, {VNode, System}, Op, From, Entity, Val, Opts]) ->
-    RR = not proplists:get_bool(no_repair, Opts),
+    RR = not proplists:get_bool(no_rr, Opts),
     {ok, N} = get_opt_or_env(dalmatiner_db, n, Opts),
     {ok, R} = get_opt_or_env(dalmatiner_db, r, Opts),
     Compression = application:get_env(dalmatiner_db,
