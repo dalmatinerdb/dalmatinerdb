@@ -13,6 +13,7 @@
                   event_vnode,
                   riak_core,
                   lager,
+                  fifo_lager,
                   dproto,
                   mstore,
                   mmath,

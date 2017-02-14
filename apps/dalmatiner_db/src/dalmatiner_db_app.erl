@@ -26,7 +26,12 @@ start(_StartType, _StartArgs) ->
 
     folsom_metrics:new_histogram(list_buckets, slide, 60),
     folsom_metrics:new_histogram(list_metrics, slide, 60),
+
+    clique:register([dalmatiner_db_cli]),
+
     spawn(fun delay_tcp_anouncement/0),
+
+
     dalmatiner_db_sup:start_link().
 
 stop(_State) ->
