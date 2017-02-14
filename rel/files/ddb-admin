@@ -748,6 +748,11 @@ case "$1" in
         node_up_check
         exec $NODETOOL rpc riak_core_console command ddb-admin $@
         ;;
+    read_repair)
+        # New pattern for command line. Use nodetool for RPC
+        node_up_check
+        exec $NODETOOL rpc riak_core_console command ddb-admin $@
+        ;;
     handoff)
         # New pattern for command line. Use nodetool for RPC
         node_up_check
