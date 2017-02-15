@@ -117,7 +117,7 @@ get_bitmap(Hdl, Bucket, Metric, Time, Ref, Sender) ->
     io_cast(Hdl, {get_bitmap, Bucket, Metric, Time, Ref, Sender}).
 
 -spec read(io_handle(), binary(), binary(), non_neg_integer(),
-                 pos_integer(), term(), term()) ->
+           pos_integer(), term(), term()) ->
                   ok | {error, _}.
 read(Hdl = #io_handle{pid = Pid, max_async_write = MaxLen},
      Bucket, Metric, Time, Count, ReqID, Sender) ->
@@ -149,8 +149,8 @@ sread(Hdl, Bucket, Metric, Time, Count, ReqID, Sender) ->
     io_call_r(Hdl, {read, Bucket, Metric, Time, Count, ReqID, Sender}).
 
 -spec sread_rest(io_handle(), binary(), binary(), non_neg_integer(),
-            pos_integer(), read_part(), term(), term()) ->
-                   ok | {error, _}.
+                 pos_integer(), read_part(), term(), term()) ->
+                        ok | {error, _}.
 sread_rest(Hdl, Bucket, Metric, Time, Count, Part, ReqID, Sender) ->
     io_call_r(
       Hdl, {read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender}).
@@ -349,9 +349,9 @@ bucket_fold_fun({BucketDir, Bucket}, {AccIn, Fun}) ->
                       lacc=AccL, hacc=HAcc}->
                     {Fun({Bucket, Metric}, lists:reverse(AccL), HAcc), Fun}
             end;
-        {error, enoent} ->
-            lager:warning("Empty bucket detencted going to remove it: ~s",
-                          [BucketDir]),
+        {error, E} ->
+            lager:warning("Empty bucket detencted going to remove it: ~s / ~p",
+                          [BucketDir, E]),
             file:del_dir(BucketDir),
             {AccIn, Fun}
     end.
@@ -475,8 +475,11 @@ handle_call(buckets, _From, State = #state{dir = PartitionDir}) ->
 
 handle_call({metrics, Bucket}, _From, State) ->
     {Ms, State1} = case get_set(Bucket, State) of
-                       {ok, {{_, M}, S2}} ->
-                           {mstore:metrics(M), S2};
+                       {ok, {{_, M}, S2 = #state{mstores = Stores}}} ->
+                           {Metrics, M1} = mstore:metrics(M),
+                           Stores1 = gb_trees:enter(Bucket, M1, Stores),
+                           S3 = S2#state{mstores = Stores1},
+                           {Metrics, S3};
                        _ ->
                            {btrie:new(), State}
                    end,
@@ -484,10 +487,12 @@ handle_call({metrics, Bucket}, _From, State) ->
 
 handle_call({metrics, Bucket, Prefix}, _From, State) ->
     {MsR, State1} = case get_set(Bucket, State) of
-                        {ok, {{_, M}, S2}} ->
-                            Ms = mstore:metrics(M),
-                            Ms1 = btrie:fetch_keys_similar(Prefix, Ms),
-                            {btrie:from_list(Ms1), S2};
+                        {ok, {{_, M}, S2 = #state{mstores = Stores}}} ->
+                            {Ms, M1} = mstore:metrics(M),
+                            Stores1 = gb_trees:enter(Bucket, M1, Stores),
+                            S3 = S2#state{mstores = Stores1},
+                            Ms1= btrie:fetch_keys_similar(Prefix, Ms),
+                            {btrie:from_list(Ms1), S3};
                         _ ->
                             {btrie:new(), State}
                     end,
@@ -694,8 +699,8 @@ calc_empty(I) ->
         none ->
             true;
         {_, {_, MSet}, I2} ->
-            btrie:size(mstore:metrics(MSet)) =:= 0
-                andalso calc_empty(I2)
+            {Metrics, _MSet} = mstore:metrics(MSet),
+            btrie:size(Metrics) =:= 0 andalso calc_empty(I2)
     end.
 
 -spec do_write(binary(), binary(), pos_integer(), binary(), state()) ->
