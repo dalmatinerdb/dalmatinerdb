@@ -29,7 +29,7 @@ handle_work(#read_req{
               }, _Sender, State = #state{index = P, node = N}) ->
     {ok, Data} = ddb_histogram:timed_update(
                    {mstore, read},
-                   mstore, get, [MSetc, Metric, Time, Count]),
+                   mstore, get, [MSetc, Metric, Time, Count, [one_off]]),
     mstore:close(MSetc),
     Data1 = case Map of
                 undefined -> Data;
