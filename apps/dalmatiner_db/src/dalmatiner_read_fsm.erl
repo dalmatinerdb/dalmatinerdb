@@ -232,9 +232,10 @@ wait_for_n({ok, _ReqID, IdxNode, Obj},
 
 %% TODO partial repair?
 wait_for_n(timeout, SD) ->
-    {stop, timeout, SD}.
+    lager:warning("Waiting for n failed: ~p", [SD]),
+    {stop, normal, SD}.
 
-finalize(timeout, SD=#state{read_repair = false}) ->
+finalize(_, SD=#state{read_repair = false}) ->
     {stop, normal, SD};
 
 
