@@ -877,7 +877,7 @@ maybe_restart_pool(State = #state{async_read = false, reader_pool = Pid}) ->
 maybe_restart_pool(State = #state{pool_config = Conf}) ->
     case get_pool_config() of
         Conf1 when Conf1 =:= Conf ->
-            maybe_restart_pool(State);
+            maybe_start_pool(State);
         Conf1 ->
             case State#state.reader_pool of
                 undefined ->
