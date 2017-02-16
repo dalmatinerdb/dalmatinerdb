@@ -724,7 +724,7 @@ do_read(Bucket, Metric, Time, Count, State = #state{})
         {ok, {{_LastWritten, MSet}, S2}} ->
             {ok, Data} = ddb_histogram:timed_update(
                            {mstore, read},
-                           mstore, get, [MSet, Metric, Time, Count]),
+                           mstore, get, [MSet, Metric, Time, Count, [one_off]]),
             {Data, S2};
         _ ->
             lager:warning("[IO] Unknown metric: ~p/~p", [Bucket, Metric]),
