@@ -24,7 +24,7 @@ register_cli_cfg() ->
        ["io", "max_async"],
        ["io", "parallel_reads"],
        ["io", "parallel_reads", "min_size"],
-       ["io", "parallel_reads", "min_size"],
+       ["io", "parallel_reads", "queue_size"],
        ["io", "parallel_reads", "queue_strategy"]]).
 
 node_and_all_flags() ->
@@ -54,8 +54,4 @@ io_cfg_change_callback(_, _, _) ->
     metric:update_env().
 
 register_config_whitelist() ->
-    ok = clique:register_config_whitelist(
-           ["io.max_async",
-            "io.timeout",
-            "io.parallel_reads",
-            "io.parallel_reads.min_size"]).
+    ok = clique:register_config_whitelist(config_vars()).
