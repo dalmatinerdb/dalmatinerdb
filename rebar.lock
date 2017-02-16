@@ -38,7 +38,7 @@
   0},
  {<<"mstore">>,
   {git,"https://github.com/dalmatinerdb/mstore.git",
-       {ref,"5cab010f45b29e8324c834bdb84a6f0ab3d543c9"}},
+       {ref,"441b549e708ffdc1f864942510ebb30e95ff1d6c"}},
   0},
  {<<"mstore_inspector">>,
   {git,"https://github.com/dalmatinerdb/mstore_inspector.git",
