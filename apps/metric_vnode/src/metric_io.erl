@@ -577,11 +577,17 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, #state{mstores = MStore, reader_pool = Pool}) ->
+terminate(_Reason, S = #state{mstores = MStore, reader_pool = Pool}) ->
     gb_trees:map(fun(_, {_, MSet}) ->
                          mstore:close(MSet)
                  end, MStore),
-    riak_core_vnode_worker_pool:stop(Pool, normal),
+    case S#state.reader_pool of
+        undefined ->
+            ok;
+        Pool ->
+            unlink(Pool),
+            riak_core_vnode_worker_pool:stop(Pool, normal)
+    end,
     ok.
 
 %%--------------------------------------------------------------------
@@ -872,6 +878,7 @@ maybe_restart_pool(State = #state{async_read = false,
     State;
 maybe_restart_pool(State = #state{async_read = false, reader_pool = Pid}) ->
     lager:warning("Shutting down IO pool due to config update"),
+    unlink(Pid),
     riak_core_vnode_worker_pool:shutdown_pool(Pid, 5000),
     State#state{reader_pool = undefined};
 maybe_restart_pool(State = #state{pool_config = Conf}) ->
@@ -884,6 +891,7 @@ maybe_restart_pool(State = #state{pool_config = Conf}) ->
                     ok;
                 Pid ->
                     lager:warning("Reastarting IO pool due to config update"),
+                    unlink(Pid),
                     riak_core_vnode_worker_pool:shutdown_pool(Pid, 5000)
             end,
             State1 = State#state{pool_config = Conf1, reader_pool = undefined},
