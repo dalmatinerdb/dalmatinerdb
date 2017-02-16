@@ -37,7 +37,8 @@
           mstores = gb_trees:empty() :: gb_trees:tree(binary(), entry()),
           closed_mstores = gb_trees:empty() :: gb_trees:tree(binary(), entry()),
           dir,
-          reader_pool :: pid(),
+          reader_pool :: pid() | undefined,
+          pool_config :: {pos_integer(), fifo | filo},
           fold_size,
           max_open_stores
          }).
@@ -215,22 +216,11 @@ io_cast(#io_handle{pid = Pid}, Msg) ->
 init([Partition]) ->
     process_flag(trap_exit, true),
     DataDir = application:get_env(riak_core, platform_data_dir, "data"),
-    Strategy = application:get_env(metric_vnode, queue_strategy, fifo),
-    PoolSize = application:get_env(metric_vnode, io_queue_size, 5),
     PartitionDir = filename:join([DataDir,  integer_to_list(Partition)]),
-
-    WorkerMod = metric_io_worker,
-    PoolSize = 5,
-    VNodeIndex = Partition,
-    WorkerArgs = [],
-    WorkerProps = [],
-    PoolOpts = [{strategy, Strategy}],
-    {ok, Pool} = riak_core_vnode_worker_pool:start_link(
-                   WorkerMod, PoolSize, VNodeIndex, WorkerArgs, WorkerProps,
-                   PoolOpts),
+    PConfig = get_pool_config(),
     {ok, do_update_env(#state{partition = Partition,
-                              reader_pool = Pool,
                               node = node(),
+                              pool_config = PConfig,
                               dir = PartitionDir})}.
 
 %%--------------------------------------------------------------------
@@ -587,10 +577,11 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, #state{mstores = MStore}) ->
+terminate(_Reason, #state{mstores = MStore, reader_pool = Pool}) ->
     gb_trees:map(fun(_, {_, MSet}) ->
                          mstore:close(MSet)
                  end, MStore),
+    riak_core_vnode_worker_pool:stop(Pool, normal),
     ok.
 
 %%--------------------------------------------------------------------
@@ -616,12 +607,13 @@ do_update_env(State) ->
     AsyncMinSize = application:get_env(metric_vnode,
                                        async_min_size, 1000),
     FoldSize = application:get_env(metric_vnode, handoff_chunk, 10*1024),
-    State#state{
-      async_min_size = AsyncMinSize,
-      compression = Compression,
-      fold_size = FoldSize,
-      async_read = AsyncRead
-     }.
+    State1 = State#state{
+               async_min_size = AsyncMinSize,
+               compression = Compression,
+               fold_size = FoldSize,
+               async_read = AsyncRead
+              },
+    maybe_restart_pool(State1).
 
 -spec bucket_dir(binary(), non_neg_integer()) -> string().
 
@@ -759,7 +751,8 @@ maybe_async_read(Bucket, Metric, Time, Count, ReqID, Sender,
                  State = #state{async_read = true, reader_pool = Pool,
                                 node = N, partition = P,
                                 async_min_size = MinSize})
-  when Count >= MinSize->
+  when Count >= MinSize,
+       Pool =/= undefined ->
     case get_set(Bucket, State) of
         {ok, {{_LastWritten, MSet}, State1}} ->
             Work = #read_req{
@@ -790,7 +783,8 @@ maybe_async_read_rest(Bucket, Metric, Time, Count, Part, ReqID, Sender,
                       State = #state{node = N, partition = P, async_read = true,
                                      reader_pool = Pool,
                                      async_min_size = MinSize})
-  when Count >= MinSize ->
+  when Count >= MinSize,
+       Pool =/= undefined ->
     {ReadTime, ReadCount, MergeFn} = read_rest_prepare_part(Time, Count, Part),
     case get_set(Bucket, State) of
         {ok, {{_LastWritten, MSet}, State1}} ->
@@ -849,4 +843,49 @@ read_rest_prepare_part(Time, Count, Part) ->
                               <<D1/binary, Bin/binary, D2/binary>>
                       end,
             {ReadTime, ReadCount, MergeFn}
+    end.
+
+maybe_start_pool(S = #state{partition = VNodeIndex,
+                            reader_pool = undefined,
+                            async_read = true,
+                            pool_config = {PoolSize, Strategy}})
+  when PoolSize > 0 ->
+    WorkerMod = metric_io_worker,
+    WorkerArgs = [],
+    WorkerProps = [],
+    PoolOpts = [{strategy, Strategy}],
+    {ok, Pool} = riak_core_vnode_worker_pool:start_link(
+                   WorkerMod, PoolSize, VNodeIndex, WorkerArgs, WorkerProps,
+                   PoolOpts),
+    S#state{reader_pool = Pool};
+
+maybe_start_pool(State) ->
+    State.
+
+get_pool_config() ->
+    Strategy = application:get_env(metric_vnode, queue_strategy, fifo),
+    PoolSize = application:get_env(metric_vnode, io_queue_size, 5),
+    {PoolSize, Strategy}.
+
+maybe_restart_pool(State = #state{async_read = false,
+                                  reader_pool = undefined}) ->
+    State;
+maybe_restart_pool(State = #state{async_read = false, reader_pool = Pid}) ->
+    lager:warning("Shutting down IO pool due to config update"),
+    riak_core_vnode_worker_pool:shutdown_pool(Pid, 5000),
+    State#state{reader_pool = undefined};
+maybe_restart_pool(State = #state{pool_config = Conf}) ->
+    case get_pool_config() of
+        Conf1 when Conf1 =:= Conf ->
+            maybe_restart_pool(State);
+        Conf1 ->
+            case State#state.reader_pool of
+                undefined ->
+                    ok;
+                Pid ->
+                    lager:warning("Reastarting IO pool due to config update"),
+                    riak_core_vnode_worker_pool:shutdown_pool(Pid, 5000)
+            end,
+            State1 = State#state{pool_config = Conf1, reader_pool = undefined},
+            maybe_start_pool(State1)
     end.
