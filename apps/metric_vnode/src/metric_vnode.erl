@@ -399,7 +399,9 @@ handle_coverage(update_env, _KeySpaces, _Sender,
     {reply, Reply, update_env(State#state{io = IO1})};
 
 handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
-                State = #state{partition=P, node=N, tbl=T, io = IO}) ->
+                State = #state{partition=P, node=N, tbl=T, io = IO,
+                               lifetimes = Lifetimes,
+                               resolutions = Resolutions}) ->
     ets:foldl(fun({{Bkt, Metric}, Start, Size, _, Array}, _)
                     when Bkt /= Bucket ->
                       Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
@@ -413,7 +415,10 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
     R = btrie:new(),
     R1 = btrie:store(Bucket, t, R),
     Reply = {ok, undefined, {P, N}, R1},
-    {reply, Reply, State}.
+    LT1 = btrie:erase(Bucket, Lifetimes),
+    Rs1 = btrie:erase(Bucket, Resolutions),
+    {reply, Reply, State#state{lifetimes = LT1,
+                               resolutions = Rs1}}.
 
 handle_info(vacuum, State = #state{io = IO, partition = P}) ->
     lager:info("[vaccum] Starting vaccum for partition ~p.", [P]),
