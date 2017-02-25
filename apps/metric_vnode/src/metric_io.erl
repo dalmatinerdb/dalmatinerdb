@@ -465,9 +465,9 @@ handle_call(buckets, _From, State = #state{dir = PartitionDir}) ->
 
 handle_call({metrics, Bucket}, _From, State) ->
     {Ms, State1} = case get_set(Bucket, State) of
-                       {ok, {{_, M}, S2 = #state{mstores = Stores}}} ->
+                       {ok, {{LW, M}, S2 = #state{mstores = Stores}}} ->
                            {Metrics, M1} = mstore:metrics(M),
-                           Stores1 = gb_trees:enter(Bucket, M1, Stores),
+                           Stores1 = gb_trees:enter(Bucket, {LW, M1}, Stores),
                            S3 = S2#state{mstores = Stores1},
                            {Metrics, S3};
                        _ ->
@@ -477,9 +477,9 @@ handle_call({metrics, Bucket}, _From, State) ->
 
 handle_call({metrics, Bucket, Prefix}, _From, State) ->
     {MsR, State1} = case get_set(Bucket, State) of
-                        {ok, {{_, M}, S2 = #state{mstores = Stores}}} ->
+                        {ok, {{LW, M}, S2 = #state{mstores = Stores}}} ->
                             {Ms, M1} = mstore:metrics(M),
-                            Stores1 = gb_trees:enter(Bucket, M1, Stores),
+                            Stores1 = gb_trees:enter(Bucket, {LW, M1}, Stores),
                             S3 = S2#state{mstores = Stores1},
                             Ms1= btrie:fetch_keys_similar(Prefix, Ms),
                             {btrie:from_list(Ms1), S3};
