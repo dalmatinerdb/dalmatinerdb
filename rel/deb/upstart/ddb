@@ -6,3 +6,4 @@ pre-start exec tar -czf /var/log/ddb-logs.tgz /var/log/ddb/*log
 exec /usr/lib/ddb/bin/ddb console -noinput +Bd
 limit core unlimited unlimited
 limit nofile 262144 262144
+limit as 85899345920 85899345920
