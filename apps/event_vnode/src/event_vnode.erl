@@ -20,6 +20,8 @@
          encode_handoff_item/2,
          handle_coverage/4,
          handle_info/2,
+         handle_overload_command/3,
+         handle_overload_info/2,
          handle_exit/3]).
 
 -export([put/4, get/4]).
@@ -73,9 +75,6 @@ get(Preflist, ReqID, Bucket, {Start, End, Filter}) ->
 init([Partition]) ->
     process_flag(trap_exit, true),
     ok = dalmatiner_vacuum:register(),
-    random:seed(erlang:phash2([node()]),
-                erlang:monotonic_time(),
-                erlang:unique_integer()),
     WorkerPoolSize = case application:get_env(event_vnode, async_workers) of
                          {ok, Val} ->
                              Val;
@@ -142,27 +141,28 @@ handoff_finished(_TargetNode, State) ->
     lager:debug("[handoff] finished"),
     {ok, State}.
 
--dialyzer({no_return, handle_handoff_data/2}).
-handle_handoff_data(Compressed, State) ->
+decode_v2_handoff_data(<<02:16, Compressed/binary>>) ->
+    {ok, Decompressed} = snappyer:decompress(Compressed),
+    Decompressed.
+
+handle_handoff_data(In, State) ->
     Data = case riak_core_capability:get({ddb, handoff}) of
-               snappy ->
-                   {ok, Decompressed} = snappy:decompress(Compressed),
-                   Decompressed;
-               _ ->
-                   Compressed
+               v2 ->
+                   decode_v2_handoff_data(In);
+               plain ->
+                   In
            end,
     {{Bucket, Time}, {ID, Event}} = binary_to_term(Data),
     true = is_binary(Bucket),
     State1 = do_put(Bucket, [{Time, ID, Event}], State, 2),
     {reply, ok, State1}.
 
--dialyzer({no_return, encode_handoff_item/2}).
 encode_handoff_item(Key, Value) ->
     case riak_core_capability:get({ddb, handoff}) of
-        snappy ->
-            {ok, R} = snappy:compress(term_to_binary({Key, Value})),
-            R;
-        _ ->
+        v2 ->
+            {ok, R} = snappyer:compress(term_to_binary({Key, Value})),
+            <<02:16, R/binary>>;
+        plain ->
             term_to_binary({Key, Value})
     end.
 
@@ -266,3 +266,10 @@ get_lifetime(Bucket, State = #state{lifetimes = Lifetimes}) ->
             Lifetimes1 = btrie:store(Bucket, TTL, Lifetimes),
             {TTL, State#state{lifetimes = Lifetimes1}}
     end.
+
+%% Handling other failures
+handle_overload_command(_Req, Sender, Idx) ->
+    riak_core_vnode:reply(Sender, {fail, Idx, overload}).
+
+handle_overload_info(_, _Idx) ->
+    ok.

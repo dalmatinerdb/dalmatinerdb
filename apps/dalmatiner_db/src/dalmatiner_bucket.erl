@@ -24,7 +24,6 @@ info(Bucket) ->
     TTL = dalmatiner_opt:lifetime(Bucket),
     Grace = dalmatiner_opt:grace(Bucket),
     #{
-       name => Bucket,
        resolution => Resolution,
        ppf => PPF,
        ttl => TTL,

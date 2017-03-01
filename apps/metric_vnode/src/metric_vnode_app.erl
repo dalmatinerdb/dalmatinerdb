@@ -12,6 +12,8 @@
 start(_StartType, _StartArgs) ->
     case metric_vnode_sup:start_link() of
         {ok, Pid} ->
+            clique:register([metric_io_cli]),
+            ddb_counter:register(<<"ooo_write">>),
             ok = riak_core:register([{vnode_module, metric_vnode}]),
             %%ok = riak_core_ring_events:add_guarded_handler(
             %%         metric_ring_event_handler, []),
@@ -19,8 +21,8 @@ start(_StartType, _StartArgs) ->
             %%         metric_node_event_handler, []),
             ok = riak_core_node_watcher:service_up(metric, self()),
             ok = riak_core_capability:register({ddb, handoff},
-                                               [plain, snappy],
-                                               snappy),
+                                               [v2, plain],
+                                               plain),
             {ok, Pid};
         {error, Reason} ->
             {error, Reason}

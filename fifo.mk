@@ -1,6 +1,6 @@
 REBAR = $(shell pwd)/rebar3
 PKG_VSN = $(shell head -n1 rel/pkg/Makefile | sed 's/[^0-9.p]//g')
-REBAR_VSN = $(shell grep 'release' rebar.config | sed 's/[^0-9.p]//g')
+REBAR_VSN = $(shell erl -noshell -eval '{ok, F} = file:consult("rebar.config"), [{release, {_, Vsn}, _}] = [O || {relx, [O | _]} <- F], io:format("~s", [Vsn]), init:stop().')
 VARS_VSN = $(shell grep 'bugsnag_app_version' rel/vars.config | sed -e 's/.*,//' -e 's/[^0-9.p]//g' -e 's/[.]$$//')
 APP_VSN = $(shell grep vsn apps/$(APP)/src/$(APP).app.src | sed 's/[^0-9.p]//g')
 
@@ -43,6 +43,10 @@ tree: $(REBAR)
 tree-diff: tree
 	git diff test -- tree
 
+update-fifo.mk:
+	cp _build/default/lib/fifo_utils/priv/fifo.mk .
+	
+
 ###
 ### Docs
 ###
@@ -53,7 +57,9 @@ docs:
 ### Version
 ###
 
-vsn: 
+build-vsn:
+	@echo "$(REBAR_VSN)"
+vsn:
 	@echo "## rel/pkg/Makefile"
 	@echo "$(PKG_VSN)"
 	@echo "## apps/$(APP)/src/$(APP).app.src"
@@ -64,7 +70,7 @@ vsn:
 	@echo "$(VARS_VSN)"
 
 test-vsn:
-	@echo "Testing against package version: $(PKG_VSN)"
-	@[ "$(PKG_VSN)" == "$(APP_VSN)" ]   && echo " - App version ok:   $(APP_VSN)"   || (echo "App version out of date" && false)
-	@[ "$(PKG_VSN)" == "$(REBAR_VSN)" ] && echo " - Rebar version ok: $(REBAR_VSN)" || (echo "Rebar version out of date" && false)
-	@[ "$(PKG_VSN)" == "$(VARS_VSN)" ]  && echo " - Vars version ok:  $(VARS_VSN)"   || (echo "Vars version out of date" && false)
+	@echo "Testing against package version: $(REBAR_VSN)"
+	@[ "$(REBAR_VSN)" == "$(APP_VSN)" ]  && echo " - App version ok:     $(APP_VSN)"  || (echo "App version out of date" && false)
+	@[ "$(REBAR_VSN)" == "$(PKG_VSN)" ]  && echo " - Package version ok: $(PKG_VSN)"  || (echo "Package version out of date" && false)
+	@[ "$(REBAR_VSN)" == "$(VARS_VSN)" ] && echo " - Vars version ok:    $(VARS_VSN)" || (echo "Vars version out of date" && false)

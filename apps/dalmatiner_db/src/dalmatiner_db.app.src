@@ -1,7 +1,7 @@
 {application, dalmatiner_db,
  [
   {description, "DalmatinerDB cluster logic"},
-  {vsn, "0.3.0"},
+  {vsn, "0.3.1"},
   {registered, []},
   {applications, [
                   kernel,
@@ -13,11 +13,13 @@
                   event_vnode,
                   riak_core,
                   lager,
+                  fifo_lager,
                   dproto,
                   mstore,
                   mmath,
                   dalmatiner_vacuum,
-                  snappy,
+                  dalmatiner_metric,
+                  snappyer,
                   ranch
                  ]},
   {mod, { dalmatiner_db_app, []}},

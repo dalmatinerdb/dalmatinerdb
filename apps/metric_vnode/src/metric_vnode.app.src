@@ -12,6 +12,9 @@
                   trie,
                   lager,
                   dalmatiner_vacuum,
+                  dalmatiner_metric,
+                  snappyer,
+                  clique,
                   riak_core
                  ]},
   {included_applications, [k6_bytea]},

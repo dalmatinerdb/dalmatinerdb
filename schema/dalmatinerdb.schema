@@ -49,10 +49,9 @@
 
 %% @doc Maximum number of files kept open per mstore, settings
 %% over two have no effect, settings below 0 eqal to 0.
-{mapping, "mstore.max_files", "metric_vnode.max_files", [
-  {default, 2},
-  {datatype, integer}
-]}.
+{mapping, "mstore.max_files", "metric_vnode.max_files",
+ [{default, 2},
+  {datatype, integer}]}.
 
 %% @doc How often a pertition will be picked to be vacuumed.
 {mapping, "vacuum_interval", "dalmatiner_vacuum.interval",
@@ -114,23 +113,85 @@
 }.
 
 {translation,
-  "riak_core.schema_dirs",
-  fun(Conf) ->
-          D = cuttlefish:conf_get("schema_dir", Conf),
-          [D]
-  end
+ "riak_core.schema_dirs",
+ fun(Conf) ->
+         D = cuttlefish:conf_get("schema_dir", Conf),
+         [D]
+ end
 }.
 
 %% @doc handoff.ip is the network address that Riak binds to for
 %% intra-cluster data handoff.
-{mapping, "handoff.ip", "riak_core.handoff_ip", [
-  {default, "127.0.0.1" },
+{mapping, "handoff.ip", "riak_core.handoff_ip", 
+ [{default, "127.0.0.1" },
   {datatype, string},
-  {validators, ["valid_ipaddr"]}
-]}.
+  {validators, ["valid_ipaddr"]}]
+}.
 
 %% @doc enable / disable self monitoring
-{mapping, "self_monitor", "dalmatiner_db.self_monitor", [
-  {default, on },
-  {datatype, flag}
-]}.
+{mapping, "self_monitor", "dalmatiner_db.self_monitor",
+ [{default, on},
+  {datatype, flag}]
+}.
+%% @doc Transport compression for sending data between the vnode
+%% and the reading node.
+{mapping, "metrics.transport_compression",
+ "dalmatiner_db.metric_transport_compression",
+ [{default, snappy},
+  {datatype, {enum, [snappy, none]}}]}.
+
+%% @doc Weather to exclude repairs for reads done over the most
+%% recent period of time. This can significanty reduce the number
+%% of reads repairs when queries are executed against very recent data.
+{mapping, "read_repair.delay",
+ "dalmatiner_db.read_repair_min_time",
+ [{default, "1m"},
+  {datatype, {duration, ms}}]}.
+
+
+%% @doc Number of asyncronous IO requests that won't block the vnode.
+%% A highter number reduces blockage but can lead to piling up of requests.
+{mapping, "io.max_async", "metric_vnode.max_async_io",
+ [{datatype, integer},
+  {default, 20}]}.
+
+%% @doc How long a syncronous IO request is allowed to take before
+%% considering it crashed.
+{mapping, "io.timeout", "metric_vnode.sync_io_timeout",
+ [{default, "30s"},
+  {datatype, {duration, ms}}]}.
+
+
+%% @doc Async reads are performed out of band of writes, this way
+%% larger reads can be performed without blocking other actions.
+{mapping, "io.parallel_reads", "metric_vnode.async_read",
+ [{default, off},
+  {datatype, flag}]}.
+
+%% @doc The size of the async worker pool, more workers mean more possible
+%% parallelism
+{mapping, "io.parallel_reads.queue_size", "metric_vnode.io_queue_size",
+ [{datatype, integer},
+  {default, 5}]}.
+
+%% @doc Minimal size of read requests to be considered for asyncronous
+%% reads, this has no effect when async_reads is set to off
+{mapping, "io.parallel_reads.min_size", "metric_vnode.async_min_size",
+ [{datatype, integer},
+  {default, 1000}]}.
+
+%% @doc Some requests to the vnodes are handled by an asyncronous worker pool.
+%% This parameter allows for tuning this pools behaviour when it comes dealing
+%% with requests that are queued.
+%% The default (fifo) will serve requests in the order they arrive at the worker
+%% pool. The alternative is to serve the requests in the reverse order, dealing
+%% with the most recent request first.
+%% There are pro's and con's for both aproaches, it is best to test out what
+%% works best for the desired characteristics.
+%%
+%% As a very rought rule of thumb:
+%%  - fifo will lead to lower extremes
+%%  - filo will lead to lower medians/mediums
+{mapping, "io.parallel_reads.queue_strategy", "metric_vnode.queue_strategy",
+ [{default, fifo},
+  {datatype, {enum, [fifo, filo]}}]}.

@@ -12,11 +12,10 @@
 -include_lib("dproto/include/dproto.hrl").
 -include_lib("mstore/include/mstore.hrl").
 
-
 %% API
--export([start_link/0, inc/1, inc/0, start/0, stop/0]).
+-export([start_link/0, start/0, stop/0, get_list/0]).
 
--ignore_xref([start_link/0, inc/0, start/0, stop/0]).
+-ignore_xref([start_link/0, start/0, stop/0, get_list/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -25,10 +24,8 @@
 -define(SERVER, ?MODULE).
 -define(INTERVAL, 1000).
 -define(BUCKET, <<"dalmatinerdb">>).
--define(COUNTERS_MPS, ddb_counters_mps).
 
-
--record(state, {running = false, dict, prefix}).
+-record(state, {running = false, dict, prefix, list = []}).
 
 %%%===================================================================
 %%% API
@@ -44,24 +41,14 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+get_list() ->
+    gen_server:call(?SERVER, get_list).
+
 start() ->
     gen_server:call(?SERVER, start).
 
 stop() ->
     gen_server:call(?SERVER, stop).
-
-inc() ->
-    inc(1).
-
-inc(N) ->
-    try
-        ets:update_counter(?COUNTERS_MPS, self(), N)
-    catch
-        error:badarg ->
-            ets:insert(?COUNTERS_MPS, {self(), N})
-    end,
-    ok.
-
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -82,13 +69,20 @@ init([]) ->
     %% We want a high priority so we don't get scheduled back and have false
     %% reporting.
     process_flag(priority, high),
-    ets:new(?COUNTERS_MPS,
-            [named_table, set, public, {write_concurrency, true}]),
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, W} = application:get_env(dalmatiner_db, w),
     lager:info("[metrics] Initializing metric watcher with N: ~p, W: ~p at an "
                "interval of ~pms.", [N, W, ?INTERVAL]),
     Dict = bkt_dict:new(?BUCKET, N, W),
+    %% We will delay starting ticks until all services are started uo
+    %% that way we won't try to send data before the services are ready
+    case application:get_env(dalmatiner_db, self_monitor) of
+        {ok, false} ->
+            lager:info("[ddb] Self monitoring is disabled.");
+        _ ->
+            lager:info("[ddb] Self monitoring is enabled."),
+            spawn(fun delay_tick/0)
+    end,
     {ok, #state{dict = Dict, prefix = list_to_binary(atom_to_list(node()))}}.
 
 
@@ -106,6 +100,10 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call(get_list, _From, State = #state{list = List}) ->
+    List1 = [{dproto:metric_to_list(M), lists:nth(1, mmath_bin:to_list(V))}
+             || {_, M, _, V} <- List],
+    {reply, {ok, List1}, State#state{running = true}};
 handle_call(start, _From, State = #state{running = false}) ->
     erlang:send_after(?INTERVAL, self(), tick),
     Reply = ok,
@@ -142,25 +140,59 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 
+
 handle_info(tick,
-            State = #state{running = true, prefix = Prefix, dict = Dict}) ->
-    Dict1 = bkt_dict:update_chash(Dict),
+            State = #state{running = true, prefix = Prefix, dict = Dict0}) ->
+    %% Initialize what we need
+    Dict = bkt_dict:update_chash(Dict0),
     Time = timestamp(),
+
+    %% Add our own counters
+    Counts = ddb_counter:get_and_clean(),
+    DictC = lists:foldl(fun ({Name, Count}, Acc) ->
+                                add_metric(Prefix, metric_name(Name),
+                                           Time, Count, Acc)
+                        end, Dict, Counts),
+
+    %% Add our own histograms
+    Hists = ddb_histogram:get(),
+    DictH = lists:foldl(
+              fun ({Name, Vals}, Acc1) ->
+                      Pfx1 = [Prefix, metric_name(Name)],
+                      lists:foldl(
+                        fun({K, V}, Acc2) ->
+                                add_metric(Pfx1, [K], Time, V, Acc2)
+                        end, Acc1, Vals)
+              end, DictC, Hists),
+
+    %% Add folsom data to the dict
     Spec = folsom_metrics:get_metrics_info(),
+    DictF = do_metrics(Prefix, Time, Spec, DictH),
 
-    MPS = ets:tab2list(?COUNTERS_MPS),
-    ets:delete_all_objects(?COUNTERS_MPS),
-    P = lists:sum([Cnt || {_, Cnt} <- MPS]),
+    %% Add riak_core related data
+    DictR = get_handoff_metrics(Prefix, Time, DictF),
 
-    Dict2 = add_to_dict([Prefix, <<"mps">>], Time, P, Dict1),
-    Dict3 = do_metrics(Prefix, Time, Spec, Dict2),
-    Dict4 = bkt_dict:flush(Dict3),
+
+    %% Keep a list with info
+    AsList = bkt_dict:to_list(DictR),
+    %% Send
+    DictFlushed = bkt_dict:flush(DictR),
 
     erlang:send_after(?INTERVAL, self(), tick),
-    {noreply, State#state{dict = Dict4}};
+    {noreply, State#state{list = AsList,
+                          dict = DictFlushed}};
 
 handle_info(_Info, State) ->
     {noreply, State}.
+
+get_handoff_metrics(Prefix, Time, Dict) ->
+    Inbound = riak_core_handoff_manager:status({direction, inbound}),
+    Outbound = riak_core_handoff_manager:status({direction, outbound}),
+
+    Dict1 = add_to_dict([Prefix, <<"handoffs">>, <<"inbound">>],
+                        Time, length(Inbound), Dict),
+    add_to_dict([Prefix, <<"handoffs">>, <<"outbound">>],
+                Time, length(Outbound), Dict1).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -247,17 +279,13 @@ do_metrics(Prefix, Time, [{N, [{type, meter} | _]} | Spec], Acc) ->
                       [<<"one_to_fifteen">>], Time, OneToFifteen, Acc8),
     do_metrics(Prefix, Time, Spec, Acc9).
 
-add_metric(Prefix, Name, Time, Value, Acc) when is_integer(Value) ->
-    add_to_dict([Prefix, metric_name(Name)], Time, Value, Acc);
+add_metric(Prefix, Name, Time, Value, Acc) ->
+    add_to_dict([Prefix, metric_name(Name)], Time, Value, Acc).
 
-add_metric(Prefix, Name, Time, Value, Acc) when is_float(Value) ->
-    Scale = 1000*1000,
-    add_to_dict([Prefix, metric_name(Name)], Time, round(Value*Scale), Acc).
-
--spec add_to_dict([binary() | [binary()]], integer(), integer(),
+-spec add_to_dict([binary() | [binary()]], integer(), integer() | float(),
                   bkt_dict:bkt_dict()) ->
                          bkt_dict:bkt_dict().
-add_to_dict(MetricL, Time, Value, Dict) when is_integer(Value) ->
+add_to_dict(MetricL, Time, Value, Dict) ->
     Metric = dproto:metric_from_list(lists:flatten(MetricL)),
     Data = mmath_bin:from_list([Value]),
     bkt_dict:add(Metric, Time, Data, Dict).
@@ -292,55 +320,52 @@ build_histogram([], _Prefix, _Time, Acc) ->
     Acc;
 
 build_histogram([{min, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"min">>, Time, round(V), Acc),
+    Acc1 = add_metric(Prefix, <<"min">>, Time, V, Acc),
     build_histogram(H, Prefix, Time, Acc1);
 
 build_histogram([{max, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"max">>, Time, round(V), Acc),
+    Acc1 = add_metric(Prefix, <<"max">>, Time, V, Acc),
     build_histogram(H, Prefix, Time, Acc1);
 
 build_histogram([{arithmetic_mean, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"arithmetic_mean">>, Time, round(V), Acc),
+    Acc1 = add_metric(Prefix, <<"arithmetic_mean">>, Time, V, Acc),
     build_histogram(H, Prefix, Time, Acc1);
 
 build_histogram([{geometric_mean, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"geometric_mean">>, Time, round(V), Acc),
+    Acc1 = add_metric(Prefix, <<"geometric_mean">>, Time, V, Acc),
     build_histogram(H, Prefix, Time, Acc1);
 
 build_histogram([{harmonic_mean, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"harmonic_mean">>, Time, round(V), Acc),
+    Acc1 = add_metric(Prefix, <<"harmonic_mean">>, Time, V, Acc),
     build_histogram(H, Prefix, Time, Acc1);
 
 build_histogram([{median, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"median">>, Time, round(V), Acc),
+    Acc1 = add_metric(Prefix, <<"median">>, Time, V, Acc),
     build_histogram(H, Prefix, Time, Acc1);
 
 build_histogram([{variance, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"variance">>, Time, round(V), Acc),
+    Acc1 = add_metric(Prefix, <<"variance">>, Time, V, Acc),
     build_histogram(H, Prefix, Time, Acc1);
 
 build_histogram([{standard_deviation, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"standard_deviation">>, Time, round(V), Acc),
+    Acc1 = add_metric(Prefix, <<"standard_deviation">>, Time, V, Acc),
     build_histogram(H, Prefix, Time, Acc1);
 
 build_histogram([{skewness, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"skewness">>, Time, round(V), Acc),
+    Acc1 = add_metric(Prefix, <<"skewness">>, Time, V, Acc),
     build_histogram(H, Prefix, Time, Acc1);
 
 build_histogram([{kurtosis, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"kurtosis">>, Time, round(V), Acc),
+    Acc1 = add_metric(Prefix, <<"kurtosis">>, Time, V, Acc),
     build_histogram(H, Prefix, Time, Acc1);
 
-build_histogram([{percentile,
-                  [{50, P50}, {75, P75}, {90, P90}, {95, P95}, {99, P99},
-                   {999, P999}]} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"p50">>, Time, round(P50), Acc),
-    Acc2 = add_metric(Prefix, <<"p75">>, Time, round(P75), Acc1),
-    Acc3 = add_metric(Prefix, <<"p90">>, Time, round(P90), Acc2),
-    Acc4 = add_metric(Prefix, <<"p95">>, Time, round(P95), Acc3),
-    Acc5 = add_metric(Prefix, <<"p99">>, Time, round(P99), Acc4),
-    Acc6 = add_metric(Prefix, <<"p999">>, Time, round(P999), Acc5),
-    build_histogram(H, Prefix, Time, Acc6);
+build_histogram([{percentile, Ps} | H], Prefix, Time, Acc) ->
+    Acc1 = lists:foldl(
+             fun({N, V}, AccIn) ->
+                     P = integer_to_binary(N),
+                     add_metric(Prefix, <<"p", P/binary>>, Time, V, AccIn)
+             end, Acc, Ps),
+    build_histogram(H, Prefix, Time, Acc1);
 
 build_histogram([{n, V} | H], Prefix, Time, Acc) ->
     Acc1 = add_metric(Prefix, <<"count">>, Time, V, Acc),
@@ -348,3 +373,16 @@ build_histogram([{n, V} | H], Prefix, Time, Acc) ->
 
 build_histogram([_ | H], Prefix, Time, Acc) ->
     build_histogram(H, Prefix, Time, Acc).
+
+delay_tick() ->
+    riak_core:wait_for_application(dalmatiner_db),
+    Services = riak_core_node_watcher:services(),
+    dalmatiner_db_app:wait_for_metadata(),
+    delay_tick(Services).
+
+delay_tick([S | R]) ->
+    riak_core:wait_for_service(S),
+    delay_tick(R);
+
+delay_tick([]) ->
+    dalmatiner_metrics:start().

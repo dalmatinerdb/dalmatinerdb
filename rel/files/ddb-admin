@@ -129,7 +129,7 @@ usage() {
     echo "                    reip | wait-for-service | ringready | transfers | force-remove | down |"
     echo "                    cluster-info | member-status | ring-status | vnode-status |"
     echo "                    diag | stat | status | transfer-limit | downgrade-objects | services"
-    echo "                    ensemble-status | handoff | set | show | describe }"
+    echo "                    ensemble-status | handoff | set | show | describe | refresh }"
     echo "               connections                        - shows the current connections to other srivces."
     echo "               ring                               - shows the ring."
 
@@ -139,6 +139,16 @@ usage() {
 stat_admin()
 {
     case "$1" in
+        refresh)
+            shift
+            node_up_check
+            $NODETOOL rpc riak_core_console refresh
+            ;;
+        io)
+            shift
+            node_up_check
+            $NODETOOL rpc riak_core_console stat_show "$*"
+            ;;
         show)
             shift
             node_up_check
@@ -461,6 +471,11 @@ case "$1" in
                 ;;
         esac
         ;;
+    stats)
+        shift
+        $NODETOOL rpc dalmatiner_console stats
+        ;;
+
     ## KV related
 
     join)
@@ -733,6 +748,16 @@ case "$1" in
         shift
         stat_admin "$@"
         ;;
+    io)
+        # New pattern for command line. Use nodetool for RPC
+        node_up_check
+        exec $NODETOOL rpc riak_core_console command ddb-admin $@
+        ;;
+    read_repair)
+        # New pattern for command line. Use nodetool for RPC
+        node_up_check
+        exec $NODETOOL rpc riak_core_console command ddb-admin $@
+        ;;
     handoff)
         # New pattern for command line. Use nodetool for RPC
         node_up_check
@@ -768,7 +793,6 @@ case "$1" in
                 shift
                 exec $NODETOOL rpc ddb_bmp repair $@
                 ;;
-            
             *)
                 echo "Unknown command"
                 exit 1
