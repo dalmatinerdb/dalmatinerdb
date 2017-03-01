@@ -114,8 +114,8 @@ init([ReqId, {VNode, System}, Op, From, Entity]) ->
 
 init([ReqId, {VNode, System}, Op, From, Entity, Val, Opts]) ->
     {ok, RR} = get_rr_opt(Opts),
-    {ok, R} = get_r_opt(Opts),
     {ok, N} = get_n_opt(Opts),
+    {ok, R} = get_r_opt(Opts, N),
     Compression = application:get_env(dalmatiner_db,
                                       metric_transport_compression, snappy),
 
@@ -413,8 +413,15 @@ get_rr_opt(Opts) ->
             {ok, true}
     end.
 
-get_r_opt(Opts) ->
-    N = get_n_opt(Opts),
+get_n_opt(Opts) ->
+    case proplists:get_value(n, Opts) of
+        undefined ->
+            application:get_env(dalmatiner_db, n);
+        Value ->
+            {ok, Value}
+    end.
+
+get_r_opt(Opts, N) ->
     case proplists:get_value(r, Opts) of
         n ->
             N;
@@ -422,12 +429,4 @@ get_r_opt(Opts) ->
             {ok, R};
         V when V =:= undefined; V =:= default ->
             application:get_env(dalmatiner_db, r)
-    end.
-
-get_n_opt(Opts) ->
-    case proplists:get_value(n, Opts) of
-        undefined ->
-            application:get_env(dalmatiner_db, n);
-        Value ->
-            {ok, Value}
     end.
