@@ -67,9 +67,9 @@ loop(Socket, Transport, State) ->
                     do_send(Socket, Transport, B, M, T, C,
                             State#state.rr_min_time),
                     loop(Socket, Transport, State);
-                %% {get_dirty, B, M, T, C} ->
-                %%     do_send_opt(Socket, Transport, B, M, T, C, [no_rr]),
-                %%     loop(Socket, Transport, State);
+                {get, B, M, T, C, Opts} ->
+                    do_send_opt(Socket, Transport, B, M, T, C, Opts),
+                    loop(Socket, Transport, State);
                 {ttl, Bucket, TTL} ->
                     ok = metric:update_ttl(Bucket, TTL),
                     loop(Socket, Transport, State);
@@ -118,17 +118,12 @@ do_send(Socket, Transport, B, M, T, C, MinRTT) ->
         Cutoff when Cutoff > T ->
             do_send_opt(Socket, Transport, B, M, T, C, []);
         _ ->
-            do_send_opt(Socket, Transport, B, M, T, C, [no_rr])
+            do_send_opt(Socket, Transport, B, M, T, C, [{rr, off}])
     end.
 
 do_send_opt(Socket, Transport, B, M, T, C, Opts) ->
     PPF = dalmatiner_opt:ppf(B),
-    [{T0, C0} | Splits] = mstore:make_splits(T, C, PPF),
-    {ok, Points} = metric:get(B, M, PPF, T0, C0, Opts),
-    %% Set the socket to no package control so we can do that ourselfs.
-    %% TODO: make this math for configureable length
-    %% 8 (resolution + points)
-    send_part(Socket, Transport, C0, Points),
+    Splits = mstore:make_splits(T, C, PPF),
     send_parts(Socket, Transport, PPF, B, M, Opts, Splits).
 
 send_parts(Socket, Transport, _PPF, _B, _M, _Opts, []) ->

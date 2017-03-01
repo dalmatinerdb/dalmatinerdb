@@ -23,7 +23,9 @@
 -type partition() :: chash:index_as_int().
 -type reply_src() :: {partition(), term()}.
 -type metric_element() :: binary().
--type read_opts() :: [no_rr | {n, pos_integer()} | {r, pos_integer()}].
+-type read_opts() :: [dproto_tcp:read_repair_opt() |
+                      dproto_tcp:read_r_opt() |
+                      {n, pos_integer()}].
 %%-type metric_reply() :: {partition(), metric_element()}.
 
 -record(state, {req_id,
@@ -111,9 +113,9 @@ init([ReqId, {VNode, System}, Op, From, Entity]) ->
     init([ReqId, {VNode, System}, Op, From, Entity, undefined, []]);
 
 init([ReqId, {VNode, System}, Op, From, Entity, Val, Opts]) ->
-    RR = not proplists:get_bool(no_rr, Opts),
-    {ok, N} = get_opt_or_env(dalmatiner_db, n, Opts),
-    {ok, R} = get_opt_or_env(dalmatiner_db, r, Opts),
+    {ok, RR} = get_rr_opt(Opts),
+    {ok, R} = get_r_opt(Opts),
+    {ok, N} = get_n_opt(Opts),
     Compression = application:get_env(dalmatiner_db,
                                       metric_transport_compression, snappy),
 
@@ -401,10 +403,31 @@ unique(L) ->
 mk_reqid() ->
     erlang:unique_integer().
 
-get_opt_or_env(App, Key, Opts) ->
-    case proplists:get_value(Key, Opts) of
+get_rr_opt(Opts) ->
+    case proplists:get_value(rr, Opts) of
+        off ->
+            {ok, false};
+        on ->
+            {ok, true};
+        V when V =:= undefined; V =:= default ->
+            {ok, true}
+    end.
+
+get_r_opt(Opts) ->
+    N = get_n_opt(Opts),
+    case proplists:get_value(r, Opts) of
+        n ->
+            N;
+        R when is_integer(R), R > 0, R =< N ->
+            {ok, R};
+        V when V =:= undefined; V =:= default ->
+            application:get_env(dalmatiner_db, r)
+    end.
+
+get_n_opt(Opts) ->
+    case proplists:get_value(n, Opts) of
         undefined ->
-            application:get_env(App, Key);
+            application:get_env(dalmatiner_db, n);
         Value ->
             {ok, Value}
     end.
