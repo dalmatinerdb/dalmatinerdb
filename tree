@@ -4,8 +4,7 @@
 ├─ dalmatiner_metric─0.1.0
 ├─ dalmatiner_opt─0.1.0
 ├─ dalmatiner_vacuum─0.1.2
-├─ dproto─0.2.4
-│  └─ snappy─1.1.1
+├─ dproto─0.2.5
 ├─ edown─0.8.1
 ├─ eper─0.94.0
 ├─ estore─0.1.9
@@ -15,7 +14,7 @@
 │  └─ lager_logstash_backend─0.1.1
 │     └─ jsx─2.8.0
 ├─ fifo_utils─0.1.34
-│  ├─ jsone─1.4.2
+│  ├─ jsone─1.4.3
 │  └─ uuid─1.5.4
 │     └─ quickrand─1.5.4
 ├─ hdr_histogram─0.2.0
