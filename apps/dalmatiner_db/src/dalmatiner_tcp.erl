@@ -105,22 +105,23 @@ loop(Socket, Transport, State) ->
 %% When the get request has a read repair option other than the default, that
 %% option will be honoured.  Otherwise, if the cutoff date (now - min RTT) is
 %% larger then the first timestamp of the read, we have data that is older
-%% and will perform a  read repair.
+%% and will perform a read repair.
 apply_rtt(MinRTT, B, T, Opts) when is_list(Opts) ->
-    Opts1 = maps:from_list(Opts),
-    maps:to_list(apply_rtt(MinRTT, B, T, Opts1));
-apply_rtt(0, _B, _T, Opts) ->
-    Opts;
-apply_rtt(MinRTT, B, T, Opts = #{rr := default}) ->
+    RROpt = proplists:lookup(rr, Opts),
+    Opts1 = proplists:delete(rr, Opts),
+    [apply_rtt(MinRTT, B, T, RROpt) | Opts1];
+apply_rtt(0, _B, _T, RROpt) ->
+    RROpt;
+apply_rtt(MinRTT, B, T, {rr, default} = RROpt) ->
     Now = erlang:system_time(milli_seconds) div dalmatiner_opt:resolution(B),
     case Now - MinRTT of
         Cutoff when Cutoff > T ->
-            Opts;
+            RROpt;
         _ ->
-            Opts#{rr := off}
+            {rr, off}
     end;
-apply_rtt(_MinRTT, _B, _T, Opts) ->
-    Opts.
+apply_rtt(_MinRTT, _B, _T, RROpt) ->
+    RROpt.
 
 do_send(Socket, Transport, B, M, T, C, Opts) ->
     PPF = dalmatiner_opt:ppf(B),
