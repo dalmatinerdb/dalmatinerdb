@@ -420,7 +420,7 @@ get_n_opt(Opts) ->
 get_r_opt(Opts, N) ->
     case proplists:get_value(r, Opts) of
         n ->
-            N;
+            {ok, N};
         R when is_integer(R), R > 0, R =< N ->
             {ok, R};
         V when V =:= undefined; V =:= default ->
