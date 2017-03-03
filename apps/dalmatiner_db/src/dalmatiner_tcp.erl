@@ -5,8 +5,7 @@
 -include_lib("dproto/include/dproto.hrl").
 -include_lib("mmath/include/mmath.hrl").
 
--export([start_link/4]).
--export([init/4]).
+-export([init/4, start_link/4]).
 
 -record(state,
         {n = 1 :: pos_integer(),
