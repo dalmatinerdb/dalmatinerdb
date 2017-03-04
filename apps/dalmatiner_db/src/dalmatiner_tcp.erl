@@ -5,8 +5,7 @@
 -include_lib("dproto/include/dproto.hrl").
 -include_lib("mmath/include/mmath.hrl").
 
--export([start_link/4]).
--export([init/4]).
+-export([init/4, start_link/4]).
 
 -record(state,
         {n = 1 :: pos_integer(),
@@ -63,13 +62,10 @@ loop(Socket, Transport, State) ->
                     InfoBin = dproto_tcp:encode_bucket_info(Info),
                     Transport:send(Socket, InfoBin),
                     loop(Socket, Transport, State);
-                {get, B, M, T, C} ->
-                    do_send(Socket, Transport, B, M, T, C,
-                            State#state.rr_min_time),
+                {get, B, M, T, C, Opts} ->
+                    Opts1 =  apply_rtt(State#state.rr_min_time, B, T, Opts),
+                    do_send(Socket, Transport, B, M, T, C, Opts1),
                     loop(Socket, Transport, State);
-                %% {get_dirty, B, M, T, C} ->
-                %%     do_send_opt(Socket, Transport, B, M, T, C, [no_rr]),
-                %%     loop(Socket, Transport, State);
                 {ttl, Bucket, TTL} ->
                     ok = metric:update_ttl(Bucket, TTL),
                     loop(Socket, Transport, State);
@@ -105,30 +101,30 @@ loop(Socket, Transport, State) ->
             ok = Transport:close(Socket)
     end.
 
-%% If MinRRT is 0 we always read repair
-do_send(Socket, Transport, B, M, T, C, 0) ->
-    do_send_opt(Socket, Transport, B, M, T, C, []);
-
-do_send(Socket, Transport, B, M, T, C, MinRTT) ->
+%% When the get request has a read repair option other than the default, that
+%% option will be honoured.  Otherwise, if the cutoff date (now - min RTT) is
+%% larger then the first timestamp of the read, we have data that is older
+%% and will perform a read repair.
+apply_rtt(MinRTT, B, T, Opts) when is_list(Opts) ->
+    RROpt = proplists:lookup(rr, Opts),
+    Opts1 = proplists:delete(rr, Opts),
+    [apply_rtt(MinRTT, B, T, RROpt) | Opts1];
+apply_rtt(0, _B, _T, RROpt) ->
+    RROpt;
+apply_rtt(MinRTT, B, T, {rr, default} = RROpt) ->
     Now = erlang:system_time(milli_seconds) div dalmatiner_opt:resolution(B),
     case Now - MinRTT of
-        %% If the cutoff date (now - min RTT) is larger then
-        %% the first timestamp of the read we have data that is older
-        %% and will performa  read repair.
         Cutoff when Cutoff > T ->
-            do_send_opt(Socket, Transport, B, M, T, C, []);
+            RROpt;
         _ ->
-            do_send_opt(Socket, Transport, B, M, T, C, [no_rr])
-    end.
+            {rr, off}
+    end;
+apply_rtt(_MinRTT, _B, _T, RROpt) ->
+    RROpt.
 
-do_send_opt(Socket, Transport, B, M, T, C, Opts) ->
+do_send(Socket, Transport, B, M, T, C, Opts) ->
     PPF = dalmatiner_opt:ppf(B),
-    [{T0, C0} | Splits] = mstore:make_splits(T, C, PPF),
-    {ok, Points} = metric:get(B, M, PPF, T0, C0, Opts),
-    %% Set the socket to no package control so we can do that ourselfs.
-    %% TODO: make this math for configureable length
-    %% 8 (resolution + points)
-    send_part(Socket, Transport, C0, Points),
+    Splits = mstore:make_splits(T, C, PPF),
     send_parts(Socket, Transport, PPF, B, M, Opts, Splits).
 
 send_parts(Socket, Transport, _PPF, _B, _M, _Opts, []) ->
