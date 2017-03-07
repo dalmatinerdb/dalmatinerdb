@@ -16,6 +16,9 @@
               stats/1
              ]).
 
+stats(["-r" | Args]) ->
+    ok = dalmatiner_metrics:refresh(),
+    stats(Args);
 stats([]) ->
     {ok, L} = dalmatiner_metrics:get_list(),
     lists:foreach(
