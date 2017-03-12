@@ -124,16 +124,10 @@ apply_rtt(_MinRTT, _B, _T, RROpt) ->
 
 do_send(Socket, Transport, B, M, T, C, Opts) ->
     PPF = dalmatiner_opt:ppf(B),
-    [{T0, C0} | Splits] = mstore:make_splits(T, C, PPF),
-    {ok, Points} = metric:get(B, M, PPF, T0, C0, Opts),
-    %% Set the socket to no package control so we can do that ourselfs.
-    %% TODO: make this math for configureable length
-    %% 8 (resolution + points)
+    Splits = mstore:make_splits(T, C, PPF),
 
     %% We never send a aggregate for now.
     Transport:send(Socket, dproto_tcp:encode_get_reply({aggr, undefined})),
-
-    send_part(Socket, Transport, C0, Points),
     send_parts(Socket, Transport, PPF, B, M, Opts, Splits).
 
 send_parts(Socket, Transport, _PPF, _B, _M, _Opts, []) ->
