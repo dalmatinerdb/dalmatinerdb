@@ -1,10 +1,10 @@
-[0m├─ bitmap─0.1.4
+[0m├─ bitmap─0.1.5
 │  └─ cf─0.2.2
-├─ dalmatiner_db─0.3.1
+├─ dalmatiner_db─0.3.2
 ├─ dalmatiner_metric─0.1.0
 ├─ dalmatiner_opt─0.1.0
 ├─ dalmatiner_vacuum─0.1.2
-├─ dproto─0.2.8
+├─ dproto─0.3.1
 ├─ edown─0.8.1
 ├─ eper─0.94.0
 ├─ estore─0.1.9
