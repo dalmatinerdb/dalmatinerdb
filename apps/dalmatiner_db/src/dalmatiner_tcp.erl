@@ -124,7 +124,16 @@ apply_rtt(_MinRTT, _B, _T, RROpt) ->
 
 do_send(Socket, Transport, B, M, T, C, Opts) ->
     PPF = dalmatiner_opt:ppf(B),
-    Splits = mstore:make_splits(T, C, PPF),
+    [{T0, C0} | Splits] = mstore:make_splits(T, C, PPF),
+    {ok, Points} = metric:get(B, M, PPF, T0, C0, Opts),
+    %% Set the socket to no package control so we can do that ourselfs.
+    %% TODO: make this math for configureable length
+    %% 8 (resolution + points)
+
+    %% We never send a aggregate for now.
+    Transport:send(Socket, dproto_tcp:encode_get_reply({aggr, undefined})),
+
+    send_part(Socket, Transport, C0, Points),
     send_parts(Socket, Transport, PPF, B, M, Opts, Splits).
 
 send_parts(Socket, Transport, _PPF, _B, _M, _Opts, []) ->
@@ -138,13 +147,9 @@ send_parts(Socket, Transport, PPF, B, M, Opts, [{T, C} | Splits]) ->
 
 send_part(Socket, Transport, C, Points) when is_integer(C),
                                               is_binary(Points)->
-    {ok, Compressed} = snappyer:compress(Points),
-    case C - mmath_bin:length(Points) of
-        0 ->
-            Transport:send(Socket, <<1, Compressed/binary>>);
-        Padding ->
-            Transport:send(Socket, <<2, Padding:64/integer, Compressed/binary>>)
-    end.
+    Padding = C - mmath_bin:length(Points),
+    Msg = {data, Points, Padding},
+    Transport:send(Socket, dproto_tcp:encode_get_stream(Msg)).
 
 -spec stream_loop(port(), term(), stream_state(),
                   {dproto_tcp:stream_message(), binary()}) ->

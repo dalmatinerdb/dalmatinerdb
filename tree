@@ -1,10 +1,10 @@
-[0m├─ bitmap─0.1.4
+[0m├─ bitmap─0.1.5
 │  └─ cf─0.2.2
-├─ dalmatiner_db─0.3.1
+├─ dalmatiner_db─0.3.2
+├─ dalmatiner_metric─0.1.0
 ├─ dalmatiner_opt─0.1.0
 ├─ dalmatiner_vacuum─0.1.2
-├─ dproto─0.2.4
-│  └─ snappy─1.1.1
+├─ dproto─0.3.1
 ├─ edown─0.8.1
 ├─ eper─0.94.0
 ├─ estore─0.1.9
@@ -14,9 +14,10 @@
 │  └─ lager_logstash_backend─0.1.1
 │     └─ jsx─2.8.0
 ├─ fifo_utils─0.1.34
-│  ├─ jsone─1.4.2
+│  ├─ jsone─1.4.3
 │  └─ uuid─1.5.4
 │     └─ quickrand─1.5.4
+├─ hdr_histogram─0.2.0
 ├─ jsxd─0.2.4
 ├─ k6_bytea─1.1.5
 ├─ lager─3.2.4
@@ -45,5 +46,5 @@
 │  ├─ poolboy─0.8.2
 │  ├─ riak_ensemble─2.4.0
 │  └─ riak_sysmon─2.1.3
-├─ snappyer─1.1.3-1.0.5
+├─ snappyer─1.2.0
 └─ trie─1.6.0
