@@ -451,7 +451,7 @@ handle_exit(_PID, _Reason, State) ->
     {noreply, State}.
 
 terminate(_Reason, #state{tbl = T, io = IO}) ->
-    ets:foldl(fun({{Bucket, Metric}, Start, Size, _, Array}, _) ->
+    ets:foldl(fun({{Bucket, Metric}, Start, Size, _End, Array}, _) ->
                       Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
                       k6_bytea:delete(Array),
                       metric_io:write(IO, Bucket, Metric, Start, Bin)
