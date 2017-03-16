@@ -4,7 +4,7 @@
 ├─ dalmatiner_metric─0.1.0
 ├─ dalmatiner_opt─0.1.0
 ├─ dalmatiner_vacuum─0.1.2
-├─ dproto─0.3.1
+├─ dproto─0.4.0
 ├─ edown─0.8.1
 ├─ eper─0.94.0
 ├─ estore─0.1.9
@@ -23,8 +23,8 @@
 ├─ lager─3.2.4
 │  └─ goldrush─0.1.9
 ├─ metric_vnode─0.1.3
-├─ mmath─0.2.15
-├─ mstore─0.3.2
+├─ mmath─0.2.16
+├─ mstore─0.3.3
 ├─ mstore_inspector─0.1.0
 ├─ ranch─1.1.0
 ├─ recon─2.3.2
