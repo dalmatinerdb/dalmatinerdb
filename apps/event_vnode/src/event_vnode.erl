@@ -142,7 +142,7 @@ handoff_finished(_TargetNode, State) ->
     {ok, State}.
 
 decode_v2_handoff_data(<<02:16, Compressed/binary>>) ->
-    {ok, Decompressed} = snappyer:decompress(Compressed),
+    {ok, Decompressed} = snappiest:decompress(Compressed),
     Decompressed.
 
 handle_handoff_data(In, State) ->
@@ -160,7 +160,7 @@ handle_handoff_data(In, State) ->
 encode_handoff_item(Key, Value) ->
     case riak_core_capability:get({ddb, handoff}) of
         v2 ->
-            {ok, R} = snappyer:compress(term_to_binary({Key, Value})),
+            {ok, R} = snappiest:compress(term_to_binary({Key, Value})),
             <<02:16, R/binary>>;
         plain ->
             term_to_binary({Key, Value})

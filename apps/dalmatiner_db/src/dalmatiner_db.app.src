@@ -18,7 +18,7 @@
                   mstore,
                   mmath,
                   dalmatiner_vacuum,
-                  snappyer,
+                  snappiest,
                   ranch
                  ]},
   {mod, { dalmatiner_db_app, []}},

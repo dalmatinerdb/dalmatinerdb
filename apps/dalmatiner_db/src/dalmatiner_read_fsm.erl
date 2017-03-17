@@ -344,9 +344,9 @@ merge_metrics(Replies) ->
 %% Snappy :(
 -spec decompress(binary(), state()) -> binary().
 decompress(D, #state{compression = snappy}) ->
-    case snappyer:is_valid(D) of
+    case snappiest:is_valid(D) of
         true ->
-            {ok, Res} = snappyer:decompress(D),
+            {ok, Res} = snappiest:decompress(D),
             Res;
         _ ->
             D

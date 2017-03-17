@@ -39,7 +39,7 @@ handle_work(#read_req{
     {reply, {ok, ReqID, {P, N}, Dc}, State}.
 
 compress(Data, snappy) ->
-    {ok, Dc} = snappyer:compress(Data),
+    {ok, Dc} = snappiest:compress(Data),
     Dc;
 compress(Data, none) ->
     Data.
