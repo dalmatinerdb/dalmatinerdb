@@ -741,7 +741,7 @@ list_buckets(#state{dir = PartitionDir}) ->
     file:list_dir(PartitionDir).
 
 compress(Data, #state{compression = snappy}) ->
-    {ok, Dc} = snappyer:compress(Data),
+    {ok, Dc} = snappiest:compress(Data),
     Dc;
 compress(Data, #state{compression = none}) ->
     Data.
