@@ -279,16 +279,32 @@ setup() ->
     meck:new(riak_core_metadata, [passthrough]),
     meck:expect(riak_core_metadata, get, fun(_, _) -> undefined end),
     meck:expect(riak_core_metadata, put, fun(_, _, _) -> ok end),
+
+    meck:new(riak_core_capability, [passthrough]),
+    meck:expect(riak_core_capability, get,
+                fun({ddb, handoff}) ->
+                        v2
+                end),
+
+
     meck:new(dalmatiner_opt, [passthrough]),
     meck:expect(dalmatiner_opt, resolution, fun(_) -> 1000 end),
     meck:expect(dalmatiner_opt, ppf, fun(_) -> 1000 end),
     meck:expect(dalmatiner_opt, lifetime, fun(_) -> infinity end),
+
     meck:new(dalmatiner_vacuum, [passthrough]),
     meck:expect(dalmatiner_vacuum, register, fun() ->ok end),
+
     meck:new(folsom_metrics),
     meck:expect(folsom_metrics, notify, fun(_) -> ok end),
     meck:expect(folsom_metrics, histogram_timed_update,
                 fun(_, Mod, Fn, Args) -> apply(Mod, Fn, Args) end),
+
+    meck:new(ddb_histogram),
+    meck:expect(ddb_histogram, timed_update,
+                fun(_, Mod, Fn, Args) -> apply(Mod, Fn, Args) end),
+    meck:new(ddb_counter),
+    meck:expect(ddb_counter, inc, fun(_) -> ok end),
     ok.
 
 cleanup() ->

@@ -484,7 +484,7 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T,
             %% Elemements of the cacgh have the following logic:
             %% 1: Bucket + Metric
             %% 2: The start time (index in the file)
-            %% 3: Size of the buffer in elements
+            %% 3: Last written part of the buffer
             %% 4: pre-computed end (end in the file)
             %% 5: The binary cache
             case ets:lookup(T, BM) of
@@ -623,7 +623,9 @@ handle_overload_info(_, _Idx) ->
 %% We calculate the jitter (end) for a cache by reducing it to (at maximum)
 %% half the size.
 
--spec cache_end(pos_integer(), pos_integer()) -> pos_integer().
+-spec cache_end(pos_integer(), pos_integer()) ->
+                       pos_integer().
+
 cache_end(Start, CacheSize) ->
     Jitter = rand:uniform(CacheSize div 2),
     Start + CacheSize - Jitter.
