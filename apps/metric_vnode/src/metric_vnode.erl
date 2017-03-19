@@ -38,13 +38,21 @@
              ]).
 
 -record(state, {
-          partition,
-          node,
+          %% The partition (i.e. vnode)
+          partition :: pos_integer(),
+          %% The node itself
+          node :: node(),
+          %% The table id
           tbl,
-          ct,
+          %% the number of chace points
+          cache_size = 1 :: pos_integer(),
+          %% PID of the io node
           io :: metric_io:io_handle(),
-          now,
+          %% the current time
+          now :: pos_integer() ,
+          %% Resolution cache
           resolutions = btrie:new(),
+          %% TTL cache
           lifetimes  = btrie:new()
          }).
 
@@ -310,7 +318,7 @@ handoff_finished(_TargetNode, State) ->
     {ok, State}.
 
 decode_v2_handoff_data(<<02:16, Compressed/binary>>) ->
-    {ok, Decompressed} = snappyer:decompress(Compressed),
+    {ok, Decompressed} = snappiest:decompress(Compressed),
     Decompressed.
 
 handle_handoff_data(In, State) ->
@@ -331,7 +339,7 @@ handle_handoff_data(In, State) ->
 encode_handoff_item(Key, Value) ->
     case riak_core_capability:get({ddb, handoff}) of
         v2 ->
-            {ok, R} = snappyer:compress(term_to_binary({Key, Value})),
+            {ok, R} = snappiest:compress(term_to_binary({Key, Value})),
             <<02:16, R/binary>>;
         plain ->
             term_to_binary({Key, Value})
@@ -465,7 +473,9 @@ terminate(_Reason, #state{tbl = T, io = IO}) ->
     metric_io:close(IO),
     ok.
 
-do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO})
+do_put(Bucket, Metric, Time, Value, State = #state{tbl = T,
+                                                   cache_size = CacheSize,
+                                                   io = IO})
   when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     Len = mmath_bin:length(Value),
     BM = {Bucket, Metric},
@@ -476,6 +486,12 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO})
         {false, State1} ->
             State1;
         {true, State1} ->
+            %% Elemements of the cacgh have the following logic:
+            %% 1: Bucket + Metric
+            %% 2: The start time (index in the file)
+            %% 3: Last written part of the buffer
+            %% 4: pre-computed end (end in the file)
+            %% 5: The binary cache
             case ets:lookup(T, BM) of
                 %% If the data is before the first package in the cache we just
                 %% don't cache it this way we prevent overwriting already
@@ -488,13 +504,14 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO})
                 %% then the cache time we flush the cache and start a new cache
                 %% with a new package
                 [{BM, Start, Size, _End, Array}]
-                  when (Time + Len) >= _End, Len < CT ->
+                  when (Time + Len) >= _End, Len < CacheSize ->
                     Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
                     k6_bytea:set(Array, 0, Value),
                     k6_bytea:set(Array, Len * ?DATA_SIZE,
-                                 <<0:(?DATA_SIZE * 8 * (CT - Len))>>),
+                                 <<0:(?DATA_SIZE * 8 * (CacheSize - Len))>>),
+                    End = cache_end(Time, CacheSize),
                     ets:update_element(T, BM, [{2, Time}, {3, Len},
-                                               {4, Time + CT}]),
+                                               {4, End}]),
                     metric_io:write(IO, Bucket, Metric, Start, Bin);
                 %% In the case the data is already longer then the cache we
                 %% flush the cache
@@ -511,11 +528,11 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO})
                     ets:update_element(T, BM, [{3, Idx + Len}]);
                 %% We don't have a cache yet and our data is smaller then
                 %% the current cache limit
-                [] when Len < CT ->
-                    Array = k6_bytea:new(CT * ?DATA_SIZE),
+                [] when Len < CacheSize ->
+                    Array = k6_bytea:new(CacheSize * ?DATA_SIZE),
                     k6_bytea:set(Array, 0, Value),
-                    Jitter = rand:uniform(CT),
-                    ets:insert(T, {BM, Time, Len, Time + Jitter, Array});
+                    End = cache_end(Time, CacheSize),
+                    ets:insert(T, {BM, Time, Len, End, Array});
                 %% If we don't have a cache but our data is too big for the
                 %% cache we happiely write it directly
                 [] ->
@@ -523,6 +540,7 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO})
             end,
             State1
     end.
+
 
 reply(Reply, {_, ReqID, _} = Sender, #state{node=N, partition=P}) ->
     riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Reply}).
@@ -585,8 +603,8 @@ get_lifetime(Bucket, State = #state{lifetimes = Lifetimes}) ->
     end.
 
 update_env(State) ->
-    CT = application:get_env(metric_vnode, cache_points, 120),
-    State#state{ct = CT}.
+    CT = application:get_env(metric_vnode, cache_size, 120),
+    State#state{cache_size = CT}.
 
 
 %% Handling a get request overload
@@ -607,3 +625,13 @@ handle_overload_command(_Req, Sender, Idx) ->
 
 handle_overload_info(_, _Idx) ->
     ok.
+
+%% We calculate the jitter (end) for a cache by reducing it to (at maximum)
+%% half the size.
+
+-spec cache_end(pos_integer(), pos_integer()) ->
+                       pos_integer().
+
+cache_end(Start, CacheSize) ->
+    Jitter = rand:uniform(CacheSize div 2),
+    Start + CacheSize - Jitter.

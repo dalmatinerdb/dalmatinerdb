@@ -19,7 +19,7 @@
                   mmath,
                   dalmatiner_vacuum,
                   dalmatiner_metric,
-                  snappyer,
+                  snappiest,
                   ranch
                  ]},
   {mod, { dalmatiner_db_app, []}},
