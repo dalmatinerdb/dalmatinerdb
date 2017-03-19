@@ -38,13 +38,21 @@
              ]).
 
 -record(state, {
-          partition,
-          node,
+          %% The partition (i.e. vnode)
+          partition :: pos_integer(),
+          %% The node itself
+          node :: node(),
+          %% The table id
           tbl,
-          ct,
+          %% the number of chace points
+          cache_size = 1 :: pos_integer(),
+          %% PID of the io node
           io :: metric_io:io_handle(),
-          now,
+          %% the current time
+          now :: pos_integer() ,
+          %% Resolution cache
           resolutions = btrie:new(),
+          %% TTL cache
           lifetimes  = btrie:new()
          }).
 
@@ -465,7 +473,9 @@ terminate(_Reason, #state{tbl = T, io = IO}) ->
     metric_io:close(IO),
     ok.
 
-do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO})
+do_put(Bucket, Metric, Time, Value, State = #state{tbl = T,
+                                                   cache_size = CacheSize,
+                                                   io = IO})
   when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     Len = mmath_bin:length(Value),
     BM = {Bucket, Metric},
@@ -476,6 +486,12 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO})
         {false, State1} ->
             State1;
         {true, State1} ->
+            %% Elemements of the cacgh have the following logic:
+            %% 1: Bucket + Metric
+            %% 2: The start time (index in the file)
+            %% 3: Size of the buffer in elements
+            %% 4: pre-computed end (end in the file)
+            %% 5: The binary cache
             case ets:lookup(T, BM) of
                 %% If the data is before the first package in the cache we just
                 %% don't cache it this way we prevent overwriting already
@@ -488,13 +504,13 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO})
                 %% then the cache time we flush the cache and start a new cache
                 %% with a new package
                 [{BM, Start, Size, _End, Array}]
-                  when (Time + Len) >= _End, Len < CT ->
+                  when (Time + Len) >= _End, Len < CacheSize ->
                     Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
                     k6_bytea:set(Array, 0, Value),
                     k6_bytea:set(Array, Len * ?DATA_SIZE,
-                                 <<0:(?DATA_SIZE * 8 * (CT - Len))>>),
+                                 <<0:(?DATA_SIZE * 8 * (CacheSize - Len))>>),
                     ets:update_element(T, BM, [{2, Time}, {3, Len},
-                                               {4, Time + CT}]),
+                                               {4, Time + CacheSize}]),
                     metric_io:write(IO, Bucket, Metric, Start, Bin);
                 %% In the case the data is already longer then the cache we
                 %% flush the cache
@@ -511,10 +527,10 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T, ct = CT, io = IO})
                     ets:update_element(T, BM, [{3, Idx + Len}]);
                 %% We don't have a cache yet and our data is smaller then
                 %% the current cache limit
-                [] when Len < CT ->
-                    Array = k6_bytea:new(CT * ?DATA_SIZE),
+                [] when Len < CacheSize ->
+                    Array = k6_bytea:new(CacheSize * ?DATA_SIZE),
                     k6_bytea:set(Array, 0, Value),
-                    Jitter = rand:uniform(CT),
+                    Jitter = rand:uniform(CacheSize),
                     ets:insert(T, {BM, Time, Len, Time + Jitter, Array});
                 %% If we don't have a cache but our data is too big for the
                 %% cache we happiely write it directly
@@ -585,8 +601,8 @@ get_lifetime(Bucket, State = #state{lifetimes = Lifetimes}) ->
     end.
 
 update_env(State) ->
-    CT = application:get_env(metric_vnode, cache_points, 120),
-    State#state{ct = CT}.
+    CT = application:get_env(metric_vnode, cache_size, 120),
+    State#state{cache_size = CT}.
 
 
 %% Handling a get request overload
