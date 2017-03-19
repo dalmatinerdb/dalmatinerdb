@@ -509,8 +509,9 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T,
                     k6_bytea:set(Array, 0, Value),
                     k6_bytea:set(Array, Len * ?DATA_SIZE,
                                  <<0:(?DATA_SIZE * 8 * (CacheSize - Len))>>),
+                    End = cache_end(Time, CacheSize),
                     ets:update_element(T, BM, [{2, Time}, {3, Len},
-                                               {4, Time + CacheSize}]),
+                                               {4, End}]),
                     metric_io:write(IO, Bucket, Metric, Start, Bin);
                 %% In the case the data is already longer then the cache we
                 %% flush the cache
@@ -530,8 +531,8 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T,
                 [] when Len < CacheSize ->
                     Array = k6_bytea:new(CacheSize * ?DATA_SIZE),
                     k6_bytea:set(Array, 0, Value),
-                    Jitter = rand:uniform(CacheSize),
-                    ets:insert(T, {BM, Time, Len, Time + Jitter, Array});
+                    End = cache_end(Time, CacheSize),
+                    ets:insert(T, {BM, Time, Len, End, Array});
                 %% If we don't have a cache but our data is too big for the
                 %% cache we happiely write it directly
                 [] ->
@@ -539,6 +540,7 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T,
             end,
             State1
     end.
+
 
 reply(Reply, {_, ReqID, _} = Sender, #state{node=N, partition=P}) ->
     riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Reply}).
@@ -623,3 +625,11 @@ handle_overload_command(_Req, Sender, Idx) ->
 
 handle_overload_info(_, _Idx) ->
     ok.
+
+%% We calculate the jitter (end) for a cache by reducing it to (at maximum)
+%% half the size.
+
+-spec cache_end(pos_integer(), pos_integer()) -> pos_integer().
+cache_end(Start, CacheSize) ->
+    Jitter = rand:uniform(CacheSize div 2),
+    Start + CacheSize - Jitter.
