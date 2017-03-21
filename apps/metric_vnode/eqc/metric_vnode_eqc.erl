@@ -286,7 +286,6 @@ setup() ->
                         v2
                 end),
 
-
     meck:new(dalmatiner_opt, [passthrough]),
     meck:expect(dalmatiner_opt, resolution, fun(_) -> 1000 end),
     meck:expect(dalmatiner_opt, ppf, fun(_) -> 1000 end),
