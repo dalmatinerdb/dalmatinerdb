@@ -5,6 +5,7 @@ SED=/usr/bin/sed
 
 USER=dalmatiner
 GROUP=$USER
+HOME=/data/dalmatinerdb
 
 case $2 in
     PRE-INSTALL)
@@ -20,13 +21,13 @@ case $2 in
             echo "User already exists, skipping creation."
         else
             echo Creating dalmatinerdb user ...
-            useradd -g $GROUP -d /data/dalmatinerdb -s /bin/false $USER
+            useradd -g $GROUP -d "$HOME" -s /bin/false $USER
         fi
         echo Creating directories ...
-        mkdir -p /data/dalmatinerdb/etc
-        mkdir -p /data/dalmatinerdb/log/sasl
-        mkdir -p /data/dalmatinerdb/db/ring
-        chown -R $USER:$GROUP /data/dalmatinerdb
+        mkdir -p "$HOME"/etc
+        mkdir -p "$HOME"/log/sasl
+        mkdir -p "$HOME"/db/ring
+        chown -R $USER:$GROUP "$HOME"
         if [ -d /tmp/dalmatinerdb ]
         then
             chown -R $USER:$GROUP /tmp/dalmatinerdb
@@ -37,7 +38,7 @@ case $2 in
         svccfg import /opt/local/dalmatinerdb/share/ddb.xml
         echo Trying to guess configuration ...
         IP=`ifconfig net0 | grep inet | $AWK '{print $2}'`
-        CONFFILE=/data/dalmatinerdb/etc/dalmatinerdb.conf
+        CONFFILE="$HOME"/etc/dalmatinerdb.conf
         cp /opt/local/dalmatinerdb/etc/dalmatinerdb.conf.example ${CONFFILE}.example
         if [ ! -f "${CONFFILE}" ]
         then
