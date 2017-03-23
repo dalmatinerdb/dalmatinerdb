@@ -4,7 +4,7 @@ FIFO_APP_VERSION="$(shell git symbolic-ref HEAD 2> /dev/null | cut -b 12-)-$(she
 
 all: $(FIFO_APP).version compile
 
-version_header: $(FIFO_APP).version # needed by rebar (see rebar.config)
+version_header: apps/$(FIFO_APP)/include/$(FIFO_APP)_version.hrl # needed by rebar (see rebar.config)
 
 include fifo.mk
 
