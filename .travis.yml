@@ -5,8 +5,8 @@ otp_release:
 sudo: false
 install: true
 script:
-  - ./rebar3 xref
-  - ./rebar3 dialyzer
+  - ./rebar3 release
+  - make pre-commit
 
 branches:
   only:
