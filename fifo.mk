@@ -8,10 +8,9 @@ compile: $(REBAR) .git/hooks/pre-commit
 	$(REBAR) compile
 
 .git/hooks/pre-commit: hooks/pre-commit
-	mkdir -p .git/hooks
 	cp hooks/pre-commit .git/hooks
 
-pre-commit: test-scripts test-vsn lint xref dialyzer test
+pre-commit: test-scripts test-vsn lint xref dialyzer test 
 
 dialyzer: $(REBAR)
 	$(REBAR) dialyzer
@@ -32,7 +31,7 @@ $(REBAR):
 	cp `which rebar3` $(REBAR)
 
 upgrade: $(REBAR)
-	$(REBAR) upgrade
+	$(REBAR) upgrade 
 	make tree
 
 update: $(REBAR)
@@ -46,7 +45,7 @@ tree-diff: tree
 
 update-fifo.mk:
 	cp _build/default/lib/fifo_utils/priv/fifo.mk .
-
+	
 
 ###
 ### Docs
