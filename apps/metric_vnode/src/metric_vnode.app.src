@@ -12,7 +12,6 @@
                   trie,
                   lager,
                   dalmatiner_vacuum,
-                  dalmatiner_metric,
                   snappiest,
                   clique,
                   riak_core

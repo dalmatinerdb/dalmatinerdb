@@ -23,6 +23,7 @@
          handle_info/2,
          handle_overload_command/3,
          handle_overload_info/2,
+         cache_end/2,
          handle_exit/3]).
 
 -export([mput/3, put/5, get/4]).
@@ -503,7 +504,8 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T,
                     k6_bytea:set(Array, 0, Value),
                     k6_bytea:set(Array, Len * ?DATA_SIZE,
                                  <<0:(?DATA_SIZE * 8 * (CacheSize - Len))>>),
-                    End = cache_end(Time, CacheSize),
+                    %% We need this for mock
+                    End = ?MODULE:cache_end(Time, CacheSize),
                     ets:update_element(T, BM, [{2, Time}, {3, Len},
                                                {4, End}]),
                     metric_io:write(IO, Bucket, Metric, Start, Bin);
@@ -516,16 +518,23 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T,
                     k6_bytea:delete(Array),
                     metric_io:write(IO, Bucket, Metric, Start, Bin),
                     metric_io:write(IO, Bucket, Metric, Time, Value);
-                [{BM, Start, _Size, _End, Array}] ->
+                %% Only update the Size section when the new
+                %% size is larger then the old size.
+                [{BM, Start, Size, _End, Array}]
+                  when (Time - Start) + Len > Size ->
                     Idx = Time - Start,
                     k6_bytea:set(Array, Idx * ?DATA_SIZE, Value),
                     ets:update_element(T, BM, [{3, Idx + Len}]);
+                [{BM, Start, _Size, _End, Array}] ->
+                    Idx = Time - Start,
+                    k6_bytea:set(Array, Idx * ?DATA_SIZE, Value);
                 %% We don't have a cache yet and our data is smaller then
                 %% the current cache limit
                 [] when Len < CacheSize ->
                     Array = k6_bytea:new(CacheSize * ?DATA_SIZE),
                     k6_bytea:set(Array, 0, Value),
-                    End = cache_end(Time, CacheSize),
+                    %% We need this for mock
+                    End = ?MODULE:cache_end(Time, CacheSize),
                     ets:insert(T, {BM, Time, Len, End, Array});
                 %% If we don't have a cache but our data is too big for the
                 %% cache we happiely write it directly
