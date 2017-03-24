@@ -71,6 +71,6 @@ vsn:
 
 test-vsn:
 	@echo "Testing against package version: $(REBAR_VSN)"
-	@[ "$(REBAR_VSN)" == "$(APP_VSN)" ]  && echo " - App version ok:     $(APP_VSN)"  || (echo "App version out of date" && false)
-	@[ "$(REBAR_VSN)" == "$(PKG_VSN)" ]  && echo " - Package version ok: $(PKG_VSN)"  || (echo "Package version out of date" && false)
-	@[ "$(REBAR_VSN)" == "$(VARS_VSN)" ] && echo " - Vars version ok:    $(VARS_VSN)" || (echo "Vars version out of date" && false)
+	@[ "$(REBAR_VSN)" = "$(APP_VSN)" ]  && echo " - App version ok:     $(APP_VSN)"  || (echo "App version out of date" && false)
+	@[ "$(REBAR_VSN)" = "$(PKG_VSN)" ]  && echo " - Package version ok: $(PKG_VSN)"  || (echo "Package version out of date" && false)
+	@[ "$(REBAR_VSN)" = "$(VARS_VSN)" ] && echo " - Vars version ok:    $(VARS_VSN)" || (echo "Vars version out of date" && false)
