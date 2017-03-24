@@ -115,6 +115,13 @@ vnode(Size) ->
                           [{call, ?MODULE, put, [V, T, Vs]},
                            {call, ?MODULE, mput, [V, T, Vs]},
                            {call, ?MODULE, repair, [V, T, Vs]}]))) || S > 0])).
+
+cache_size() ->
+    choose(1, 120).
+
+jitter(CS) ->
+    choose(0, CS div 2).
+
 %%%-------------------------------------------------------------------
 %%% Properties
 %%%-------------------------------------------------------------------
@@ -122,26 +129,40 @@ vnode(Size) ->
 prop_gb_comp() ->
     ?SETUP(
        fun setup_fn/0,
-       ?FORALL(D, vnode(),
-               begin
-                   os:cmd("rm -r data"),
-                   os:cmd("mkdir data"),
-                   {S, T} = eval(D),
-                   List = gb_trees:to_list(T),
-                   List1 = [{get(S, Time, 1), V} || {Time, V} <- List],
-                   List2 = [{unlist(Vs), Vt} || {Vs, Vt} <- List1],
-                   List3 = [true || {_V, _V} <- List2],
-                   Len = length(List),
-                   metric_vnode:terminate(normal, S),
-                   ?WHENFAIL(io:format(user,
-                                       "L : ~p~n"
-                                       "L1: ~p~n"
-                                       "L2: ~p~n"
-                                       "L3: ~p~n", [List, List1, List2, List3]),
-                             length(List1) == Len andalso
-                             length(List2) == Len andalso
-                             length(List3) == Len)
-               end)).
+       ?FORALL(
+          CS, cache_size(),
+          begin
+              application:set_env(metric_vnode, cache_size, CS),
+              ?FORALL(
+                 J, jitter(CS),
+                 begin
+                     meck:expect(metric_vnode, cache_end,
+                                 fun(Start, _) ->
+                                         Start + CS - J
+                                 end),
+                     ?FORALL(
+                        D, vnode(),
+                            begin
+                                os:cmd("rm -r data"),
+                                os:cmd("mkdir data"),
+                                {S, T} = eval(D),
+                                List = gb_trees:to_list(T),
+                                List1 = [{get(S, Time, 1), V} || {Time, V} <- List],
+                                List2 = [{unlist(Vs), Vt} || {Vs, Vt} <- List1],
+                                List3 = [true || {_V, _V} <- List2],
+                                Len = length(List),
+                                metric_vnode:terminate(normal, S),
+                                ?WHENFAIL(io:format(user,
+                                                    "L : ~p~n"
+                                                    "L1: ~p~n"
+                                                    "L2: ~p~n"
+                                                    "L3: ~p~n", [List, List1, List2, List3]),
+                                          length(List1) == Len andalso
+                                          length(List2) == Len andalso
+                                          length(List3) == Len)
+                            end)
+                     end)
+          end)).
 
 prop_is_empty() ->
     ?SETUP(
@@ -304,9 +325,12 @@ setup() ->
                 fun(_, Mod, Fn, Args) -> apply(Mod, Fn, Args) end),
     meck:new(ddb_counter),
     meck:expect(ddb_counter, inc, fun(_) -> ok end),
+
+    meck:new(metric_vnode, [passthrough]),
     ok.
 
 cleanup() ->
+    meck:unload(metric_vnode),
     meck:unload(riak_core_metadata),
     meck:unload(dalmatiner_opt),
     meck:unload(dalmatiner_vacuum),
