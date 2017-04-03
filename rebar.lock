@@ -5,7 +5,7 @@
  {<<"blume">>,{pkg,<<"blume">>,<<"0.1.0">>},1},
  {<<"cf">>,{pkg,<<"cf">>,<<"0.2.2">>},1},
  {<<"chash">>,{pkg,<<"chash">>,<<"0.1.2">>},1},
- {<<"clique">>,{pkg,<<"clique">>,<<"0.3.6">>},1},
+ {<<"clique">>,{pkg,<<"clique">>,<<"0.3.9">>},1},
  {<<"cuttlefish">>,{pkg,<<"cuttlefish">>,<<"2.0.11">>},1},
  {<<"dproto">>,{pkg,<<"dproto">>,<<"0.4.1">>},0},
  {<<"edown">>,{pkg,<<"edown">>,<<"0.8.1">>},0},
@@ -52,13 +52,13 @@
  {<<"recon">>,{pkg,<<"recon">>,<<"2.3.2">>},0},
  {<<"riak_core">>,
   {git,"https://github.com/project-fifo/riak_core.git",
-       {ref,"0602a9e84c0a07b02be079e88ee2501c11c19ea0"}},
+       {ref,"054c77bed6318e0c3f912da299529c86c6a9b75d"}},
   0},
  {<<"riak_ensemble">>,{pkg,<<"riak_ensemble_ng">>,<<"2.4.0">>},1},
- {<<"riak_sysmon">>,{pkg,<<"riak_sysmon">>,<<"2.1.3">>},1},
+ {<<"riak_sysmon">>,{pkg,<<"riak_sysmon">>,<<"2.1.5">>},1},
  {<<"setup">>,{pkg,<<"setup">>,<<"1.7.0">>},2},
  {<<"snappiest">>,{pkg,<<"snappiest">>,<<"1.2.0">>},0},
- {<<"trie">>,{pkg,<<"trie">>,<<"1.6.0">>},0},
+ {<<"trie">>,{pkg,<<"trie">>,<<"1.7.0">>},0},
  {<<"uuid">>,{pkg,<<"uuid_erl">>,<<"1.5.4">>},1}]}.
 [
 {pkg_hash,[
@@ -68,7 +68,7 @@
  {<<"blume">>, <<"62DDA46B43E24D4B8D5407B8F6DDB78EBD2A8CDC84D9BC822CDDAEF6F402F3EB">>},
  {<<"cf">>, <<"7F2913FFF90ABCABD0F489896CFEB0B0674F6C8DF6C10B17A83175448029896C">>},
  {<<"chash">>, <<"AF02484F2640C653C4B9A8557A14CA0704989DBEDB27E7CCBC442F1903A3BCA7">>},
- {<<"clique">>, <<"1A7EB99DF038CC3C76686A67CA41D0F5F6A2F0F5D9863FE091EB8C35600EF80F">>},
+ {<<"clique">>, <<"A56298B7582C1AC2C278F21D3C779CE3ECCE02AE06751DAA107441ED90DC5E69">>},
  {<<"cuttlefish">>, <<"D266AC68BA801803ACE4EF3DEC0FC419F184092E1882E19F7AFC29A6D4334E6A">>},
  {<<"dproto">>, <<"A34C93BC248C9E06CF9098042EC14BB8B18A046FC5BFF986A128001F7E977C2F">>},
  {<<"edown">>, <<"7333B6F6B7BBC736C263E9CEB8261667D7C8F7D92E251829F1A9FE8F24E7B694">>},
@@ -96,9 +96,9 @@
  {<<"ranch">>, <<"F7ED6D97DB8C2A27CCA85CACBD543558001FC5A355E93A7BFF1E9A9065A8545B">>},
  {<<"recon">>, <<"4444C879BE323B1B133EEC5241CB84BD3821EA194C740D75617E106BE4744318">>},
  {<<"riak_ensemble">>, <<"6570463BF09F1200C003DE298C5D6615C418D3BF0A2DF5CAF469A9DF2558059A">>},
- {<<"riak_sysmon">>, <<"2E81AF5763336C0B136D7ECEFFBEC3540DB20D54459C9F2AE1275FEE4927FB7B">>},
+ {<<"riak_sysmon">>, <<"2331BBCAEBE73EA7B2449F4C765827142476CC73D7D86999B4209EE005694D6B">>},
  {<<"setup">>, <<"15DF8E57C6DF9755E22BFB1AEF0C640BD97E9889396FDFB2A85A5536A9043674">>},
  {<<"snappiest">>, <<"25706FEBB5ECAEA900D879A89C6D967C8D1BF700F8546BEBD0DEA514A8CCBFB7">>},
- {<<"trie">>, <<"8D2B0C850A01B46FC4711AA1862D45D6AE3A0DA963127E44E6535EA88274D7D3">>},
+ {<<"trie">>, <<"E022B7B33338957BCE17BFD52B6BFE0840F2269E89DAB0C00C01C6CD7FCBEECC">>},
  {<<"uuid">>, <<"06240EFF3EAF013CC22274689B0C1FF6345645EE5D47A9E4ED7545EEB7698B23">>}]}
 ].
