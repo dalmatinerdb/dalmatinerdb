@@ -1,9 +1,8 @@
-Package: dalmatinerdb
-Version: {{VERSION}}
-License: MIT
-Vendor: project-fifo
-Maintainer: heinz@licenser.net
-Section: default
-Priority: extra
-Homepage: https://dalmatiner.io
-Description: Dalamtinerdb database
+Package: dalmatienerdb
+Version: 0.3.2
+Section: base
+Priority: optional
+Architecture: amd64
+Maintainer: Project-Fifo <info@project-fifo.net>
+Description: DalmatienerDB
+ Distributed TSBD. Woof.

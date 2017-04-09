@@ -1,12 +1,20 @@
 #!/bin/bash
 
-# Sort out file permissions
-if [[ $(id dalmatiner 2>/dev/null) ]] ;then
-    chown -R dalmatiner:dalmatiner /var/lib/ddb
-    chown -R dalmatiner:dalmatiner /var/log/ddb
+# Create data directory
+if [ ! -d "/data/dalmatinerdb" ]; then
+    mkdir -p /data/dalmatinerdb
 fi
 
-CONFFILE=/etc/ddb/dalmatinerdb.conf
+if [ ! -d "/data/dalmatinerdb/log" ]; then
+    mkdir -p /data/dalmatinerdb/log
+fi
+
+# Sort out file permissions
+if [[ $(id dalmatiner 2>/dev/null) ]] ;then
+    chown -R dalmatiner:dalmatiner /data/dalmatinerdb
+fi
+
+CONFFILE=/data/dalmatinerdb/etc/dalmatinerdb.conf
 
 if [ ! -f "${CONFFILE}" ]
 then

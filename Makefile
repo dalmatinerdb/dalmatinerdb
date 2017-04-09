@@ -30,5 +30,8 @@ deb-prepare:
 	$(REBAR) as deb release
 	make -C rel/deb prepare
 
+deb-package: deb-prepare
+	make -C rel/deb package
+
 dummy:
 	true
