@@ -19,7 +19,7 @@ prepare:
 	tar -cC ../../_build/deb/rel/ddb/lib --exclude c_src --exclude src . | tar -xC stage/usr/lib/ddb/lib
 	cp -r ../../_build/deb/rel/ddb/releases stage/usr/lib/ddb/
 	cp -r ../../_build/deb/rel/ddb/share stage/usr/lib/ddb/
-	cp -r systemd/ddb.service stage/etc/systemd/system/ddb.service
+	cp -r systemd/dalmatinerdb.service stage/etc/systemd/system/dalmatinerdb.service
 	cp control stage/DEBIAN/
 	cp preinst stage/DEBIAN/
 	cp postinst stage/DEBIAN/
