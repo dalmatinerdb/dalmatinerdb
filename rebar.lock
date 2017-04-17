@@ -34,7 +34,7 @@
   1},
  {<<"mmath">>,
   {git,"https://github.com/dalmatinerdb/mmath.git",
-       {ref,"c3e52398fdd19d085992c2d5f3587e1655339470"}},
+       {ref,"84e5785b859b951ddc02e25b90b522afe1acf748"}},
   0},
  {<<"mstore">>,
   {git,"https://github.com/dalmatinerdb/mstore.git",
