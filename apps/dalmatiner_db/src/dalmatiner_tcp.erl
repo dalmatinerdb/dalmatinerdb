@@ -41,7 +41,8 @@ init(Ref, Socket, Transport, _Opts = []) ->
 loop(Socket, Transport, State) ->
     case Transport:recv(Socket, 0, 5000) of
         {ok, Data} ->
-            case dproto_tcp:decode(Data) of
+            {ot, _TIDs, Data1} = dproto_tcp:decode_ot(Data),
+            case dproto_tcp:decode(Data1) of
                 buckets ->
                     Bs = dalmatiner_bucket:list(),
                     Transport:send(Socket, dproto_tcp:encode_metrics(Bs)),
