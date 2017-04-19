@@ -173,7 +173,7 @@ send_parts(Socket, Transport, _PPF, _B, _M, _Opts, S, []) ->
 
 send_parts(Socket, Transport, PPF, B, M, Opts, S, [{T, C} | Splits]) ->
     S1 = otters:log(S, "get part"),
-    {ok, Points} = metric:get(B, M, PPF, T, C, Opts, S1),
+    {ok, Points} = metric:get(B, M, PPF, T, C, S1, Opts),
     send_part(Socket, Transport, C, Points),
     S2 = otters:log(S1, "part send"),
     send_parts(Socket, Transport, PPF, B, M, Opts, S2, Splits).
