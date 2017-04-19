@@ -1,15 +1,18 @@
-APP=dalmatiner_db
-.PHONY: all tree
+FIFO_APP=dalmatiner_db
+FIFO_APP_VERSION="$(shell git symbolic-ref HEAD 2> /dev/null | cut -b 12-)-$(shell git log --pretty=format:'%h, %ad' -1)"
+.PHONY: all version_header tree clean rel package deb-clean deb-prepare dummy
 
-all: version compile
+all: $(FIFO_APP).version compile
+
+version_header: $(FIFO_APP).version # needed by rebar (see rebar.config)
 
 include fifo.mk
 
-version:
-	@echo "$(shell git symbolic-ref HEAD 2> /dev/null | cut -b 12-)-$(shell git log --pretty=format:'%h, %ad' -1)" > dalmatiner_db.version
+$(FIFO_APP).version:
+	@echo $(FIFO_APP_VERSION) > $@
 
-version_header: version
-	@echo "-define(VERSION, <<\"$(shell cat dalmatiner_db.version)\">>)." > apps/dalmatiner_db/include/dalmatiner_db_version.hrl
+apps/dalmatiner_db/include/dalmatiner_db_version.hrl: $(FIFO_APP).version
+	@echo "-define(VERSION, <<\"$(shell cat $<)\">>)." > $@
 
 clean:
 	$(REBAR) clean
@@ -22,7 +25,7 @@ rel: dummy
 package: rel
 	make -C rel/pkg package
 
-deb-clean: 
+deb-clean:
 	make -C rel/deb clean
 
 deb-prepare:
