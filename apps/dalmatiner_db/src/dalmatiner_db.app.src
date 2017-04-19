@@ -20,6 +20,7 @@
                   dalmatiner_vacuum,
                   dalmatiner_metric,
                   snappiest,
+                  otters,
                   ranch
                  ]},
   {mod, { dalmatiner_db_app, []}},

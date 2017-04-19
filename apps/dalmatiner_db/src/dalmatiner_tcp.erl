@@ -41,51 +41,80 @@ init(Ref, Socket, Transport, _Opts = []) ->
 loop(Socket, Transport, State) ->
     case Transport:recv(Socket, 0, 5000) of
         {ok, Data} ->
-            {ot, _TIDs, Data1} = dproto_tcp:decode_ot(Data),
+            {ot, TIDs, Data1} = dproto_tcp:decode_ot(Data),
+            S = case TIDs of
+                    undefined ->
+                        undefined;
+                    {TraceID, ParentID} ->
+                        otters:start(ddb, TraceID, ParentID)
+                end,
+            S1 = otters:log(S, "package received"),
             case dproto_tcp:decode(Data1) of
                 buckets ->
+                    S2 = otters:log(S1, "decoded"),
                     Bs = dalmatiner_bucket:list(),
                     Transport:send(Socket, dproto_tcp:encode_metrics(Bs)),
+                    otters:finish(S2),
                     loop(Socket, Transport, State);
                 {list, Bucket} ->
+                    S2 = otters:log(S1, "decoded"),
                     {ok, Ms} = metric:list(Bucket),
                     Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
+                    otters:finish(S2),
                     loop(Socket, Transport, State);
                 {delete, Bucket} ->
+                    S2 = otters:log(S1, "decoded"),
                     metric:delete(Bucket),
+                    otters:finish(S2),
                     loop(Socket, Transport, State);
                 {list, Bucket, Prefix} ->
+                    S2 = otters:log(S1, "decoded"),
                     {ok, Ms} = metric:list(Bucket, Prefix),
                     Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
+                    otters:finish(S2),
                     loop(Socket, Transport, State);
                 {info, Bucket} ->
+                    S2 = otters:log(S1, "decoded"),
                     Info = dalmatiner_bucket:info(Bucket),
                     InfoBin = dproto_tcp:encode_bucket_info(Info),
                     Transport:send(Socket, InfoBin),
+                    otters:finish(S2),
                     loop(Socket, Transport, State);
                 {get, B, M, T, C, Opts} ->
+                    S2 = otters:log(S1, "decoded"),
                     Opts1 =  apply_rtt(State#state.rr_min_time, B, T, Opts),
-                    do_send(Socket, Transport, B, M, T, C, Opts1),
+                    S3 = do_send(Socket, Transport, B, M, T, C, Opts1, S2),
+                    otters:finish(S3),
                     loop(Socket, Transport, State);
                 {ttl, Bucket, TTL} ->
+                    S2 = otters:log(S1, "decoded"),
                     ok = metric:update_ttl(Bucket, TTL),
+                    otters:finish(S2),
                     loop(Socket, Transport, State);
                 {events, Bucket, Es} ->
+                    S2 = otters:log(S1, "decoded"),
                     event:append(Bucket, Es),
+                    otters:finish(S2),
                     loop(Socket, Transport, State);
                 {get_events, Bucket, Start, End} ->
+                    S2 = otters:log(S1, "decoded"),
                     Size = event:split(Bucket),
                     Splits = estore:make_splits(Start, End, Size),
+                    otters:finish(S2),
                     get_events(Bucket, [], Splits, Socket, Transport, State);
                 {get_events, Bucket, Start, End, Filter} ->
+                    S2 = otters:log(S1, "decoded"),
                     Size = event:split(Bucket),
                     Splits = estore:make_splits(Start, End, Size),
+                    otters:finish(S2),
                     get_events(Bucket, Filter, Splits, Socket, Transport,
                                State);
                 {stream, Bucket, Delay} ->
+                    S2 = otters:log(S1, "decoded"),
                     lager:info("[tcp] Entering stream mode for bucket '~s' "
                                "and a max delay of: ~p", [Bucket, Delay]),
                     ok = Transport:setopts(Socket, [{packet, 0}]),
+                    otters:finish(S2),
                     stream_loop(Socket, Transport,
                                 #sstate{max_diff = Delay,
                                         dict = bkt_dict:new(Bucket,
@@ -123,25 +152,34 @@ apply_rtt(MinRTT, B, T, {rr, default} = RROpt) ->
 apply_rtt(_MinRTT, _B, _T, RROpt) ->
     RROpt.
 
-do_send(Socket, Transport, B, M, T, C, Opts) ->
+do_send(Socket, Transport, B, M, T, C, Opts, S) ->
+    S1 = otters:tag(S, <<"operation">>, <<"get">>),
+    S2 = otters:tag(S1, <<"bucket">>, B),
+    S3 = otters:tag(S2, <<"metric">>, M),
+    S4 = otters:tag(S3, <<"offset">>, T),
+    S5 = otters:tag(S4, <<"count">>, C),
     PPF = dalmatiner_opt:ppf(B),
     Splits = mstore:make_splits(T, C, PPF),
-
+    S6 = otters:tag(S5, <<"splits">>, length(Splits)),
     %% We never send a aggregate for now.
     Transport:send(Socket, dproto_tcp:encode_get_reply({aggr, undefined})),
-    send_parts(Socket, Transport, PPF, B, M, Opts, Splits).
+    S7 = otters:log(S6, "start sending parts"),
+    send_parts(Socket, Transport, PPF, B, M, Opts, S7, Splits).
 
-send_parts(Socket, Transport, _PPF, _B, _M, _Opts, []) ->
+send_parts(Socket, Transport, _PPF, _B, _M, _Opts, S, []) ->
     %% Reset the socket to 4 byte packages
-    Transport:send(Socket, <<0>>);
+    Transport:send(Socket, <<0>>),
+    otters:log(S, "finish send");
 
-send_parts(Socket, Transport, PPF, B, M, Opts, [{T, C} | Splits]) ->
-    {ok, Points} = metric:get(B, M, PPF, T, C, Opts),
+send_parts(Socket, Transport, PPF, B, M, Opts, S, [{T, C} | Splits]) ->
+    S1 = otters:log(S, "get part"),
+    {ok, Points} = metric:get(B, M, PPF, T, C, Opts, S1),
     send_part(Socket, Transport, C, Points),
-    send_parts(Socket, Transport, PPF, B, M, Opts, Splits).
+    S2 = otters:log(S1, "part send"),
+    send_parts(Socket, Transport, PPF, B, M, Opts, S2, Splits).
 
 send_part(Socket, Transport, C, Points) when is_integer(C),
-                                              is_binary(Points)->
+                                             is_binary(Points)->
     Padding = C - mmath_bin:length(Points),
     Msg = {data, Points, Padding},
     Transport:send(Socket, dproto_tcp:encode_get_stream(Msg)).
@@ -212,7 +250,7 @@ batch_loop(Socket, Transport, State = #sstate{dict = Dict}, _Time,
            {batch_end, Acc}) ->
     Dict1 = flush(Dict),
     stream_loop(Socket, Transport, State#sstate{dict = Dict1},
-               dproto_tcp:decode_stream(Acc));
+                dproto_tcp:decode_stream(Acc));
 
 batch_loop(Socket, Transport, State  = #sstate{dict = Dict}, Time,
            {{batch, Metric, Point}, Acc}) ->
@@ -226,7 +264,7 @@ batch_loop(Socket, Transport, State, Time, {incomplete, Acc}) ->
         {ok, Data} ->
             Acc1 = <<Acc/binary, Data/binary>>,
             batch_loop(Socket, Transport, State, Time,
-                        dproto_tcp:decode_batch(Acc1));
+                       dproto_tcp:decode_batch(Acc1));
         {error, timeout} ->
             batch_loop(Socket, Transport, State, Time, {incomplete, Acc});
         {error, closed} ->
