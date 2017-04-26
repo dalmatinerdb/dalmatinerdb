@@ -1,15 +1,9 @@
 APP=dalmatiner_db
 .PHONY: all tree
 
-all: version compile
+all: compile
 
 include fifo.mk
-
-version:
-	@echo "$(shell git symbolic-ref HEAD 2> /dev/null | cut -b 12-)-$(shell git log --pretty=format:'%h, %ad' -1)" > dalmatiner_db.version
-
-version_header: version
-	@echo "-define(VERSION, <<\"$(shell cat dalmatiner_db.version)\">>)." > apps/dalmatiner_db/include/dalmatiner_db_version.hrl
 
 clean:
 	$(REBAR) clean

@@ -8,9 +8,9 @@ compile: $(REBAR) .git/hooks/pre-commit
 	$(REBAR) compile
 
 .git/hooks/pre-commit: hooks/pre-commit
-	cp hooks/pre-commit .git/hooks
+	[ -f  .git/hooks ] && cp hooks/pre-commit .git/hooks || true
 
-pre-commit: test-scripts test-vsn lint xref dialyzer test 
+pre-commit: test-scripts test-vsn lint xref dialyzer test
 
 dialyzer: $(REBAR)
 	$(REBAR) dialyzer
@@ -45,7 +45,7 @@ tree-diff: tree
 
 update-fifo.mk:
 	cp _build/default/lib/fifo_utils/priv/fifo.mk .
-	
+
 
 ###
 ### Docs
