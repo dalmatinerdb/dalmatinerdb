@@ -18,7 +18,7 @@ register_cli_cmds() ->
 register_cli_cfg() ->
     lists:foreach(
       fun(K) ->
-              clique:register_config(K, fun rr_cfg_change_callback/3)
+              clique:register_config(K, fun rr_cfg_change_callback/2)
       end,
       [["read_repair", "delay"]]).
 
@@ -41,9 +41,8 @@ rr_config(_CmdBase, _Args, [{node, Node}]) ->
 config_vars() ->
     ["read_repair.delay"].
 
-rr_cfg_change_callback(_, _, _) ->
+rr_cfg_change_callback(_, _) ->
     metric:update_env().
 
 register_config_whitelist() ->
-    ok = clique:register_config_whitelist(
-           ["read_repair.delay"]).
+    ok = clique:register_config_whitelist(["read_repair.delay"]).

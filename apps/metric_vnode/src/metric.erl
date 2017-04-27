@@ -3,8 +3,8 @@
 -export([
          put/4,
          mput/4,
-         get/5,
          get/6,
+         get/7,
          delete/1,
          list/1,
          list/2,
@@ -12,7 +12,7 @@
          update_env/0
         ]).
 
--ignore_xref([update_ttl/2, get/4, put/4, update_env/0]).
+-ignore_xref([update_ttl/2, get/6, put/4, update_env/0]).
 
 
 mput(Nodes, Acc, W, N) ->
@@ -38,10 +38,10 @@ put(Bucket, Metric, Time, Value) ->
 put(Bucket, Metric, PPF, Time, Value, N, W) ->
     do_put(Bucket, Metric, PPF, Time, Value, N, W).
 
-get(Bucket, Metric, Time, Count, Opts) ->
-    get(Bucket, Metric, dalmatiner_opt:ppf(Bucket), Time, Count, Opts).
+get(Bucket, Metric, Time, Count, S, Opts) ->
+    get(Bucket, Metric, dalmatiner_opt:ppf(Bucket), Time, Count, S, Opts).
 
-get(Bucket, Metric, PPF, Time, Count, Opts) when
+get(Bucket, Metric, PPF, Time, Count, _S, Opts) when
       Time div PPF =:= (Time + Count - 1) div PPF->
     ddb_histogram:timed_update(
       get, dalmatiner_read_fsm, start,
