@@ -9,7 +9,7 @@
  {<<"cuttlefish">>,{pkg,<<"cuttlefish">>,<<"2.0.11">>},1},
  {<<"dproto">>,
   {git,"https://github.com/dalmatinerdb/dproto.git",
-       {ref,"b3c26b3756b3cbb01783568845ec93754833f14b"}},
+       {ref,"dd45debe4ae76a6a3f40243ca129fcf0a6514d42"}},
   0},
  {<<"dynamic_compile">>,{pkg,<<"dynamic_compile">>,<<"1.0.0">>},1},
  {<<"edown">>,{pkg,<<"edown">>,<<"0.8.1">>},0},
