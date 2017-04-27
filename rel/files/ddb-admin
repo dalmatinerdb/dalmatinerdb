@@ -8,9 +8,9 @@ RUNNER_SCRIPT_DIR=$(cd ${0%/*} && pwd)
 RUNNER_SCRIPT=${0##*/}
 
 RUNNER_BASE_DIR=${RUNNER_SCRIPT_DIR%/*}
-RUNNER_ETC_DIR={{platform_etc_dir}}
-RUNNER_LOG_DIR={{log_path}}
-RUNNER_USER={{run_user}}
+RUNNER_ETC_DIR="${RUNNER_ETC_DIR:-{{platform_etc_dir}}}"
+RUNNER_LOG_DIR="${RUNNER_LOG_DIR:-{{log_path}}}"
+RUNNER_USER="${RUNNER_USER:-{{run_user}}}"
 
 # Make sure this script is running as the appropriate user
 if [ ! -z "$RUNNER_USER" ] && [ `whoami` != "$RUNNER_USER" ]; then
