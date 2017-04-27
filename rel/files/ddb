@@ -5,15 +5,16 @@
 RUNNER_SCRIPT_DIR=$(cd ${0%/*} && pwd)
 
 RUNNER_BASE_DIR=${RUNNER_SCRIPT_DIR%/*}
-RUNNER_ETC_DIR={{platform_etc_dir}}
-RUNNER_LOG_DIR={{log_path}}
+RUNNER_ETC_DIR="${RUNNER_ETC_DIR:-{{platform_etc_dir}}}"
+RUNNER_LOG_DIR="${RUNNER_LOG_DIR:-{{log_path}}}"
 # Note the trailing slash on $PIPE_DIR/
-PIPE_DIR=/tmp/{{run_user}}/
-RUNNER_USER={{run_user}}
+PIPE_DIR=/tmp/ddb/
+RUNNER_USER="${RUNNER_USER:-{{run_user}}}"
 
 # Make sure this script is running as the appropriate user
-if [ ! -z "$RUNNER_USER" ] && [ `whoami` != "$RUNNER_USER" ]; then
-    exec sudo -H -u $RUNNER_USER $0 $@
+if [ ! -z "${RUNNER_USER}" ] && [ `whoami` != "${RUNNER_USER}" ]; then
+    # Make sure that the environment of the current user is preserved with -E
+    exec sudo -E -H -u ${RUNNER_USER} "${0}" "${@}"
 fi
 
 # Make sure CWD is set to runner base dir
