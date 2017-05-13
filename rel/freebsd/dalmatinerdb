@@ -1,0 +1,41 @@
+#!/bin/sh
+#
+# $FreeBSD$
+#
+
+# PROVIDE: dalmatinerdb
+# REQUIRE: LOGIN
+# KEYWORD: shutdown
+
+
+. /etc/rc.subr
+
+name="dalmatinerdb"
+rcvar=dalmatinerdb_enable
+
+load_rc_config $name
+: ${dalmatinerdb="NO"}
+
+
+start_cmd="${name}_start"
+stop_cmd="${name}_stop"
+
+
+
+dalmatinerdb_start()
+{
+	if checkyesno ${rcvar}; then
+		echo "* starting dalmatiner db... "
+		/usr/local/bin/sudo -u dalmatinerdb /usr/ddb/bin/ddb start
+	fi
+}
+
+dalmatinerdb_stop()
+{
+	if checkyesno ${rcvar}; then
+		echo "* stopping dalmatiner db... "
+		/usr/local/bin/sudo -u dalmatinerdb /usr/ddb/bin/ddb stop
+	fi
+}
+
+run_rc_command "$1"
