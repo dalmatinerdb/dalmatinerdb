@@ -1,5 +1,5 @@
 name: dalmatinerdb
-version: "0.3.0"
+version: "0.3.2"
 origin: projectfifo/dalmatinerdb
 comment: "Dalmatiner TS Database"
 desc: "Dalmatiner TS Database"

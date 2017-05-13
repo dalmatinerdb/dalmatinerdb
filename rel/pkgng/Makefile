@@ -1,4 +1,4 @@
-VERSION=0.3.0
+VERSION=0.3.2
 COMPONENT_INTERNAL=ddb
 INSTALL_DIR=usr
 DEPS="coreutils" "sudo"

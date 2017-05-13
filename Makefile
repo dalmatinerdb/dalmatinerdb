@@ -18,6 +18,8 @@ endif
 ifeq ($(uname_V6),joyent)
         PLATFORM = smartos
         WMAKE = make
+        REBARPROFILE = smartos
+        export REBARPROFILE
 endif
 
 include fifo.mk
@@ -73,5 +75,5 @@ freebsd/rel: version_header
 	$(REBAR) as ${REBARPROFILE} release
 
 smartos/rel: version_header
-	$(REBAR) as prod compile
-	$(REBAR) as prod release
+	$(REBAR) as ${REBARPROFILE} compile
+	$(REBAR) as ${REBARPROFILE} release
