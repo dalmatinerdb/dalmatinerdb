@@ -174,7 +174,6 @@
  [{datatype, integer},
   {default, 5}]}.
 
-
 %% @doc Minimal size of read requests to be considered for asyncronous
 %% reads, this has no effect when async_reads is set to off
 {mapping, "io.parallel_reads.min_size", "metric_vnode.async_min_size",

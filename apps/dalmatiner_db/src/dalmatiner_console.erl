@@ -6,7 +6,7 @@
          buckets/1,
          status/1,
          create/1,
-         refresh/1
+         stats/1
         ]).
 
 -ignore_xref([
@@ -15,11 +15,17 @@
               buckets/1,
               status/1,
               create/1,
-              refresh/1
+              stats/1
              ]).
 
-refresh([]) ->
-    metric:update_env().
+stats([]) ->
+    {ok, L} = dalmatiner_metrics:get_list(),
+    lists:foreach(
+      fun({N, V}) ->
+              Metric = dproto:metric_from_list(N),
+              Name = dproto:metric_to_string(Metric, <<".">>),
+              io:format("~s ~.3f~n", [Name, V*1.0])
+      end, L).
 
 delete([BucketS]) ->
     Bucket = list_to_binary(BucketS),

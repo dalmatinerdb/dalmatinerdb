@@ -146,6 +146,7 @@ repair_update_cache(Bucket, Metric, Time, Count, Value,
         %% write it!
         [{{Bucket, Metric}, Start, _Size, _Time, _Array}]
           when Time + Count < Start ->
+            ddb_counter:inc(<<"ooo_write">>),
             metric_io:write(State#state.io, Bucket, Metric, Time, Value),
             State;
         %% ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐
@@ -408,7 +409,9 @@ handle_coverage(update_env, _KeySpaces, _Sender,
     {reply, Reply, update_env(State#state{io = IO1})};
 
 handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
-                State = #state{partition=P, node=N, tbl=T, io = IO}) ->
+                State = #state{partition=P, node=N, tbl=T, io = IO,
+                               lifetimes = Lifetimes,
+                               resolutions = Resolutions}) ->
     ets:foldl(fun({{Bkt, Metric}, Start, Size, _, Array}, _)
                     when Bkt /= Bucket ->
                       Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
@@ -422,7 +425,10 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
     R = btrie:new(),
     R1 = btrie:store(Bucket, t, R),
     Reply = {ok, undefined, {P, N}, R1},
-    {reply, Reply, State}.
+    LT1 = btrie:erase(Bucket, Lifetimes),
+    Rs1 = btrie:erase(Bucket, Resolutions),
+    {reply, Reply, State#state{lifetimes = LT1,
+                               resolutions = Rs1}}.
 
 handle_info(vacuum, State = #state{io = IO, partition = P}) ->
     lager:info("[vaccum] Starting vaccum for partition ~p.", [P]),
@@ -494,6 +500,7 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T,
                 %% written data.
                 [{BM, _Start, _Size, _End, _V}]
                   when Time < _Start ->
+                    ddb_counter:inc(<<"ooo_write">>),
                     metric_io:write(IO, Bucket, Metric, Time, Value);
                 %% When the Delta of start time and this package is greater
                 %% then the cache time we flush the cache and start a new cache

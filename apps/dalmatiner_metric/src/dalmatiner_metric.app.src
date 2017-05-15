@@ -1,0 +1,22 @@
+{application, dalmatiner_metric,
+ [{description, "An OTP application"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, { dalmatiner_metric_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    %% For core counters
+    riak_core,
+    %% for hdr histograms
+    hdr_histogram,
+    %% For folsom counters
+    folsom
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.

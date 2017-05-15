@@ -705,7 +705,7 @@ calc_empty(I) ->
                       state().
 do_write(Bucket, Metric, Time, Value, State) ->
     {{_, MSet}, State1} = get_or_create_set(Bucket, State),
-    MSet1 = folsom_metrics:histogram_timed_update(
+    MSet1 = ddb_histogram:timed_update(
               {mstore, write},
               mstore, put, [MSet, Metric, Time, Value]),
     LastWritten = erlang:system_time(),
@@ -728,7 +728,7 @@ do_read(Bucket, Metric, Time, Count, State = #state{})
   when is_binary(Bucket), is_binary(Metric), is_integer(Count) ->
     case get_set(Bucket, State) of
         {ok, {{_LastWritten, MSet}, S2}} ->
-            {ok, Data} = folsom_metrics:histogram_timed_update(
+            {ok, Data} = ddb_histogram:timed_update(
                            {mstore, read},
                            mstore, get, [MSet, Metric, Time, Count, [one_off]]),
             {Data, S2};

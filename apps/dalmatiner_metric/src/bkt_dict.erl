@@ -2,7 +2,7 @@
 
 -include_lib("mmath/include/mmath.hrl").
 
--export([new/3, flush/1, add/4]).
+-export([new/3, update_chash/1, flush/1, add/4, to_list/1]).
 
 -export_type([bkt_dict/0]).
 
@@ -21,7 +21,7 @@ new(Bkt, N, W) ->
                  bkt_dict().
 add(Metric, Time, Points, BD = #bkt_dict{ppf = PPF}) ->
     Count = mmath_bin:length(Points),
-    dalmatiner_metrics:inc(<<"mps">>, Count),
+    ddb_counter:inc(<<"mps">>, Count),
     Splits = mstore:make_splits(Time, Count, PPF),
     insert_metric(Metric, Splits, Points, BD).
 
@@ -53,4 +53,11 @@ insert_metric(Metric, [{Time, Count} | Splits], PointsIn,
     {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
     Dict1 = dict:append(Idx, {Bucket, Metric, Time, Points}, Dict),
     BD1 = BD#bkt_dict{dict = Dict1},
-    insert_metric( Metric, Splits, Rest, BD1).
+    insert_metric(Metric, Splits, Rest, BD1).
+
+to_list(#bkt_dict{dict = Dict}) ->
+    L = dict:fold(fun (_Idx, Es, Acc) ->
+                          [Es | Acc]
+                  end, [], Dict),
+    lists:flatten(L).
+

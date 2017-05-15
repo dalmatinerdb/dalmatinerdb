@@ -142,7 +142,7 @@ stat_admin()
         refresh)
             shift
             node_up_check
-            $NODETOOL rpc dalmatiner_console refresh
+            $NODETOOL rpc riak_core_console refresh
             ;;
         io)
             shift
@@ -471,6 +471,11 @@ case "$1" in
                 ;;
         esac
         ;;
+    stats)
+        shift
+        $NODETOOL rpc dalmatiner_console stats
+        ;;
+
     ## KV related
 
     join)
@@ -788,7 +793,6 @@ case "$1" in
                 shift
                 exec $NODETOOL rpc ddb_bmp repair $@
                 ;;
-            
             *)
                 echo "Unknown command"
                 exit 1

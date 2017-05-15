@@ -52,6 +52,7 @@
  {<<"riak_sysmon">>,{pkg,<<"riak_sysmon">>,<<"2.1.3">>},1},
  {<<"setup">>,{pkg,<<"setup">>,<<"1.7.0">>},2},
  {<<"snappiest">>,{pkg,<<"snappiest">>,<<"1.2.0">>},0},
+ {<<"snappyer">>,{pkg,<<"snappyer">>,<<"1.2.0">>},0},
  {<<"trie">>,{pkg,<<"trie">>,<<"1.6.0">>},0},
  {<<"uuid">>,{pkg,<<"uuid_erl">>,<<"1.5.4">>},1}]}.
 [
@@ -95,6 +96,7 @@
  {<<"riak_sysmon">>, <<"2E81AF5763336C0B136D7ECEFFBEC3540DB20D54459C9F2AE1275FEE4927FB7B">>},
  {<<"setup">>, <<"15DF8E57C6DF9755E22BFB1AEF0C640BD97E9889396FDFB2A85A5536A9043674">>},
  {<<"snappiest">>, <<"25706FEBB5ECAEA900D879A89C6D967C8D1BF700F8546BEBD0DEA514A8CCBFB7">>},
+ {<<"snappyer">>, <<"4761F475C53FEC4A027DC90EA0626A735E3D276BFCFAF9A8DC4C7BBDA4D1E058">>},
  {<<"trie">>, <<"8D2B0C850A01B46FC4711AA1862D45D6AE3A0DA963127E44E6535EA88274D7D3">>},
  {<<"uuid">>, <<"06240EFF3EAF013CC22274689B0C1FF6345645EE5D47A9E4ED7545EEB7698B23">>}]}
 ].
