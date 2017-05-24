@@ -32,7 +32,7 @@ $(REBAR):
 
 upgrade: $(REBAR)
 	$(REBAR) upgrade 
-	make tree
+	$(WMAKE) tree
 
 update: $(REBAR)
 	$(REBAR) update
