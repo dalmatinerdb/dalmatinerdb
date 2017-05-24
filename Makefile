@@ -3,7 +3,7 @@ APP=dalmatiner_db
 
 REBAR=$(shell pwd)/rebar3
 ELVIS=$(shell pwd)/elvis
-APP=sniffle
+APP=dalmatiner_db
 
 uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
 uname_V6 := $(shell sh -c 'uname -v 2>/dev/null | cut -c-6 || echo not')
