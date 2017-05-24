@@ -6,6 +6,8 @@
 
 -define(DEFAULT_TIMEOUT, 5000).
 
+-include_lib("mmath/include/mmath.hrl").
+
 %% API
 -export([start_link/7, start/2, start/3, start/5]).
 
@@ -24,12 +26,13 @@
 -type reply_src() :: {partition(), term()}.
 -type metric_element() :: binary().
 -type read_opts() :: [dproto_tcp:read_repair_opt() |
+                      {read_repair, {partial, pos_integer()}} |
                       dproto_tcp:read_r_opt() |
                       {n, pos_integer()}].
 %%-type metric_reply() :: {partition(), metric_element()}.
 
 -record(state, {req_id,
-                read_repair = true,
+                read_repair = true :: boolean() | {partial, pos_integer()},
                 compression :: snappy | none,
                 from,
                 entity,
@@ -249,15 +252,19 @@ finalize(timeout, SD=#state{system = event,
 
 finalize(timeout, SD=#state{
                         val = {Time, _},
+                        read_repair = RR,
                         replies=Replies,
                         entity=Entity}) ->
     MObj = merge_metrics(Replies),
-    case needs_repair(MObj, Replies) of
-        true ->
+    case needs_repair(MObj, Replies, RR) of
+        {true, RObj} ->
+            %% needs_repair also checks weather we decided to drop part of the
+            %% result as it is too new (when partial is passed), the new
+            %% object is already returned as RObj
             ddb_counter:inc(<<"read_repair">>),
-            repair(Time, Entity, MObj, Replies),
+            repair(Time, Entity, RObj, Replies),
             {stop, normal, SD};
-        false ->
+        {false, _} ->
             {stop, normal, SD}
     end.
 
@@ -362,6 +369,17 @@ reconcile(Vals) ->
 %%
 %% @doc Given the merged object `MObj' and a list of `Replies'
 %% determine if repair is needed.
+needs_repair(MObj, Replies, true) ->
+    Objs = [Obj || {_IdxNode, Obj} <- Replies],
+    {lists:any(different(MObj), Objs), MObj};
+
+needs_repair(MObj, Replies, {partial, N}) ->
+    Keep = byte_size(MObj) - N * ?DATA_SIZE,
+    <<Head:Keep/binary, _/binary>> = MObj,
+    Objs = [Obj || {_IdxNode, <<Obj:Keep/binary, _/binary>>} <- Replies],
+    {lists:any(different(Head), Objs), Head}.
+
+
 needs_repair(MObj, Replies) ->
     Objs = [Obj || {_IdxNode, Obj} <- Replies],
     lists:any(different(MObj), Objs).
@@ -405,6 +423,8 @@ get_rr_opt(Opts) ->
             {ok, false};
         on ->
             {ok, true};
+        {partial, V} when is_integer(V), V > 0 ->
+            {ok, {partial, V}};
         V when V =:= undefined; V =:= default ->
             {ok, true}
     end.

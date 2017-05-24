@@ -82,7 +82,7 @@ loop(Socket, Transport, State) ->
                     loop(Socket, Transport, State);
                 {get, B, M, T, C, Opts} ->
                     S2 = otters:log(S1, "decoded"),
-                    Opts1 =  apply_rtt(State#state.rr_min_time, B, T, Opts),
+                    Opts1 = apply_rtt(State#state.rr_min_time, B, T, C, Opts),
                     S3 = do_send(Socket, Transport, B, M, T, C, Opts1, S2),
                     otters:finish(S3),
                     loop(Socket, Transport, State);
@@ -132,24 +132,65 @@ loop(Socket, Transport, State) ->
     end.
 
 %% When the get request has a read repair option other than the default, that
-%% option will be honoured.  Otherwise, if the cutoff date (now - min RTT) is
+%% option will be honoured.  Otherwise, if the cutoff date (now - min RRT) is
 %% larger then the first timestamp of the read, we have data that is older
 %% and will perform a read repair.
-apply_rtt(MinRTT, B, T, Opts) when is_list(Opts) ->
+apply_rtt(MinRRT, B, T, C, Opts) when is_list(Opts) ->
     RROpt = proplists:lookup(rr, Opts),
     Opts1 = proplists:delete(rr, Opts),
-    [apply_rtt(MinRTT, B, T, RROpt) | Opts1];
-apply_rtt(0, _B, _T, RROpt) ->
+    [apply_rtt(MinRRT, B, T, C, RROpt) | Opts1];
+apply_rtt(0, _B, _T, _C, RROpt) ->
     RROpt;
-apply_rtt(MinRTT, B, T, {rr, default} = RROpt) ->
-    Now = erlang:system_time(milli_seconds) div dalmatiner_opt:resolution(B),
-    case Now - MinRTT of
-        Cutoff when Cutoff > T ->
+apply_rtt(MinRRT, B, First, Count, {rr, default} = RROpt) ->
+
+    PartialRepairs = application:get_env(dalmatiner_db, partial_rr, false),
+    %% The bucket Resolultion
+    Res = dalmatiner_opt:resolution(B),
+    %% Current time
+    Now = erlang:system_time(milli_seconds),
+
+    %% We scale the current time to the bucket resoltuion
+    NowScaled = Now div Res,
+    %% We scale the minimum Read repair time to the current resolution
+    MinRRTScaled = MinRRT div Res,
+    %% We calculate the cutoffdarte by substracting the minimum rr time
+    %% from now, caluclating the in the most recent time past that we would
+    %% still repair, anything larger then that we won't.
+    Last = First + Count,
+
+    case NowScaled - MinRRTScaled of
+        %% When the last point read is smaller then the cutoff date
+        %% all our points are within the RR area so we pass on the
+        %% the default RR strategy
+        %%
+        %%         F==============>L
+        %% t: 0 ---------------------C----------------->
+        Cutoff when Last < Cutoff ->
             RROpt;
+        %% If the cuttoff date is smaller then the first point read the entire
+        %% section lies within the cutoff area and we don't do any RR
+        %%
+        %%                          F______________>L
+        %% t: 0 -----------------C--------------------->
+        Cuttoff when Cuttoff < First ->
+            {rr, off};
+        %% When the first point read is beyond the cutoff date, but the last
+        %% point is within the cutoff range. We compute the partial repair
+        %% section by substracting the first element of the cuttoff date
+        %% calculating the number of points that are older then the cutoff
+        %% and in result need repair.
+        %%
+        %%                F=======_______>L
+        %% t: 0 -----------------C--------------------->
+        Cutoff when First < Cutoff, Cutoff < Last,
+                    PartialRepairs =:= true ->
+            {rr, {partial, Cutoff - First}};
+        %% By default, if we have at least one repair worthy point, we will
+        %% use the default option.
         _ ->
-            {rr, off}
+            RROpt
     end;
-apply_rtt(_MinRTT, _B, _T, RROpt) ->
+apply_rtt(_MinRTT, _B, _T, _C, RROpt) ->
     RROpt.
 
 do_send(Socket, Transport, B, M, T, C, Opts, S) ->
