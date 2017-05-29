@@ -5,8 +5,7 @@
 -include_lib("dproto/include/dproto.hrl").
 -include_lib("mmath/include/mmath.hrl").
 
--export([start_link/4]).
--export([init/4]).
+-export([init/4, start_link/4]).
 
 -record(state,
         {n = 1 :: pos_integer(),
@@ -42,53 +41,80 @@ init(Ref, Socket, Transport, _Opts = []) ->
 loop(Socket, Transport, State) ->
     case Transport:recv(Socket, 0, 5000) of
         {ok, Data} ->
-            case dproto_tcp:decode(Data) of
+            {ot, TIDs, Data1} = dproto_tcp:decode_ot(Data),
+            S = case TIDs of
+                    undefined ->
+                        undefined;
+                    {TraceID, ParentID} ->
+                        otters:start(ddb, TraceID, ParentID)
+                end,
+            S1 = otters:log(S, "package received"),
+            case dproto_tcp:decode(Data1) of
                 buckets ->
+                    S2 = otters:log(S1, "decoded"),
                     Bs = dalmatiner_bucket:list(),
                     Transport:send(Socket, dproto_tcp:encode_metrics(Bs)),
+                    otters:finish(S2),
                     loop(Socket, Transport, State);
                 {list, Bucket} ->
+                    S2 = otters:log(S1, "decoded"),
                     {ok, Ms} = metric:list(Bucket),
                     Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
+                    otters:finish(S2),
                     loop(Socket, Transport, State);
                 {delete, Bucket} ->
+                    S2 = otters:log(S1, "decoded"),
                     metric:delete(Bucket),
+                    otters:finish(S2),
                     loop(Socket, Transport, State);
                 {list, Bucket, Prefix} ->
+                    S2 = otters:log(S1, "decoded"),
                     {ok, Ms} = metric:list(Bucket, Prefix),
                     Transport:send(Socket, dproto_tcp:encode_metrics(Ms)),
+                    otters:finish(S2),
                     loop(Socket, Transport, State);
                 {info, Bucket} ->
+                    S2 = otters:log(S1, "decoded"),
                     Info = dalmatiner_bucket:info(Bucket),
                     InfoBin = dproto_tcp:encode_bucket_info(Info),
                     Transport:send(Socket, InfoBin),
+                    otters:finish(S2),
                     loop(Socket, Transport, State);
-                {get, B, M, T, C} ->
-                    do_send(Socket, Transport, B, M, T, C,
-                            State#state.rr_min_time),
+                {get, B, M, T, C, Opts} ->
+                    S2 = otters:log(S1, "decoded"),
+                    Opts1 = apply_rtt(State#state.rr_min_time, B, T, C, Opts),
+                    S3 = do_send(Socket, Transport, B, M, T, C, Opts1, S2),
+                    otters:finish(S3),
                     loop(Socket, Transport, State);
-                %% {get_dirty, B, M, T, C} ->
-                %%     do_send_opt(Socket, Transport, B, M, T, C, [no_rr]),
-                %%     loop(Socket, Transport, State);
                 {ttl, Bucket, TTL} ->
+                    S2 = otters:log(S1, "decoded"),
                     ok = metric:update_ttl(Bucket, TTL),
+                    otters:finish(S2),
                     loop(Socket, Transport, State);
                 {events, Bucket, Es} ->
+                    S2 = otters:log(S1, "decoded"),
                     event:append(Bucket, Es),
+                    otters:finish(S2),
                     loop(Socket, Transport, State);
                 {get_events, Bucket, Start, End} ->
+                    S2 = otters:log(S1, "decoded"),
                     Size = event:split(Bucket),
                     Splits = estore:make_splits(Start, End, Size),
+                    otters:finish(S2),
                     get_events(Bucket, [], Splits, Socket, Transport, State);
                 {get_events, Bucket, Start, End, Filter} ->
+                    S2 = otters:log(S1, "decoded"),
                     Size = event:split(Bucket),
                     Splits = estore:make_splits(Start, End, Size),
+                    otters:finish(S2),
                     get_events(Bucket, Filter, Splits, Socket, Transport,
                                State);
                 {stream, Bucket, Delay} ->
+                    S2 = otters:log(S1, "decoded"),
                     lager:info("[tcp] Entering stream mode for bucket '~s' "
                                "and a max delay of: ~p", [Bucket, Delay]),
                     ok = Transport:setopts(Socket, [{packet, 0}]),
+                    otters:finish(S2),
                     stream_loop(Socket, Transport,
                                 #sstate{max_diff = Delay,
                                         dict = bkt_dict:new(Bucket,
@@ -105,50 +131,99 @@ loop(Socket, Transport, State) ->
             ok = Transport:close(Socket)
     end.
 
-%% If MinRRT is 0 we always read repair
-do_send(Socket, Transport, B, M, T, C, 0) ->
-    do_send_opt(Socket, Transport, B, M, T, C, []);
+%% When the get request has a read repair option other than the default, that
+%% option will be honoured.  Otherwise, if the cutoff date (now - min RRT) is
+%% larger then the first timestamp of the read, we have data that is older
+%% and will perform a read repair.
+apply_rtt(MinRRT, B, T, C, Opts) when is_list(Opts) ->
+    RROpt = proplists:lookup(rr, Opts),
+    Opts1 = proplists:delete(rr, Opts),
+    [apply_rtt(MinRRT, B, T, C, RROpt) | Opts1];
+apply_rtt(0, _B, _T, _C, RROpt) ->
+    RROpt;
+apply_rtt(MinRRT, B, First, Count, {rr, default} = RROpt) ->
 
-do_send(Socket, Transport, B, M, T, C, MinRTT) ->
-    Now = erlang:system_time(milli_seconds) div dalmatiner_opt:resolution(B),
-    case Now - MinRTT of
-        %% If the cutoff date (now - min RTT) is larger then
-        %% the first timestamp of the read we have data that is older
-        %% and will performa  read repair.
-        Cutoff when Cutoff > T ->
-            do_send_opt(Socket, Transport, B, M, T, C, []);
+    PartialRepairs = application:get_env(dalmatiner_db, partial_rr, false),
+    %% The bucket Resolultion
+    Res = dalmatiner_opt:resolution(B),
+    %% Current time
+    Now = erlang:system_time(milli_seconds),
+
+    %% We scale the current time to the bucket resoltuion
+    NowScaled = Now div Res,
+    %% We scale the minimum Read repair time to the current resolution
+    MinRRTScaled = MinRRT div Res,
+    %% We calculate the cutoffdarte by substracting the minimum rr time
+    %% from now, caluclating the in the most recent time past that we would
+    %% still repair, anything larger then that we won't.
+    Last = First + Count,
+
+    case NowScaled - MinRRTScaled of
+        %% When the last point read is smaller then the cutoff date
+        %% all our points are within the RR area so we pass on the
+        %% the default RR strategy
+        %%
+        %%         F==============>L
+        %% t: 0 ---------------------C----------------->
+        Cutoff when Last < Cutoff ->
+            RROpt;
+        %% If the cuttoff date is smaller then the first point read the entire
+        %% section lies within the cutoff area and we don't do any RR
+        %%
+        %%                          F______________>L
+        %% t: 0 -----------------C--------------------->
+        Cuttoff when Cuttoff < First ->
+            {rr, off};
+        %% When the first point read is beyond the cutoff date, but the last
+        %% point is within the cutoff range. We compute the partial repair
+        %% section by substracting the first element of the cuttoff date
+        %% calculating the number of points that are older then the cutoff
+        %% and in result need repair.
+        %%
+        %%                F=======_______>L
+        %% t: 0 -----------------C--------------------->
+        Cutoff when First < Cutoff, Cutoff < Last,
+                    PartialRepairs =:= true ->
+            {rr, {partial, Cutoff - First}};
+        %% By default, if we have at least one repair worthy point, we will
+        %% use the default option.
         _ ->
-            do_send_opt(Socket, Transport, B, M, T, C, [no_rr])
-    end.
+            RROpt
+    end;
+apply_rtt(_MinRTT, _B, _T, _C, RROpt) ->
+    RROpt.
 
-do_send_opt(Socket, Transport, B, M, T, C, Opts) ->
+do_send(Socket, Transport, B, M, T, C, Opts, S) ->
+    S1 = otters:tag(S, <<"operation">>, <<"get">>),
+    S2 = otters:tag(S1, <<"bucket">>, B),
+    S3 = otters:tag(S2, <<"metric">>, M),
+    S4 = otters:tag(S3, <<"offset">>, T),
+    S5 = otters:tag(S4, <<"count">>, C),
     PPF = dalmatiner_opt:ppf(B),
-    [{T0, C0} | Splits] = mstore:make_splits(T, C, PPF),
-    {ok, Points} = metric:get(B, M, PPF, T0, C0, Opts),
-    %% Set the socket to no package control so we can do that ourselfs.
-    %% TODO: make this math for configureable length
-    %% 8 (resolution + points)
-    send_part(Socket, Transport, C0, Points),
-    send_parts(Socket, Transport, PPF, B, M, Opts, Splits).
+    Splits = mstore:make_splits(T, C, PPF),
+    S6 = otters:tag(S5, <<"splits">>, length(Splits)),
+    %% We never send a aggregate for now.
+    Transport:send(Socket, dproto_tcp:encode_get_reply({aggr, undefined})),
+    S7 = otters:log(S6, "start sending parts"),
+    send_parts(Socket, Transport, PPF, B, M, Opts, S7, Splits).
 
-send_parts(Socket, Transport, _PPF, _B, _M, _Opts, []) ->
+send_parts(Socket, Transport, _PPF, _B, _M, _Opts, S, []) ->
     %% Reset the socket to 4 byte packages
-    Transport:send(Socket, <<0>>);
+    Transport:send(Socket, <<0>>),
+    otters:log(S, "finish send");
 
-send_parts(Socket, Transport, PPF, B, M, Opts, [{T, C} | Splits]) ->
-    {ok, Points} = metric:get(B, M, PPF, T, C, Opts),
+send_parts(Socket, Transport, PPF, B, M, Opts, S, [{T, C} | Splits]) ->
+    S1 = otters:log(S, "get part"),
+    {ok, Points} = metric:get(B, M, PPF, T, C, S1, Opts),
     send_part(Socket, Transport, C, Points),
-    send_parts(Socket, Transport, PPF, B, M, Opts, Splits).
+    S2 = otters:log(S1, "part send"),
+    send_parts(Socket, Transport, PPF, B, M, Opts, S2, Splits).
 
 send_part(Socket, Transport, C, Points) when is_integer(C),
-                                              is_binary(Points)->
-    {ok, Compressed} = snappyer:compress(Points),
-    case C - mmath_bin:length(Points) of
-        0 ->
-            Transport:send(Socket, <<1, Compressed/binary>>);
-        Padding ->
-            Transport:send(Socket, <<2, Padding:64/integer, Compressed/binary>>)
-    end.
+                                             is_binary(Points)->
+    Padding = C - mmath_bin:length(Points),
+    Msg = {data, Points, Padding},
+    Transport:send(Socket, dproto_tcp:encode_get_stream(Msg)).
 
 -spec stream_loop(port(), term(), stream_state(),
                   {dproto_tcp:stream_message(), binary()}) ->
@@ -216,7 +291,7 @@ batch_loop(Socket, Transport, State = #sstate{dict = Dict}, _Time,
            {batch_end, Acc}) ->
     Dict1 = flush(Dict),
     stream_loop(Socket, Transport, State#sstate{dict = Dict1},
-               dproto_tcp:decode_stream(Acc));
+                dproto_tcp:decode_stream(Acc));
 
 batch_loop(Socket, Transport, State  = #sstate{dict = Dict}, Time,
            {{batch, Metric, Point}, Acc}) ->
@@ -230,7 +305,7 @@ batch_loop(Socket, Transport, State, Time, {incomplete, Acc}) ->
         {ok, Data} ->
             Acc1 = <<Acc/binary, Data/binary>>,
             batch_loop(Socket, Transport, State, Time,
-                        dproto_tcp:decode_batch(Acc1));
+                       dproto_tcp:decode_batch(Acc1));
         {error, timeout} ->
             batch_loop(Socket, Transport, State, Time, {incomplete, Acc});
         {error, closed} ->

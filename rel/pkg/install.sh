@@ -47,5 +47,11 @@ case $2 in
         else
             echo "Please make sure you update your config according to the update manual!"
         fi
+
+        OT=/data/dalmatinerdb/etc/rules.ot
+        if [ ! -f "${OT}" ]
+        then
+            echo "none() -> drop." > ${OT}
+        fi
         ;;
 esac

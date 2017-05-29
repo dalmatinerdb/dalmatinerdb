@@ -285,7 +285,8 @@ fold_fun(Metric, Time, V,
       Metric =/= Metric2;
       CurrentFile =/= Time div FileSize ->
     Size = mmath_bin:length(V),
-    AccOut = Fun({Bucket, Metric2}, lists:reverse(AccL), AccIn),
+    AccR = [{T0, _} | _] = lists:reverse(AccL),
+    AccOut = Fun({Bucket, {Metric2, T0}}, AccR, AccIn),
     Acc#facc{
       metric = Metric,
       last = Time + Size,
@@ -337,7 +338,9 @@ bucket_fold_fun({BucketDir, Bucket}, {AccIn, Fun}) ->
                     {HAcc, Fun};
                 #facc{bucket = Bucket, metric = Metric,
                       lacc=AccL, hacc=HAcc}->
-                    {Fun({Bucket, Metric}, lists:reverse(AccL), HAcc), Fun}
+                    AccR = [{T0, _} | _] = lists:reverse(AccL),
+
+                    {Fun({Bucket, {Metric, T0}}, AccR, HAcc), Fun}
             end;
         {error, E} ->
             lager:warning("Empty bucket detencted going to remove it: ~s / ~p",
@@ -741,7 +744,7 @@ list_buckets(#state{dir = PartitionDir}) ->
     file:list_dir(PartitionDir).
 
 compress(Data, #state{compression = snappy}) ->
-    {ok, Dc} = snappyer:compress(Data),
+    {ok, Dc} = snappiest:compress(Data),
     Dc;
 compress(Data, #state{compression = none}) ->
     Data.

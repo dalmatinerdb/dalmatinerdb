@@ -88,9 +88,9 @@ get(S, T, C) ->
     end.
 
 decompress(D) ->
-    case snappyer:is_valid(D) of
+    case snappiest:is_valid(D) of
         true ->
-            {ok, D1} = snappyer:decompress(D),
+            {ok, D1} = snappiest:decompress(D),
             D1;
         false ->
             D
@@ -115,6 +115,13 @@ vnode(Size) ->
                           [{call, ?MODULE, put, [V, T, Vs]},
                            {call, ?MODULE, mput, [V, T, Vs]},
                            {call, ?MODULE, repair, [V, T, Vs]}]))) || S > 0])).
+
+cache_size() ->
+    choose(1, 120).
+
+jitter(CS) ->
+    choose(0, CS div 2).
+
 %%%-------------------------------------------------------------------
 %%% Properties
 %%%-------------------------------------------------------------------
@@ -122,139 +129,195 @@ vnode(Size) ->
 prop_gb_comp() ->
     ?SETUP(
        fun setup_fn/0,
-       ?FORALL(D, vnode(),
-               begin
-                   os:cmd("rm -r data"),
-                   os:cmd("mkdir data"),
-                   {S, T} = eval(D),
-                   List = gb_trees:to_list(T),
-                   List1 = [{get(S, Time, 1), V} || {Time, V} <- List],
-                   List2 = [{unlist(Vs), Vt} || {Vs, Vt} <- List1],
-                   List3 = [true || {_V, _V} <- List2],
-                   Len = length(List),
-                   metric_vnode:terminate(normal, S),
-                   ?WHENFAIL(io:format(user,
-                                       "L : ~p~n"
-                                       "L1: ~p~n"
-                                       "L2: ~p~n"
-                                       "L3: ~p~n", [List, List1, List2, List3]),
-                             length(List1) == Len andalso
-                             length(List2) == Len andalso
-                             length(List3) == Len)
-               end)).
+       ?FORALL(
+          CS, cache_size(),
+          begin
+              application:set_env(metric_vnode, cache_size, CS),
+              ?FORALL(
+                 J, jitter(CS),
+                 begin
+                     meck:expect(metric_vnode, cache_end,
+                                 fun(Start, _) ->
+                                         Start + CS - J
+                                 end),
+                     ?FORALL(
+                        D, vnode(),
+                        begin
+                            os:cmd("rm -r data"),
+                            os:cmd("mkdir data"),
+                            {S, T} = eval(D),
+                            List = gb_trees:to_list(T),
+                            List1 = [{get(S, Time, 1), V} || {Time, V} <- List],
+                            List2 = [{unlist(Vs), Vt} || {Vs, Vt} <- List1],
+                            List3 = [true || {_V, _V} <- List2],
+                            Len = length(List),
+                            metric_vnode:terminate(normal, S),
+                            ?WHENFAIL(io:format(user,
+                                                "L : ~p~n"
+                                                "L1: ~p~n"
+                                                "L2: ~p~n"
+                                                "L3: ~p~n", [List, List1, List2, List3]),
+                                      length(List1) == Len andalso
+                                      length(List2) == Len andalso
+                                      length(List3) == Len)
+                        end)
+                 end)
+          end)).
 
 prop_is_empty() ->
     ?SETUP(
        fun setup_fn/0,
-       ?FORALL(D, vnode(),
-               begin
-                   os:cmd("rm -r data"),
-                   os:cmd("mkdir data"),
-                   {S, T} = eval(D),
-                   Empty = case metric_vnode:is_empty(S) of
-                               {Res, _S1} -> Res;
-                               {Res, _Cnt, _S1} -> Res
-                           end,
-                   TreeEmpty = gb_trees:is_empty(T),
-                   if
-                       Empty == TreeEmpty ->
-                           ok;
-                       true ->
-                           io:format(user, "~p == ~p~n", [S, T])
-                   end,
-                   metric_vnode:terminate(normal, S),
-                   ?WHENFAIL(io:format(user, "L: ~p /= ~p~n",
-                                       [Empty, TreeEmpty]), Empty == TreeEmpty)
-               end)).
+       ?FORALL(
+          CS, cache_size(),
+          begin
+              application:set_env(metric_vnode, cache_size, CS),
+              ?FORALL(
+                 J, jitter(CS),
+                 begin
+                     meck:expect(metric_vnode, cache_end,
+                                 fun(Start, _) ->
+                                         Start + CS - J
+                                 end),
+                     ?FORALL(
+                        D, vnode(),
+                        begin
+                            os:cmd("rm -r data"),
+                            os:cmd("mkdir data"),
+                            {S, T} = eval(D),
+                            Empty = case metric_vnode:is_empty(S) of
+                                        {Res, _S1} -> Res;
+                                        {Res, _Cnt, _S1} -> Res
+                                    end,
+                            TreeEmpty = gb_trees:is_empty(T),
+                            if
+                                Empty == TreeEmpty ->
+                                    ok;
+                                true ->
+                                    io:format(user, "~p == ~p~n", [S, T])
+                            end,
+                            metric_vnode:terminate(normal, S),
+                            ?WHENFAIL(io:format(user, "L: ~p /= ~p~n",
+                                                [Empty, TreeEmpty]), Empty == TreeEmpty)
+                        end)
+                 end)
+          end)).
 
 prop_empty_after_delete() ->
     ?SETUP(
        fun setup_fn/0,
-       ?FORALL(D, vnode(),
-               begin
-                   os:cmd("rm -r data"),
-                   os:cmd("mkdir data"),
-                   {S, _T} = eval(D),
-                   {ok, S1} = metric_vnode:delete(S),
-                   Empty = case metric_vnode:is_empty(S1) of
-                               {Res, _S2} -> Res;
-                               {Res, _Cnt, _S2} -> Res
-                           end,
-                   metric_vnode:terminate(normal, S),
-                   Empty == true
-               end)).
+       ?FORALL(
+          CS, cache_size(),
+          begin
+              application:set_env(metric_vnode, cache_size, CS),
+              ?FORALL(
+                 J, jitter(CS),
+                 begin
+                     meck:expect(metric_vnode, cache_end,
+                                 fun(Start, _) ->
+                                         Start + CS - J
+                                 end),
+                     ?FORALL(
+                        D, vnode(),
+                        begin
+                            os:cmd("rm -r data"),
+                            os:cmd("mkdir data"),
+                            {S, _T} = eval(D),
+                            {ok, S1} = metric_vnode:delete(S),
+                            Empty = case metric_vnode:is_empty(S1) of
+                                        {Res, _S2} -> Res;
+                                        {Res, _Cnt, _S2} -> Res
+                                    end,
+                            metric_vnode:terminate(normal, S),
+                            Empty == true
+                        end)
+                 end)
+          end)).
 
 prop_handoff() ->
     ?SETUP(
        fun setup_fn/0,
-       ?FORALL(D, vnode(),
-               begin
-                   os:cmd("rm -r data"),
-                   os:cmd("mkdir data"),
-                   {S, T} = eval(D),
+       ?FORALL(
+          CS, cache_size(),
+          begin
+              application:set_env(metric_vnode, cache_size, CS),
+              ?FORALL(
+                 J, jitter(CS),
+                 begin
+                     meck:expect(metric_vnode, cache_end,
+                                 fun(Start, _) ->
+                                         Start + CS - J
+                                 end),
+                     ?FORALL(
+                        D, vnode(),
+                        begin
+                            os:cmd("rm -r data"),
+                            os:cmd("mkdir data"),
+                            {S, T} = eval(D),
 
-                   List = gb_trees:to_list(T),
+                            List = gb_trees:to_list(T),
 
-                   List1 = [{get(S, Time, 1), V} || {Time, V} <- List],
-                   List2 = [{unlist(Vs), Vt} || {Vs, Vt} <- List1],
-                   List3 = [true || {_V, _V} <- List2],
+                            List1 = [{get(S, Time, 1), V} || {Time, V} <- List],
+                            List2 = [{unlist(Vs), Vt} || {Vs, Vt} <- List1],
+                            List3 = [true || {_V, _V} <- List2],
 
-                   Fun = fun(K, V, A) ->
-                                 [metric_vnode:encode_handoff_item(K, V) | A]
-                         end,
-                   FR = ?FOLD_REQ{foldfun=Fun, acc0=[]},
-                   {async, {fold, AsyncH, _}, _, S1} =
-                       metric_vnode:handle_handoff_command(FR, self(), S),
-                   L = AsyncH(),
-                   L1 = lists:sort(L),
-                   {ok, C, _} = metric_vnode:init([1]),
-                   C1 = lists:foldl(fun(Data, SAcc) ->
-                                            {reply, ok, SAcc1} =
-                                                handoff_recv(Data, SAcc),
-                                            SAcc1
-                                    end, C, L1),
+                            Fun = fun(K, V, A) ->
+                                          [metric_vnode:encode_handoff_item(K, V) | A]
+                                  end,
+                            FR = ?FOLD_REQ{foldfun=Fun, acc0=[]},
+                            {async, {fold, AsyncH, _}, _, S1} =
+                                metric_vnode:handle_handoff_command(FR, self(), S),
+                            L = AsyncH(),
+                            L1 = lists:sort(L),
+                            {ok, C, _} = metric_vnode:init([1]),
+                            C1 = lists:foldl(fun(Data, SAcc) ->
+                                                     {reply, ok, SAcc1} =
+                                                         handoff_recv(Data, SAcc),
+                                                     SAcc1
+                                             end, C, L1),
 
-                   List4 = [{get(C1, Time, 1), V} || {Time, V} <- List],
-                   List5 = [{unlist(Vs), Vt} || {Vs, Vt} <- List1],
-                   List6 = [true || {_V, _V} <- List2],
+                            List4 = [{get(C1, Time, 1), V} || {Time, V} <- List],
+                            List5 = [{unlist(Vs), Vt} || {Vs, Vt} <- List1],
+                            List6 = [true || {_V, _V} <- List2],
 
-                   {async, {fold, AsyncHc, _}, _, C2} =
-                       metric_vnode:handle_handoff_command(FR, self(), C1),
-                   Lc = AsyncHc(),
-                   Lc1 = lists:sort(Lc),
-                   {async, {fold, Async, _}, _, _} =
-                       metric_vnode:handle_coverage({metrics, ?B},
-                                                    all, self(), S1),
-                   Ms = Async(),
-                   {async, {fold, AsyncC, _}, _, _} =
-                       metric_vnode:handle_coverage({metrics, ?B},
-                                                    all, self(), C2),
-                   MsC = AsyncC(),
+                            {async, {fold, AsyncHc, _}, _, C2} =
+                                metric_vnode:handle_handoff_command(FR, self(), C1),
+                            Lc = AsyncHc(),
+                            Lc1 = lists:sort(Lc),
+                            {async, {fold, Async, _}, _, _} =
+                                metric_vnode:handle_coverage({metrics, ?B},
+                                                             all, self(), S1),
+                            Ms = Async(),
+                            {async, {fold, AsyncC, _}, _, _} =
+                                metric_vnode:handle_coverage({metrics, ?B},
+                                                             all, self(), C2),
+                            MsC = AsyncC(),
 
-                   Len = length(List),
+                            Len = length(List),
 
 
-                   metric_vnode:terminate(normal, S1),
-                   metric_vnode:terminate(normal, C2),
+                            metric_vnode:terminate(normal, S1),
+                            metric_vnode:terminate(normal, C2),
 
-                   ?WHENFAIL(begin
-                                 io:format(user, "L: ~p /= ~p~n"
-                                           "M: ~p /= ~p~n",
-                                           [Lc1, L1, MsC, Ms]),
-                                 io:format(user, "Lists: ~p~n",
-                                           [[List,
-                                             List1, List2, List3,
-                                             List4, List5, List6]])
-                             end,
-                             Lc1 == L1 andalso
-                             fetch_keys(MsC) == fetch_keys(Ms) andalso
-                             length(List1) == Len andalso
-                             length(List2) == Len andalso
-                             length(List3) == Len andalso
-                             length(List4) == Len andalso
-                             length(List5) == Len andalso
-                             length(List6) == Len)
-               end)).
+                            ?WHENFAIL(begin
+                                          io:format(user, "L: ~p /= ~p~n"
+                                                    "M: ~p /= ~p~n",
+                                                    [Lc1, L1, MsC, Ms]),
+                                          io:format(user, "Lists: ~p~n",
+                                                    [[List,
+                                                      List1, List2, List3,
+                                                      List4, List5, List6]])
+                                      end,
+                                      Lc1 == L1 andalso
+                                      fetch_keys(MsC) == fetch_keys(Ms) andalso
+                                      length(List1) == Len andalso
+                                      length(List2) == Len andalso
+                                      length(List3) == Len andalso
+                                      length(List4) == Len andalso
+                                      length(List5) == Len andalso
+                                      length(List6) == Len)
+                        end)
+                 end)
+          end)).
 
 
 %%%-------------------------------------------------------------------
@@ -279,19 +342,37 @@ setup() ->
     meck:new(riak_core_metadata, [passthrough]),
     meck:expect(riak_core_metadata, get, fun(_, _) -> undefined end),
     meck:expect(riak_core_metadata, put, fun(_, _, _) -> ok end),
+
+    meck:new(riak_core_capability, [passthrough]),
+    meck:expect(riak_core_capability, get,
+                fun({ddb, handoff}) ->
+                        v2
+                end),
+
     meck:new(dalmatiner_opt, [passthrough]),
     meck:expect(dalmatiner_opt, resolution, fun(_) -> 1000 end),
     meck:expect(dalmatiner_opt, ppf, fun(_) -> 1000 end),
     meck:expect(dalmatiner_opt, lifetime, fun(_) -> infinity end),
+
     meck:new(dalmatiner_vacuum, [passthrough]),
     meck:expect(dalmatiner_vacuum, register, fun() ->ok end),
+
     meck:new(folsom_metrics),
     meck:expect(folsom_metrics, notify, fun(_) -> ok end),
     meck:expect(folsom_metrics, histogram_timed_update,
                 fun(_, Mod, Fn, Args) -> apply(Mod, Fn, Args) end),
+
+    meck:new(ddb_histogram),
+    meck:expect(ddb_histogram, timed_update,
+                fun(_, Mod, Fn, Args) -> apply(Mod, Fn, Args) end),
+    meck:new(ddb_counter),
+    meck:expect(ddb_counter, inc, fun(_) -> ok end),
+
+    meck:new(metric_vnode, [passthrough]),
     ok.
 
 cleanup() ->
+    meck:unload(metric_vnode),
     meck:unload(riak_core_metadata),
     meck:unload(dalmatiner_opt),
     meck:unload(dalmatiner_vacuum),

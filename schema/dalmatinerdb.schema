@@ -148,6 +148,14 @@
  [{default, "1m"},
   {datatype, {duration, ms}}]}.
 
+%% @doc Weather partial read repairs are done, this effects queries
+%% that begin outside of the cutoff time but end within. If enabled
+%% only the part of the query that is older then the cutoff date
+%% are going to be repaird.
+{mapping, "read_repair.partial_read_repair",
+ "dalmatiner_db.partial_rr",
+ [{default, on},
+  {datatype, flag}]}.
 
 %% @doc Number of asyncronous IO requests that won't block the vnode.
 %% A highter number reduces blockage but can lead to piling up of requests.

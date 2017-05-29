@@ -1,10 +1,10 @@
 [0m├─ bitmap─0.1.5
 │  └─ cf─0.2.2
-├─ dalmatiner_db─0.3.1
+├─ dalmatiner_db─0.3.2
 ├─ dalmatiner_metric─0.1.0
 ├─ dalmatiner_opt─0.1.0
 ├─ dalmatiner_vacuum─0.1.2
-├─ dproto─0.2.8
+├─ dproto─0.5.2
 ├─ edown─0.8.1
 ├─ eper─0.94.0
 ├─ estore─0.1.9
@@ -13,7 +13,7 @@
 │  ├─ lager_graylog─0.1.1
 │  └─ lager_logstash_backend─0.1.1
 │     └─ jsx─2.8.0
-├─ fifo_utils─0.1.34
+├─ fifo_utils─0.1.37
 │  ├─ jsone─1.4.3
 │  └─ uuid─1.5.4
 │     └─ quickrand─1.5.4
@@ -23,16 +23,19 @@
 ├─ lager─3.2.4
 │  └─ goldrush─0.1.9
 ├─ metric_vnode─0.1.3
-├─ mmath─0.2.15
+├─ mmath─0.2.17
 ├─ mstore─0.3.3
 ├─ mstore_inspector─0.1.0
+├─ otters─0.2.8
+│  ├─ dynamic_compile─1.0.0
+│  └─ ibrowse─4.4.0
 ├─ ranch─1.1.0
 ├─ recon─2.3.2
-├─ riak_core─3.0.2
+├─ riak_core─3.0.4
 │  ├─ basho_stats─1.0.3
 │  ├─ blume─0.1.0
 │  ├─ chash─0.1.2
-│  ├─ clique─0.3.6
+│  ├─ clique─0.3.9
 │  ├─ cuttlefish─2.0.11
 │  │  └─ getopt─0.8.2
 │  ├─ eleveldb─2.2.20
@@ -45,6 +48,6 @@
 │  ├─ pbkdf2─2.0.0
 │  ├─ poolboy─0.8.2
 │  ├─ riak_ensemble─2.4.0
-│  └─ riak_sysmon─2.1.3
-├─ snappyer─1.2.0
-└─ trie─1.6.0
+│  └─ riak_sysmon─2.1.5
+├─ snappiest─1.2.0
+└─ trie─1.7.0

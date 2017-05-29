@@ -8,9 +8,9 @@ compile: $(REBAR) .git/hooks/pre-commit
 	$(REBAR) compile
 
 .git/hooks/pre-commit: hooks/pre-commit
-	cp hooks/pre-commit .git/hooks
+	[ -f  .git/hooks ] && cp hooks/pre-commit .git/hooks || true
 
-pre-commit: test-scripts test-vsn lint xref dialyzer test 
+pre-commit: test-scripts test-vsn lint xref dialyzer test
 
 dialyzer: $(REBAR)
 	$(REBAR) dialyzer
@@ -32,7 +32,7 @@ $(REBAR):
 
 upgrade: $(REBAR)
 	$(REBAR) upgrade 
-	make tree
+	$(WMAKE) tree
 
 update: $(REBAR)
 	$(REBAR) update
@@ -45,7 +45,7 @@ tree-diff: tree
 
 update-fifo.mk:
 	cp _build/default/lib/fifo_utils/priv/fifo.mk .
-	
+
 
 ###
 ### Docs
@@ -71,6 +71,6 @@ vsn:
 
 test-vsn:
 	@echo "Testing against package version: $(REBAR_VSN)"
-	@[ "$(REBAR_VSN)" == "$(APP_VSN)" ]  && echo " - App version ok:     $(APP_VSN)"  || (echo "App version out of date" && false)
-	@[ "$(REBAR_VSN)" == "$(PKG_VSN)" ]  && echo " - Package version ok: $(PKG_VSN)"  || (echo "Package version out of date" && false)
-	@[ "$(REBAR_VSN)" == "$(VARS_VSN)" ] && echo " - Vars version ok:    $(VARS_VSN)" || (echo "Vars version out of date" && false)
+	@[ "$(REBAR_VSN)" = "$(APP_VSN)" ]  && echo " - App version ok:     $(APP_VSN)"  || (echo "App version out of date" && false)
+	@[ "$(REBAR_VSN)" = "$(PKG_VSN)" ]  && echo " - Package version ok: $(PKG_VSN)"  || (echo "Package version out of date" && false)
+	@[ "$(REBAR_VSN)" = "$(VARS_VSN)" ] && echo " - Vars version ok:    $(VARS_VSN)" || (echo "Vars version out of date" && false)
