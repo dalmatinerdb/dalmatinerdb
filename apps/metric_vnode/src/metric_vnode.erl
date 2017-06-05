@@ -28,6 +28,18 @@
 
 -export([mput/3, put/5, get/4]).
 
+-export([
+         object_info/1,
+         request_hash/1,
+         nval_map/1
+         ]).
+
+-ignore_xref([
+              object_info/1,
+              request_hash/1,
+              nval_map/1
+             ]).
+
 -ignore_xref([
               start_vnode/1,
               put/5,
@@ -285,6 +297,25 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
         _ ->
             metric_io:read(IO, Bucket, Metric, Time, Count, ReqID, Sender),
             {noreply, State}
+    end;
+
+handle_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, Sender,
+               State=#state{tbl=T, io = IO}) ->
+    ets:foldl(fun({{Bucket, Metric}, Start, Size, _, Array}, _) ->
+                      Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
+                      k6_bytea:delete(Array),
+                      metric_io:write(IO, Bucket, Metric, Start, Bin)
+              end, ok, T),
+    ets:delete_all_objects(T),
+    FinishFun =
+        fun(Acc) ->
+                riak_core_vnode:reply(Sender, Acc)
+        end,
+    case metric_io:fold(IO, Fun, Acc0) of
+        {ok, AsyncWork} ->
+            {async, {fold, AsyncWork, FinishFun}, Sender, State};
+        empty ->
+            {async, {fold, fun() -> Acc0 end, FinishFun}, Sender, State}
     end.
 
 handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, Sender,
@@ -330,7 +361,7 @@ handle_handoff_data(In, State) ->
                plain ->
                    In
            end,
-    {{Bucket, Metric}, ValList} = binary_to_term(Data),
+    {{Bucket, {Metric, _T0}}, ValList} = binary_to_term(Data),
     true = is_binary(Bucket),
     true = is_binary(Metric),
     State1 = lists:foldl(fun ({T, Bin}, StateAcc) ->
@@ -635,6 +666,35 @@ handle_overload_command(_Req, Sender, Idx) ->
 
 handle_overload_info(_, _Idx) ->
     ok.
+
+%%%===================================================================
+%%% Resize functions
+%%%===================================================================
+
+nval_map(Ring) ->
+    riak_core_bucket:bucket_nval_map(Ring).
+
+%% callback used by dynamic ring sizing to determine where requests should be
+%% forwarded.
+%% Puts/deletes are forwarded during the operation, all other requests are not
+
+%% We do use the sniffle_prefix to define bucket as the bucket in read/write
+%% does equal the system.
+request_hash({put, Bucket, Metric, {Time, _Value}}) ->
+    PPF = dalmatiner_opt:ppf(Bucket),
+    riak_core_util:chash_key({Bucket, {Metric, Time div PPF}});
+
+request_hash(_) ->
+    undefined.
+
+object_info({Bucket, {Metric, Time}}) ->
+    PPF = dalmatiner_opt:ppf(Bucket),
+    Hash = riak_core_util:chash_key({Bucket, {Metric, Time div PPF}}),
+    {Bucket, Hash}.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
 
 %% We calculate the jitter (end) for a cache by reducing it to (at maximum)
 %% half the size.

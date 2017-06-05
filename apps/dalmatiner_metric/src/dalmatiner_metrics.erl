@@ -225,13 +225,13 @@ collect_metrics(Prefix, Dict0) ->
     DictF = do_metrics(Prefix, Time, Spec, DictH),
 
     %% Add riak_core related data
-    DictRC = get_handoff_metrics(Prefix, Time, DictF).
+    DictRC = get_handoff_metrics(Prefix, Time, DictF),
 
     %% Add ranch connections related measurements
     DictRA = get_ranch_metrics(Prefix, Time, DictRC),
 
     %% Add erlang system measurement
-    get_system_metrics(Prefix, Time, DictRA),
+    get_system_metrics(Prefix, Time, DictRA).
 
 get_handoff_metrics(Prefix, Time, Dict) ->
     Inbound = riak_core_handoff_manager:status({direction, inbound}),

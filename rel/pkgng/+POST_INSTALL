@@ -1,0 +1,41 @@
+#!/usr/bin/bash
+USER=dalmatinerdb
+GROUP=$USER
+
+echo Creating group ...
+getent group $GROUP >/dev/null 2>&1 || pw groupadd $GROUP
+
+echo Creating user ...
+id $USER >/dev/null 2>&1 || pw useradd $USER -g $GROUP -d /data/$USER -s /usr/sbin/nologin
+
+echo Creating directories ...
+mkdir -p /data/$USER/db/ring
+mkdir -p /data/$USER/etc
+mkdir -p /data/$USER/log/sasl
+chown -R $USER:$GROUP /data/$USER
+
+mkdir -p /tmp/$USER
+chown -R $USER:$GROUP /tmp/$USER/
+
+
+echo Trying to guess configuration ...
+IP=$(ifconfig $(netstat -r | grep default | awk '{ print $4 }') | grep 'inet' | awk -F ' ' '{ print $2 }')
+
+DISTCONFFILE=/usr/ddb/etc/dalmatinerdb.conf
+CONFFILE=/data/dalmatinerdb/etc/dalmatinerdb.conf
+
+if [ ! -f "${CONFFILE}" ]
+then
+    echo "Creating new configuration from example file."
+    cp ${DISTCONFFILE} ${CONFFILE}.example
+    cp ${CONFFILE}.example ${CONFFILE}
+    /usr/bin/sed -i bak -e "s/127.0.0.1/${IP}/g" ${CONFFILE}
+else
+    echo "Please make sure you update your config according to the update manual!"
+fi
+
+OT=/data/dalmatinerdb/etc/rules.ot
+if [ ! -f "${OT}" ]
+then
+    echo "none() -> drop." > ${OT}
+fi

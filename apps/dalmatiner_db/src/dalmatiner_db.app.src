@@ -1,7 +1,7 @@
 {application, dalmatiner_db,
  [
   {description, "DalmatinerDB cluster logic"},
-  {vsn, "0.3.1p1"},
+  {vsn, "0.3.2"},
   {registered, []},
   {applications, [
                   kernel,
@@ -19,7 +19,8 @@
                   mmath,
                   dalmatiner_vacuum,
                   dalmatiner_metric,
-                  snappyer,
+                  snappiest,
+                  otters,
                   ranch
                  ]},
   {mod, { dalmatiner_db_app, []}},

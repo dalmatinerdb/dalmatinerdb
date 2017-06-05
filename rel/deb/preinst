@@ -4,5 +4,5 @@
 # Assume DDB home dir as default location
 if [[ ! $(id dalmatiner 2>/dev/null) ]] ;then
     # create a dalmatiner system account
-    /usr/sbin/useradd --system --create-home --home-dir /var/lib/ddb -s /bin/bash dalmatiner
+    /usr/sbin/useradd --system --create-home --home-dir /data/dalmatinerdb -s /bin/bash dalmatiner
 fi

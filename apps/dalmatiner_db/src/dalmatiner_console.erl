@@ -141,7 +141,8 @@ ttl([BucketS, TTLs]) ->
 -spec(status([]) -> ok).
 status([]) ->
     try
-        Stats = dalmatiner_metrics:statistics(),
+        ok = dalmatiner_metrics:refresh(),
+        Stats = dalmatiner_metrics:get_list(),
         StatString = format_stats(Stats,
                             ["-------------------------------------------\n",
                             io_lib:format("1-minute stats for ~p~n",

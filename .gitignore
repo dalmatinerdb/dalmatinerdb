@@ -20,6 +20,7 @@ rel/dalmatinerdb.tar.bz2
 rel/pkg/*.tgz
 rel/pkg/build-info
 rel/pkg/packlist
+rel/deb/*.deb
 ./*.config
 .eqc-info
 *.eqc

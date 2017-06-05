@@ -6,6 +6,8 @@
 
 -define(DEFAULT_TIMEOUT, 5000).
 
+-include_lib("mmath/include/mmath.hrl").
+
 %% API
 -export([start_link/7, start/2, start/3, start/5]).
 
@@ -23,11 +25,14 @@
 -type partition() :: chash:index_as_int().
 -type reply_src() :: {partition(), term()}.
 -type metric_element() :: binary().
--type read_opts() :: [no_rr | {n, pos_integer()} | {r, pos_integer()}].
+-type read_opts() :: [dproto_tcp:read_repair_opt() |
+                      {read_repair, {partial, pos_integer()}} |
+                      dproto_tcp:read_r_opt() |
+                      {n, pos_integer()}].
 %%-type metric_reply() :: {partition(), metric_element()}.
 
 -record(state, {req_id,
-                read_repair = true,
+                read_repair = true :: boolean() | {partial, pos_integer()},
                 compression :: snappy | none,
                 from,
                 entity,
@@ -111,9 +116,9 @@ init([ReqId, {VNode, System}, Op, From, Entity]) ->
     init([ReqId, {VNode, System}, Op, From, Entity, undefined, []]);
 
 init([ReqId, {VNode, System}, Op, From, Entity, Val, Opts]) ->
-    RR = not proplists:get_bool(no_rr, Opts),
-    {ok, N} = get_opt_or_env(dalmatiner_db, n, Opts),
-    {ok, R} = get_opt_or_env(dalmatiner_db, r, Opts),
+    {ok, RR} = get_rr_opt(Opts),
+    {ok, N} = get_n_opt(Opts),
+    {ok, R} = get_r_opt(Opts, N),
     Compression = application:get_env(dalmatiner_db,
                                       metric_transport_compression, snappy),
 
@@ -247,15 +252,19 @@ finalize(timeout, SD=#state{system = event,
 
 finalize(timeout, SD=#state{
                         val = {Time, _},
+                        read_repair = RR,
                         replies=Replies,
                         entity=Entity}) ->
     MObj = merge_metrics(Replies),
-    case needs_repair(MObj, Replies) of
-        true ->
+    case needs_repair(MObj, Replies, RR) of
+        {true, RObj} ->
+            %% needs_repair also checks weather we decided to drop part of the
+            %% result as it is too new (when partial is passed), the new
+            %% object is already returned as RObj
             ddb_counter:inc(<<"read_repair">>),
-            repair(Time, Entity, MObj, Replies),
+            repair(Time, Entity, RObj, Replies),
             {stop, normal, SD};
-        false ->
+        {false, _} ->
             {stop, normal, SD}
     end.
 
@@ -364,6 +373,17 @@ reconcile(Vals) ->
 %%
 %% @doc Given the merged object `MObj' and a list of `Replies'
 %% determine if repair is needed.
+needs_repair(MObj, Replies, true) ->
+    Objs = [Obj || {_IdxNode, Obj} <- Replies],
+    {lists:any(different(MObj), Objs), MObj};
+
+needs_repair(MObj, Replies, {partial, N}) ->
+    Keep = byte_size(MObj) - N * ?DATA_SIZE,
+    <<Head:Keep/binary, _/binary>> = MObj,
+    Objs = [Obj || {_IdxNode, <<Obj:Keep/binary, _/binary>>} <- Replies],
+    {lists:any(different(Head), Objs), Head}.
+
+
 needs_repair(MObj, Replies) ->
     Objs = [Obj || {_IdxNode, Obj} <- Replies],
     lists:any(different(MObj), Objs).
@@ -401,10 +421,32 @@ unique(L) ->
 mk_reqid() ->
     erlang:unique_integer().
 
-get_opt_or_env(App, Key, Opts) ->
-    case proplists:get_value(Key, Opts) of
+get_rr_opt(Opts) ->
+    case proplists:get_value(rr, Opts) of
+        off ->
+            {ok, false};
+        on ->
+            {ok, true};
+        {partial, V} when is_integer(V), V > 0 ->
+            {ok, {partial, V}};
+        V when V =:= undefined; V =:= default ->
+            {ok, true}
+    end.
+
+get_n_opt(Opts) ->
+    case proplists:get_value(n, Opts) of
         undefined ->
-            application:get_env(App, Key);
+            application:get_env(dalmatiner_db, n);
         Value ->
             {ok, Value}
+    end.
+
+get_r_opt(Opts, N) ->
+    case proplists:get_value(r, Opts) of
+        n ->
+            {ok, N};
+        R when is_integer(R), R > 0, R =< N ->
+            {ok, R};
+        V when V =:= undefined; V =:= default ->
+            application:get_env(dalmatiner_db, r)
     end.
