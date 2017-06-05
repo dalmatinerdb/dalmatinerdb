@@ -374,7 +374,10 @@ setup() ->
 cleanup() ->
     meck:unload(metric_vnode),
     meck:unload(riak_core_metadata),
+    meck:unload(riak_core_capability),
     meck:unload(dalmatiner_opt),
     meck:unload(dalmatiner_vacuum),
     meck:unload(folsom_metrics),
+    meck:unload(ddb_histogram),
+    meck:unload(ddb_counter),
     ok.
