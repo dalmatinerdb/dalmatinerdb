@@ -2,7 +2,7 @@
 
 -include_lib("mmath/include/mmath.hrl").
 
--export([new/3, update_chash/1, flush/1, add/4, to_list/1]).
+-export([new/3, update_chash/1, flush/1, reset/1, add/4, to_list/1]).
 
 -export_type([bkt_dict/0]).
 
@@ -30,8 +30,12 @@ add(Metric, Time, Points, BD = #bkt_dict{ppf = PPF}) ->
 flush(BD = #bkt_dict{dict = Dict, w = W, n = N}) ->
     BD1 = #bkt_dict{nodes = Nodes} = update_chash(BD),
     metric:mput(Nodes, Dict, W, N),
-    BD1#bkt_dict{dict = dict:new()}.
+    reset(BD1).
 
+-spec reset(bkt_dict()) ->
+                 bkt_dict().
+reset(BD) ->
+    BD#bkt_dict{dict = dict:new()}.
 
 -spec update_chash(bkt_dict()) ->
                  bkt_dict().
@@ -60,4 +64,3 @@ to_list(#bkt_dict{dict = Dict}) ->
                           [Es | Acc]
                   end, [], Dict),
     lists:flatten(L).
-
