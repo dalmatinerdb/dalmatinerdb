@@ -140,38 +140,25 @@ ttl([BucketS, TTLs]) ->
 
 -spec(status([]) -> ok).
 status([]) ->
+    io:format("-------------------------------------------\n"
+              "1-minute stats for ~p~n", [node()]),
     try
         ok = dalmatiner_metrics:refresh(),
-        Stats = dalmatiner_metrics:get_list(),
-        StatString = format_stats(Stats,
-                            ["-------------------------------------------\n",
-                            io_lib:format("1-minute stats for ~p~n",
-                                          [node()])]),
-        io:format("~s\n", [StatString])
+        {ok, Stats} = dalmatiner_metrics:get_list(),
+        lists:foreach(
+          fun({N, V}) ->
+                  Parts = lists:nthtail(1, N),
+                  Metric = dproto:metric_from_list(Parts),
+                  Name = dproto:metric_to_string(Metric, <<".">>),
+                  io:format("~s : ~p~n", [Name, V])
+          end, Stats)
     catch
         Exception:Reason ->
-            lager:error("Status failed ~p:~p", [Exception,
-                    Reason]),
+            lager:error("Status failed with ~p: ~p. Stacktrace: ~p", 
+                        [Exception, Reason, erlang:get_stacktrace()]),
             io:format("Status failed, see log for details~n"),
             error
     end.
-
-format_stats([], Acc) ->
-    lists:reverse(Acc);
-format_stats([{Stat, V}|T], Acc) ->
-    format_stats(T, [io_lib:format("~s : ~p~n",
-                                   [format_stat_key(Stat), V])|Acc]).
-
-format_stat_key([]) ->
-    [];
-format_stat_key([[]|T]) ->
-    format_stat_key(T);
-format_stat_key([Key|T]) when is_list(Key) ->
-    format_stat_key(Key ++ T);
-format_stat_key([Key]) ->
-    Key;
-format_stat_key([Key|T]) ->
-    [Key, <<".">>, format_stat_key(T)].
 
 format_time(T, ns)
   when T >= 1000
