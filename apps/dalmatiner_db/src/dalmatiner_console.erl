@@ -154,7 +154,7 @@ status([]) ->
           end, Stats)
     catch
         Exception:Reason ->
-            lager:error("Status failed with ~p: ~p. Stacktrace: ~p", 
+            lager:error("Status failed with ~p: ~p. Stacktrace: ~p",
                         [Exception, Reason, erlang:get_stacktrace()]),
             io:format("Status failed, see log for details~n"),
             error
