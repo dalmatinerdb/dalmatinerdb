@@ -21,7 +21,11 @@ handle_work({fold, FoldFun, FinishFun}, _Sender, State) ->
     try
         FinishFun(FoldFun())
     catch
-        receiver_down -> ok;
-        stop_fold -> ok
+        receiver_down ->
+            lager:error("[worker:~p] receiver_down", [self()]),
+            ok;
+        stop_fold ->
+            lager:error("[worker:~p] stop_fold", [self()]),
+            ok
     end,
     {noreply, State}.
