@@ -9,6 +9,7 @@
                   dalmatiner_opt,
                   mstore,
                   mmath,
+                  mcache,
                   trie,
                   lager,
                   dalmatiner_vacuum,
