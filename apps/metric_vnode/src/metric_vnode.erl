@@ -4,6 +4,9 @@
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 -include_lib("mmath/include/mmath.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([start_vnode/1,
          init/1,
@@ -31,7 +34,7 @@
          object_info/1,
          request_hash/1,
          nval_map/1
-         ]).
+        ]).
 
 -ignore_xref([
               object_info/1,
@@ -554,8 +557,12 @@ get_overlap(Time, Count, [{CT, CD}, {CT1, CD1} | R])
   when  Time >= CT, CT1 =< Time + Count ->
     %% We fuse then with NULLs and continue
     %% missing bits
-    Missing = (CT1 - (CT + byte_size(CD))) * 8,
-    Data1 = <<CD/binary, 0:Missing, CD1/binary>>,
+    %% We need to multiply the times by the ?DATA_SIZE
+    %% to get byte then multiply
+    MissingByte = (CT1 * ?DATA_SIZE - (CT * ?DATA_SIZE + byte_size(CD))),
+    %% the whole by 8 to get bit to get the bits
+    MissingBit = MissingByte * 8,
+    Data1 = <<CD/binary, 0:MissingBit, CD1/binary>>,
     get_overlap(Time, Count, [{CT, Data1} | R]);
 get_overlap(Time, Count, [{CT, CD} | _R]) ->
     %% If Time < CT we skip 0, if Time > CT our
@@ -603,3 +610,17 @@ encode_bm(Bucket, Metric)->
 decode_bm(<<BucketSize:32, Bucket:BucketSize/binary,
             MetricSize:32, Metric:MetricSize/binary>>) ->
     {Bucket, Metric}.
+
+-ifdef(TEST).
+overlap_test() ->
+    Time = 1497181112,
+    Count = 1200,
+    D1 = << <<$1>> || _ <- lists:seq(1, 3608) >>,
+    D2 = << <<$2>> || _ <- lists:seq(1, 2520) >>,
+    Data = [{1497181501, D1}, {1497181995, D2}],
+    {ok, TOut, DOut} = get_overlap(Time, Count, Data),
+    ?assert(byte_size(DOut) =< Count * ?DATA_SIZE),
+    ?assert(Time =< TOut),
+    ok.
+
+-endif.
