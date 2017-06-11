@@ -23,7 +23,6 @@
          handle_info/2,
          handle_overload_command/3,
          handle_overload_info/2,
-         cache_end/2,
          handle_exit/3]).
 
 -export([mput/3, put/5, get/4]).
@@ -41,7 +40,6 @@
              ]).
 
 -ignore_xref([
-              cache_end/2,
               start_vnode/1,
               put/5,
               mput/3,
@@ -531,13 +529,6 @@ object_info({Bucket, {Metric, Time}}) ->
 
 %% We calculate the jitter (end) for a cache by reducing it to (at maximum)
 %% half the size.
-
--spec cache_end(pos_integer(), pos_integer()) ->
-                       pos_integer().
-
-cache_end(Start, CacheSize) ->
-    Jitter = rand:uniform(CacheSize div 2),
-    Start + CacheSize - Jitter.
 
 
 write_chunks(_IO, _Bucket, _Metric, []) ->
