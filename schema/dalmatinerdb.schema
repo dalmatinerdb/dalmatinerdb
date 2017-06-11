@@ -33,13 +33,6 @@
  [{datatype, integer},
   {default, 604800}]}.
 
-%% @doc How many datapoints are cached before being written to disk. This
-%% is a maximum value, writes also occour before a specific metric is read,
-%% this effects lost data on crashes.
-{mapping, "cache_points", "metric_vnode.cache_points",
- [{datatype, integer},
-  {default, 120}]}.
-
 %% @doc How long data is kept by default, measured either in points
 %% or infinity for not deleting old data. This can be changed on a
 %% per bucket level using ddb-admin
@@ -203,3 +196,8 @@
 {mapping, "io.parallel_reads.queue_strategy", "metric_vnode.queue_strategy",
  [{default, fifo},
   {datatype, {enum, [fifo, filo]}}]}.
+
+%% @doc How much memory the cache is allowed to take per vnode.
+{mapping, "vnode.cache_size", "metric_vnode.cache_size",
+ [{datatype, bytesize},
+  {default, "10MB"}]}.
