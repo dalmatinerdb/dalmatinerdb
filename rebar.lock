@@ -39,7 +39,7 @@
   1},
  {<<"mcache">>,
   {git,"https://github.com/dalmatinerdb/mcache.git",
-       {ref,"4d74fd6898ee3860c7271c0b5edff53190a05a71"}},
+       {ref,"9cefbadc619dc428ab5ca7ba374485a483887449"}},
   0},
  {<<"mmath">>,
   {git,"https://github.com/dalmatinerdb/mmath.git",
@@ -68,7 +68,7 @@
  {<<"riak_sysmon">>,{pkg,<<"riak_sysmon">>,<<"2.1.5">>},1},
  {<<"setup">>,{pkg,<<"setup">>,<<"1.7.0">>},2},
  {<<"snappiest">>,{pkg,<<"snappiest">>,<<"1.2.0">>},0},
- {<<"trie">>,{pkg,<<"trie">>,<<"1.7.0">>},0},
+ {<<"trie">>,{pkg,<<"trie">>,<<"1.7.1">>},0},
  {<<"uuid">>,{pkg,<<"uuid_erl">>,<<"1.5.4">>},1}]}.
 [
 {pkg_hash,[
@@ -111,6 +111,6 @@
  {<<"riak_sysmon">>, <<"2331BBCAEBE73EA7B2449F4C765827142476CC73D7D86999B4209EE005694D6B">>},
  {<<"setup">>, <<"15DF8E57C6DF9755E22BFB1AEF0C640BD97E9889396FDFB2A85A5536A9043674">>},
  {<<"snappiest">>, <<"25706FEBB5ECAEA900D879A89C6D967C8D1BF700F8546BEBD0DEA514A8CCBFB7">>},
- {<<"trie">>, <<"E022B7B33338957BCE17BFD52B6BFE0840F2269E89DAB0C00C01C6CD7FCBEECC">>},
+ {<<"trie">>, <<"2B4249CEBD7007840C051D3833C7A0ECF84A5CF8837E5D51ADBD1A9726959A9A">>},
  {<<"uuid">>, <<"06240EFF3EAF013CC22274689B0C1FF6345645EE5D47A9E4ED7545EEB7698B23">>}]}
 ].
