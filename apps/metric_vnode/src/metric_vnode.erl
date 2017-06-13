@@ -593,8 +593,7 @@ empty_cache(C, IO) ->
 
 new_cache() ->
     CacheSize = application:get_env(metric_vnode, cache_size, 1024*1024*10),
-    {ok, C} = mcache:new(CacheSize, []),
-    C.
+    mcache:new(CacheSize, []).
 
 
 encode_b(Bucket) ->
