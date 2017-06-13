@@ -289,6 +289,10 @@ terminate(_Reason, _SN, _SD) ->
 save_reply(IdxNode, Obj, SD = #state{system = event, replies = Replies0}) ->
     Replies = [{IdxNode, Obj} | Replies0],
     SD#state{replies = Replies};
+save_reply(IdxNode, {_, Metrics}, %% Old style reply from metric_io
+           SD = #state{system = metric, replies = Replies0}) ->
+    Replies = [{IdxNode, decompress(Metrics, SD)} | Replies0],
+    SD#state{replies = Replies};
 save_reply(IdxNode, Metrics,
            SD = #state{system = metric, replies = Replies0}) ->
     Replies = [{IdxNode, decompress(Metrics, SD)} | Replies0],

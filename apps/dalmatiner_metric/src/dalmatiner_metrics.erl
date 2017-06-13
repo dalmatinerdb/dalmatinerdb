@@ -13,7 +13,7 @@
 -include_lib("mstore/include/mstore.hrl").
 
 %% API
--export([start_link/0, start/0, stop/0, get_list/0]).
+-export([start_link/0, start/0, stop/0, get_list/0, refresh/0]).
 
 -ignore_xref([start_link/0, start/0, stop/0, get_list/0]).
 
@@ -40,6 +40,10 @@
 %%--------------------------------------------------------------------
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+-spec refresh() -> ok.
+refresh() ->
+    gen_server:call(?SERVER, refresh).
 
 get_list() ->
     gen_server:call(?SERVER, get_list).
@@ -100,10 +104,16 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call(refresh, _From, State = #state{prefix = Prefix, dict = Dict0}) ->
+    Dict = collect_metrics(Prefix, Dict0),
+    List = bkt_dict:to_list(Dict),
+    DictR = bkt_dict:reset(Dict),
+    {reply, ok, State#state{list = List,
+                                     dict = DictR}};
 handle_call(get_list, _From, State = #state{list = List}) ->
     List1 = [{dproto:metric_to_list(M), lists:nth(1, mmath_bin:to_list(V))}
              || {_, M, _, V} <- List],
-    {reply, {ok, List1}, State#state{running = true}};
+    {reply, {ok, List1}, State};
 handle_call(start, _From, State = #state{running = false}) ->
     erlang:send_after(?INTERVAL, self(), tick),
     Reply = ok,
@@ -143,35 +153,8 @@ handle_cast(_Msg, State) ->
 
 handle_info(tick,
             State = #state{running = true, prefix = Prefix, dict = Dict0}) ->
-    %% Initialize what we need
-    Dict = bkt_dict:update_chash(Dict0),
-    Time = timestamp(),
 
-    %% Add our own counters
-    Counts = ddb_counter:get_and_clean(),
-    DictC = lists:foldl(fun ({Name, Count}, Acc) ->
-                                add_metric(Prefix, metric_name(Name),
-                                           Time, Count, Acc)
-                        end, Dict, Counts),
-
-    %% Add our own histograms
-    Hists = ddb_histogram:get(),
-    DictH = lists:foldl(
-              fun ({Name, Vals}, Acc1) ->
-                      Pfx1 = [Prefix, metric_name(Name)],
-                      lists:foldl(
-                        fun({K, V}, Acc2) ->
-                                add_metric(Pfx1, [K], Time, V, Acc2)
-                        end, Acc1, Vals)
-              end, DictC, Hists),
-
-    %% Add folsom data to the dict
-    Spec = folsom_metrics:get_metrics_info(),
-    DictF = do_metrics(Prefix, Time, Spec, DictH),
-
-    %% Add riak_core related data
-    DictR = get_handoff_metrics(Prefix, Time, DictF),
-
+    DictR = collect_metrics(Prefix, Dict0),
 
     %% Keep a list with info
     AsList = bkt_dict:to_list(DictR),
@@ -184,15 +167,6 @@ handle_info(tick,
 
 handle_info(_Info, State) ->
     {noreply, State}.
-
-get_handoff_metrics(Prefix, Time, Dict) ->
-    Inbound = riak_core_handoff_manager:status({direction, inbound}),
-    Outbound = riak_core_handoff_manager:status({direction, outbound}),
-
-    Dict1 = add_to_dict([Prefix, <<"handoffs">>, <<"inbound">>],
-                        Time, length(Inbound), Dict),
-    add_to_dict([Prefix, <<"handoffs">>, <<"outbound">>],
-                Time, length(Outbound), Dict1).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -222,6 +196,61 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+collect_metrics(Prefix, Dict0) ->
+    %% Initialize what we need
+    Dict = bkt_dict:update_chash(Dict0),
+    Time = timestamp(),
+
+    %% Add our own counters
+    Counts = ddb_counter:get_and_clean(),
+    DictC = lists:foldl(fun ({Name, Count}, Acc) ->
+                                add_metric(Prefix, metric_name(Name),
+                                           Time, Count, Acc)
+                        end, Dict, Counts),
+
+    %% Add our own histograms
+    Hists = ddb_histogram:get(),
+    DictH = lists:foldl(
+              fun ({Name, Vals}, Acc1) ->
+                      Pfx1 = [Prefix, metric_name(Name)],
+                      lists:foldl(
+                        fun({K, V}, Acc2) ->
+                                add_metric(Pfx1, [K], Time, V, Acc2)
+                        end, Acc1, Vals)
+              end, DictC, Hists),
+
+    %% Add folsom data to the dict
+    Spec = folsom_metrics:get_metrics_info(),
+    DictF = do_metrics(Prefix, Time, Spec, DictH),
+
+    %% Add riak_core related data
+    DictRC = get_handoff_metrics(Prefix, Time, DictF),
+
+    %% Add ranch connections related measurements
+    DictRA = get_ranch_metrics(Prefix, Time, DictRC),
+
+    %% Add erlang system measurement
+    get_system_metrics(Prefix, Time, DictRA).
+
+get_handoff_metrics(Prefix, Time, Dict) ->
+    Inbound = riak_core_handoff_manager:status({direction, inbound}),
+    Outbound = riak_core_handoff_manager:status({direction, outbound}),
+
+    Dict1 = add_to_dict([Prefix, <<"handoffs">>, <<"inbound">>],
+                        Time, length(Inbound), Dict),
+    add_to_dict([Prefix, <<"handoffs">>, <<"outbound">>],
+                Time, length(Outbound), Dict1).
+
+get_ranch_metrics(Prefix, Time, Dict) ->
+    add_to_dict([Prefix, <<"tcp_connections">>], Time,
+                ranch_server:count_connections(dalmatiner_tcp), Dict).
+
+get_system_metrics(Prefix, Time, Dict) ->
+    Dict1 = add_to_dict([Prefix, <<"port_count">>], Time,
+                        erlang:system_info(port_count), Dict),
+    add_to_dict([Prefix, <<"process_count">>], Time,
+                        erlang:system_info(process_count), Dict1).
 
 %do_metrics(CBin, Time, Specs, Acc) ->
 do_metrics(_Prefix, _Time, [], Acc) ->

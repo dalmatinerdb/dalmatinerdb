@@ -235,6 +235,7 @@ handle_command({bitmap, From, Ref, Bucket, Metric, Time},
 %% Repair request are always full values not including non set values!2
 handle_command({repair, Bucket, Metric, Time, Value}, _Sender, State)
   when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
+    folsom_metrics:notify({metric_vnode_read_repairs, 1}),
     Count = mmath_bin:length(Value),
     case valid_ts(Time + Count, Bucket, State) of
         {true, State1} ->
@@ -353,6 +354,19 @@ decode_v2_handoff_data(<<02:16, Compressed/binary>>) ->
     {ok, Decompressed} = snappiest:decompress(Compressed),
     Decompressed.
 
+%%  Thu 8 Jun 2017
+%%  During ring resizing changes, there are incompatible changes to
+%%  handoff protocol:
+%%
+%%  Old = {{Bucket, Metric}, ValList}
+%%  New = {{Bucket, {Metric, _T0}}, ValList}
+%%
+%%  Upgrading is impossible without tolerating both versions.
+%%  https://github.com/outlyerapp/dalmatinerdb/commit/
+%%  1d14e9804f246b23320eb2f9084d461d6a58c791
+%%
+%%  This fix can safely be removed once the cluster propgates the `new`
+%%  format.
 handle_handoff_data(In, State) ->
     Data = case riak_core_capability:get({ddb, handoff}) of
                v2 ->
@@ -360,7 +374,14 @@ handle_handoff_data(In, State) ->
                plain ->
                    In
            end,
-    {{Bucket, {Metric, _T0}}, ValList} = binary_to_term(Data),
+    {Bucket, Metric, ValList} = case binary_to_term(Data) of
+                                    %% New format
+                                    {{B, {M, _T0}}, VL} ->
+                                        {B, M, VL};
+                                    %% Old format
+                                    {{B, M}, VL} ->
+                                        {B, M, VL}
+                                end,
     true = is_binary(Bucket),
     true = is_binary(Metric),
     State1 = lists:foldl(fun ({T, Bin}, StateAcc) ->

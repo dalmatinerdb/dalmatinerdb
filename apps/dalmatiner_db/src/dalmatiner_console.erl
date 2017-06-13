@@ -4,6 +4,7 @@
          delete/1,
          ttl/1,
          buckets/1,
+         status/1,
          create/1,
          stats/1
         ]).
@@ -12,10 +13,14 @@
               delete/1,
               ttl/1,
               buckets/1,
+              status/1,
               create/1,
               stats/1
              ]).
 
+stats(["-r" | Args]) ->
+    ok = dalmatiner_metrics:refresh(),
+    stats(Args);
 stats([]) ->
     {ok, L} = dalmatiner_metrics:get_list(),
     lists:foreach(
@@ -132,6 +137,28 @@ ttl([BucketS, TTLs]) ->
     io:format("TTL set to: ~s~n", [format_time(TTL*Res, ms)]),
     metric:update_ttl(Bucket, TTL),
     ok.
+
+-spec(status([]) -> ok).
+status([]) ->
+    io:format("-------------------------------------------\n"
+              "1-minute stats for ~p~n", [node()]),
+    try
+        ok = dalmatiner_metrics:refresh(),
+        {ok, Stats} = dalmatiner_metrics:get_list(),
+        lists:foreach(
+          fun({N, V}) ->
+                  Parts = lists:nthtail(1, N),
+                  Metric = dproto:metric_from_list(Parts),
+                  Name = dproto:metric_to_string(Metric, <<".">>),
+                  io:format("~s : ~p~n", [Name, V])
+          end, Stats)
+    catch
+        Exception:Reason ->
+            lager:error("Status failed with ~p: ~p. Stacktrace: ~p",
+                        [Exception, Reason, erlang:get_stacktrace()]),
+            io:format("Status failed, see log for details~n"),
+            error
+    end.
 
 format_time(T, ns)
   when T >= 1000

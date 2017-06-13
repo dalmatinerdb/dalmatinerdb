@@ -10,6 +10,10 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
+
+    %% Set up metrics reported in this app
+    folsom_metrics:new_spiral(metric_vnode_read_repairs),
+
     case metric_vnode_sup:start_link() of
         {ok, Pid} ->
             clique:register([metric_io_cli]),
