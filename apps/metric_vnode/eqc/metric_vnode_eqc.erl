@@ -18,7 +18,7 @@ non_z_int() ->
     ?SUCHTHAT(I, int(), I =/= 0).
 
 offset() ->
-    choose(0, 5000).
+    ?LET(I, largeint(), erlang:abs(I)).
 
 tree_set(Tr, _T, []) ->
     Tr;
@@ -80,7 +80,7 @@ get(S, T, C) ->
                 {ReqID, {ok, ReqID, {_Partition, ReplyNode}, D}} ->
                     decompress(D)
             after
-                1000 ->
+                60000 ->
                     timeout
             end;
         {reply, {ok, _, {_Partition, ReplyNode}, Reply}, _S1} ->
@@ -209,6 +209,12 @@ prop_empty_after_delete() ->
                  end)
           end)).
 
+ppf() ->
+    ?LET(N, nat(), N +1).
+
+res() ->
+    ?LET(N, nat(), N +1).
+
 prop_handoff() ->
     ?SETUP(
        fun setup_fn/0,
@@ -266,7 +272,12 @@ prop_handoff() ->
 
                      metric_vnode:terminate(normal, S1),
                      metric_vnode:terminate(normal, C2),
-
+                     Diff = case Len of
+                                0 ->
+                                    true;
+                                _ ->
+                                    os:cmd("diff -r data/0 data/1 > /dev/null; echo $?") == "0\n"
+                            end,
                      ?WHENFAIL(begin
                                    io:format(user, "L: ~p /= ~p~n"
                                              "M: ~p /= ~p~n",
@@ -276,6 +287,7 @@ prop_handoff() ->
                                                List1, List2, List3,
                                                List4, List5, List6]])
                                end,
+                               Diff andalso
                                Lc1 == L1 andalso
                                fetch_keys(MsC) == fetch_keys(Ms) andalso
                                length(List1) == Len andalso

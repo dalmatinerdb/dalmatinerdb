@@ -244,14 +244,16 @@ init([Partition]) ->
 %%             AccOut = Fun({Bucket, {Metric, Time}}, V, AccIn)
 %%     end.
 
+-type fold_fun(Acc) :: fun((term(), term(), Acc) -> Acc).
+
 -record(facc,
         {
-          metric,
-          size = 0,
-          hacc,
+          metric :: binary() | undefined,
+          size = 0 :: non_neg_integer(),
+          hacc :: Acc,
           lacc = [],
-          bucket,
-          acc_fun,
+          bucket :: binary() | undefined,
+          acc_fun :: fold_fun(Acc),
           last,
           file_size,
           current_file = undefined,
@@ -259,7 +261,10 @@ init([Partition]) ->
           fold_size = 82800
         }).
 
+-type facc() :: #facc{}.
 
+-spec fold_fun(binary(), non_neg_integer(), binary(), facc()) ->
+                      facc().
 fold_fun(Metric, Time, V,
          Acc =
              #facc{file_size = FileSize,
@@ -273,6 +278,7 @@ fold_fun(Metric, Time, V,
       size = Size,
       current_file = Time div FileSize,
       lacc = [{Time, V}]};
+
 fold_fun(Metric, Time, V,
          Acc =
              #facc{metric = Metric2,
@@ -324,6 +330,8 @@ fold_fun(Metric, Time, V,
               lacc = [{Time, V}, {T0, AccE} | AccL]}
     end.
 
+-spec bucket_fold_fun({string(), binary()}, {Acc, fold_fun(Acc)}) ->
+                             {Acc, fold_fun(Acc)}.
 bucket_fold_fun({BucketDir, Bucket}, {AccIn, Fun}) ->
     case mstore:open(BucketDir) of
         {ok, MStore} ->
@@ -349,6 +357,8 @@ bucket_fold_fun({BucketDir, Bucket}, {AccIn, Fun}) ->
             {AccIn, Fun}
     end.
 
+-spec fold_buckets_fun(string(), [binary()], fold_fun(Acc), Acc) ->
+                              Acc.
 fold_buckets_fun(PartitionDir, Buckets, Fun, Acc0) ->
     Buckets1 = [{filename:join([PartitionDir, BucketS]),
                  list_to_binary(BucketS)}
