@@ -640,7 +640,12 @@ get_lifetime(Bucket, State = #state{lifetimes = Lifetimes}) ->
             Resolution = dalmatiner_opt:resolution(Bucket),
             %% We need to scale TTL to nanoseconds since we
             %% deal with that internally.
-            TTL = dalmatiner_opt:lifetime(Bucket) * Resolution,
+            TTL = case dalmatiner_opt:lifetime(Bucket) of
+                      infinity ->
+                          infinity;
+                      T ->
+                          T * Resolution
+                  end,
             Lifetimes1 = btrie:store(Bucket, TTL, Lifetimes),
             {TTL, State#state{lifetimes = Lifetimes1}}
     end.
