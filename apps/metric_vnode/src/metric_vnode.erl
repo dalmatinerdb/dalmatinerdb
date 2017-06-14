@@ -600,8 +600,12 @@ new_cache() ->
     Buckets = application:get_env(metric_vnode, cache_buckets, 128),
     AgeCycle = application:get_env(metric_vnode, cache_age_cycle, 1000000),
     Gap = application:get_env(metric_vnode, cache_max_gap, 10),
+    InitEntries = application:get_env(metric_vnode, cache_initial_entries, 10),
+    InitData = application:get_env(metric_vnode, cache_initial_data, 10),
     mcache:new(CacheSize,
                [
+                {initial_data_size, InitData},
+                {initial_entries, InitEntries},
                 {buckets, Buckets},
                 {max_gap, Gap},
                 {age_cycle, AgeCycle}
@@ -634,3 +638,6 @@ overlap_test() ->
     ok.
 
 -endif.
+
+%% {_, {_, _, _, {_, _, _, C, _, _, _, _}, _, _, _, _, _, _, _, _}}
+%% = sys:get_state(pid(0,637,0)).

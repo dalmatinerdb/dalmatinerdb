@@ -215,6 +215,28 @@
  [{datatype, integer},
   {default, 128}]}.
 
+%% @doc For each sub bucket a number of slots get reserved in the beginning
+%% this reduces the allocation need at start up and allows the first metrics
+%% to be introduced w/o needing to allocate the entry array.
+%% The total entries allocated at startup can be calculated by:
+%%
+%% bucketys * 64 * initial_entries
+{mapping, "vnode.cache.initial_entries", "metric_vnode.cache_initial_entries",
+ [{datatype, integer},
+  {default, 2}]}.
+
+
+%% @doc For each data chunk in a metric a number of points is pre-allocated
+%% this prevents the need to allocate data on every write. This datapoint array
+%% is doubled in size every time it grows too big.
+%%
+%% This data is not preallocated when there is no metric or datapoint written!
+{mapping, "vnode.cache.initial_data", "metric_vnode.cache_initial_data",
+ [{datatype, integer},
+  {default, 32}]}.
+
+
+
 %% @doc The cach uses 3 generations to determine idle metrics
 %% and prioritizes those for flushing during overflows.
 %% Aging happens every n inserts, during the aging process gen2
