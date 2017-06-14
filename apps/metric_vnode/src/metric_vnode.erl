@@ -599,7 +599,7 @@ new_cache() ->
     CacheSize = application:get_env(metric_vnode, cache_size, 1024*1024*10),
     Buckets = application:get_env(metric_vnode, cache_buckets, 128),
     AgeCycle = application:get_env(metric_vnode, cache_age_cycle, 1000000),
-    Gap = application:get_env(metric_vnode, cache_gap, 10),
+    Gap = application:get_env(metric_vnode, cache_max_gap, 10),
     mcache:new(CacheSize,
                [
                 {buckets, Buckets},

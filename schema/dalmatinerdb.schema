@@ -234,6 +234,6 @@
 %% On the otherhand for spotty metrics that often drop a point or
 %% two setting this too low will increase the number of write
 %% operations as every gap will mean an additional one.
-{mapping, "vnode.cache.max_gap", "metric_vnode.cache_size",
+{mapping, "vnode.cache.max_gap", "metric_vnode.cache_max_gap",
  [{datatype, integer},
   {default, 10}]}.
