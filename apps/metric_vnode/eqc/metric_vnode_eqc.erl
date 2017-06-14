@@ -18,7 +18,7 @@ non_z_int() ->
     ?SUCHTHAT(I, int(), I =/= 0).
 
 offset() ->
-    choose(0, 5000).
+    ?LET(I, largeint(), erlang:abs(I)).
 
 tree_set(Tr, _T, []) ->
     Tr;
@@ -80,7 +80,7 @@ get(S, T, C) ->
                 {ReqID, {ok, ReqID, {_Partition, ReplyNode}, D}} ->
                     decompress(D)
             after
-                1000 ->
+                60000 ->
                     timeout
             end;
         {reply, {ok, _, {_Partition, ReplyNode}, Reply}, _S1} ->
@@ -233,6 +233,12 @@ prop_empty_after_delete() ->
                  end)
           end)).
 
+ppf() ->
+    ?LET(N, nat(), N +1).
+
+res() ->
+    ?LET(N, nat(), N +1).
+
 prop_handoff() ->
     ?SETUP(
        fun setup_fn/0,
@@ -241,82 +247,91 @@ prop_handoff() ->
           begin
               application:set_env(metric_vnode, cache_size, CS),
               ?FORALL(
-                 J, jitter(CS),
-                 begin
-                     meck:expect(metric_vnode, cache_end,
-                                 fun(Start, _) ->
-                                         Start + CS - J
-                                 end),
-                     ?FORALL(
-                        D, vnode(),
-                        begin
-                            os:cmd("rm -r data"),
-                            os:cmd("mkdir data"),
-                            {S, T} = eval(D),
+                 {J, Res, PPF}, {jitter(CS), res(), ppf()},
+              begin
+                  meck:expect(metric_vnode, cache_end,
+                              fun(Start, _) ->
+                                      Start + CS - J
+                              end),
+                  meck:expect(dalmatiner_opt, resolution, fun(_) -> Res end),
+                  meck:expect(dalmatiner_opt, ppf, fun(_) -> PPF end),
+                  ?FORALL(
+                     D, vnode(),
+                     begin
+                         os:cmd("rm -r data"),
+                         os:cmd("mkdir data"),
+                         {S, T} = eval(D),
 
-                            List = gb_trees:to_list(T),
+                         List = gb_trees:to_list(T),
 
-                            List1 = [{get(S, Time, 1), V} || {Time, V} <- List],
-                            List2 = [{unlist(Vs), Vt} || {Vs, Vt} <- List1],
-                            List3 = [true || {_V, _V} <- List2],
+                         List1 = [{get(S, Time, 1), V} || {Time, V} <- List],
+                         List2 = [{unlist(Vs), Vt} || {Vs, Vt} <- List1],
+                         List3 = [true || {_V, _V} <- List2],
 
-                            Fun = fun(K, V, A) ->
-                                          [metric_vnode:encode_handoff_item(K, V) | A]
-                                  end,
-                            FR = ?FOLD_REQ{foldfun=Fun, acc0=[]},
-                            {async, {fold, AsyncH, _}, _, S1} =
-                                metric_vnode:handle_handoff_command(FR, self(), S),
-                            L = AsyncH(),
-                            L1 = lists:sort(L),
-                            {ok, C, _} = metric_vnode:init([1]),
-                            C1 = lists:foldl(fun(Data, SAcc) ->
-                                                     {reply, ok, SAcc1} =
-                                                         handoff_recv(Data, SAcc),
-                                                     SAcc1
-                                             end, C, L1),
+                         Fun = fun(K, V, A) ->
+                                       [metric_vnode:encode_handoff_item(K, V) | A]
+                               end,
+                         FR = ?FOLD_REQ{foldfun=Fun, acc0=[]},
+                         {async, {fold, AsyncH, _}, _, S1} =
+                             metric_vnode:handle_handoff_command(FR, self(), S),
+                         L = AsyncH(),
+                         L1 = lists:sort(L),
+                         {ok, C, _} = metric_vnode:init([1]),
+                         C1 = lists:foldl(fun(Data, SAcc) ->
+                                                  {reply, ok, SAcc1} =
+                                                      handoff_recv(Data, SAcc),
+                                                  SAcc1
+                                          end, C, L1),
 
-                            List4 = [{get(C1, Time, 1), V} || {Time, V} <- List],
-                            List5 = [{unlist(Vs), Vt} || {Vs, Vt} <- List1],
-                            List6 = [true || {_V, _V} <- List2],
+                         List4 = [{get(C1, Time, 1), V} || {Time, V} <- List],
+                         List5 = [{unlist(Vs), Vt} || {Vs, Vt} <- List1],
+                         List6 = [true || {_V, _V} <- List2],
 
-                            {async, {fold, AsyncHc, _}, _, C2} =
-                                metric_vnode:handle_handoff_command(FR, self(), C1),
-                            Lc = AsyncHc(),
-                            Lc1 = lists:sort(Lc),
-                            {async, {fold, Async, _}, _, _} =
-                                metric_vnode:handle_coverage({metrics, ?B},
-                                                             all, self(), S1),
-                            Ms = Async(),
-                            {async, {fold, AsyncC, _}, _, _} =
-                                metric_vnode:handle_coverage({metrics, ?B},
-                                                             all, self(), C2),
-                            MsC = AsyncC(),
+                         {async, {fold, AsyncHc, _}, _, C2} =
+                             metric_vnode:handle_handoff_command(FR, self(), C1),
+                         Lc = AsyncHc(),
+                         Lc1 = lists:sort(Lc),
+                         {async, {fold, Async, _}, _, _} =
+                             metric_vnode:handle_coverage({metrics, ?B},
+                                                          all, self(), S1),
+                         Ms = Async(),
+                         {async, {fold, AsyncC, _}, _, _} =
+                             metric_vnode:handle_coverage({metrics, ?B},
+                                                          all, self(), C2),
+                         MsC = AsyncC(),
 
-                            Len = length(List),
+                         Len = length(List),
 
 
-                            metric_vnode:terminate(normal, S1),
-                            metric_vnode:terminate(normal, C2),
+                         metric_vnode:terminate(normal, S1),
+                         metric_vnode:terminate(normal, C2),
 
-                            ?WHENFAIL(begin
-                                          io:format(user, "L: ~p /= ~p~n"
-                                                    "M: ~p /= ~p~n",
-                                                    [Lc1, L1, MsC, Ms]),
-                                          io:format(user, "Lists: ~p~n",
-                                                    [[List,
-                                                      List1, List2, List3,
-                                                      List4, List5, List6]])
-                                      end,
-                                      Lc1 == L1 andalso
-                                      fetch_keys(MsC) == fetch_keys(Ms) andalso
-                                      length(List1) == Len andalso
-                                      length(List2) == Len andalso
-                                      length(List3) == Len andalso
-                                      length(List4) == Len andalso
-                                      length(List5) == Len andalso
-                                      length(List6) == Len)
-                        end)
-                 end)
+                         Diff = case Len of
+                                    0 ->
+                                        true;
+                                    _ ->
+                                        os:cmd("diff -r data/0 data/1 > /dev/null; echo $?") == "0\n"
+                                end,
+                         ?WHENFAIL(begin
+                                       io:format(user, "L: ~p /= ~p~n"
+                                                 "M: ~p /= ~p~n",
+                                                 [Lc1, L1, MsC, Ms]),
+                                       io:format(user, "Lists: ~p~n",
+                                                 [[List,
+                                                   List1, List2, List3,
+                                                   List4, List5, List6]])
+                                   end,
+                                   Diff andalso
+                                   Lc1 == L1 andalso
+                                   fetch_keys(MsC) == fetch_keys(Ms) andalso
+                                   length(List1) == Len andalso
+                                   length(List2) == Len andalso
+                                   length(List3) == Len andalso
+                                   length(List4) == Len andalso
+                                   length(List5) == Len andalso
+                                   length(List6) == Len)
+                     end)
+              end)
           end)).
 
 
