@@ -639,7 +639,10 @@ get_lifetime(Bucket, State = #state{lifetimes = Lifetimes}) ->
         {ok, TTL} ->
             {TTL, State};
         error ->
-            TTL = dalmatiner_opt:lifetime(Bucket),
+            Resolution = dalmatiner_opt:resolution(Bucket),
+            %% We need to scale TTL to nanoseconds since we
+            %% deal with that internally.
+            TTL = dalmatiner_opt:lifetime(Bucket) * Resolution,
             Lifetimes1 = btrie:store(Bucket, TTL, Lifetimes),
             {TTL, State#state{lifetimes = Lifetimes1}}
     end.
