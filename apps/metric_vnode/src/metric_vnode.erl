@@ -237,11 +237,11 @@ handle_command({repair, Bucket, Metric, Time, Value}, _Sender, State)
   when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     Count = mmath_bin:length(Value),
     case valid_ts(Time + Count, Bucket, State) of
-        {true, State1} ->
+        {true, _, State1} ->
             State2 = repair_update_cache(Bucket, Metric, Time, Count, Value,
                                          State1),
             {noreply, State2};
-        {false, State1} ->
+        {false, _, State1} ->
             {noreply, State1}
     end;
 
@@ -515,9 +515,11 @@ do_put(Bucket, Metric, Time, Value, State = #state{tbl = T,
     %% Technically, we could still write data that falls within a range that is
     %% to be deleted by the vacuum.  See the `timestamp()' function doc.
     case valid_ts(Time + Len, Bucket, State) of
-        {false, State1} ->
+        {false, Exp, State1} ->
+            lager:warning("[~p:~p] Trying to write beyond TTL: ~p -> ~p < ~p",
+                          [Bucket, Time, Len, Exp]),
             State1;
-        {true, State1} ->
+        {true, _, State1} ->
             %% Elemements of the cacgh have the following logic:
             %% 1: Bucket + Metric
             %% 2: The start time (index in the file)
@@ -604,9 +606,9 @@ valid_ts(TS, Bucket, State) ->
         %% past if writing batches but this is a problem for another day!
         {Exp, State1} when is_integer(Exp),
                            TS < Exp ->
-            {false, State1};
-        {_, State1} ->
-            {true, State1}
+            {false, Exp, State1};
+        {Exp, State1} ->
+            {true, Exp, State1}
     end.
 
 %% Return the latest point we'd ever want to save. This is more strict
