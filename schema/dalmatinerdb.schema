@@ -197,7 +197,43 @@
  [{default, fifo},
   {datatype, {enum, [fifo, filo]}}]}.
 
-%% @doc How much memory the cache is allowed to take per vnode.
-{mapping, "vnode.cache_size", "metric_vnode.cache_size",
+%% @doc The cahe is bounded on size per vnode, metrics are cached
+%% until the size limit is reached then the cache will start to evict
+%% overflowing metrics, prioritizing old and large caches to reduce
+%% the number of flushes needed.
+{mapping, "vnode.cache.size", "metric_vnode.cache_size",
  [{datatype, bytesize},
   {default, "10MB"}]}.
+
+%% @doc To organize data the cache uses a two layer hash table
+%% while the lower layer is fixed tom 64 buckets the 1st layer can
+%% be configured.
+%% Choosing a larger number of buckets improves lookup times with
+%% large number of metrics but trades it for longer times for
+%% eviction and a larger (static) memory overhead.
+{mapping, "vnode.cache.buckets", "metric_vnode.buckets",
+ [{datatype, integer},
+  {default, 128}]}.
+
+%% @doc The cach uses 3 generations to determine idle metrics
+%% and prioritizes those for flushing during overflows.
+%% Aging happens every n inserts, during the aging process gen2
+%% gets merged into gen3 (more expensive), and gen1 gets copied to
+%% gen2 (very cheap). Active metrics get pulled back into gen1.
+%% The smaller the age cycle is the more often this happens.
+{mapping, "vnode.cache.age_cycle", "metric_vnode.cache_age_cycle",
+ [{datatype, integer},
+  {default, 1000000}]}.
+
+%% @doc The maximum gap allowed between two points that do not
+%% cause a sparese segmetnt to be created.
+%% Gaps means that the system will write 'undefined' points as
+%% they are used to fill the gaps. This means that for extreme
+%% out of order writes there is the chance that a defined datapoint
+%% that was written before gets overwritten with an undefined one.
+%% On the otherhand for spotty metrics that often drop a point or
+%% two setting this too low will increase the number of write
+%% operations as every gap will mean an additional one.
+{mapping, "vnode.cache.max_gap", "metric_vnode.cache_size",
+ [{datatype, integer},
+  {default, 10}]}.

@@ -597,8 +597,15 @@ empty_cache(C, IO) ->
 
 new_cache() ->
     CacheSize = application:get_env(metric_vnode, cache_size, 1024*1024*10),
-    mcache:new(CacheSize, []).
-
+    Buckets = application:get_env(metric_vnode, cache_buckets, 128),
+    AgeCycle = application:get_env(metric_vnode, cache_age_cycle, 1000000),
+    Gap = application:get_env(metric_vnode, cache_gap, 10),
+    mcache:new(CacheSize,
+               [
+                {buckets, Buckets},
+                {max_gap, Gap},
+                {age_cycle, AgeCycle}
+               ]).
 
 encode_b(Bucket) ->
     BucketSize = byte_size(Bucket),
