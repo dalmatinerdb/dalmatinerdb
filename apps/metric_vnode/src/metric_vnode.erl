@@ -162,10 +162,10 @@ handle_command({repair, Bucket, Metric, Time, Value}, _Sender, State)
   when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     Count = mmath_bin:length(Value),
     case valid_ts(Time + Count, Bucket, State) of
-        {true, State1} ->
+        {true, _, State1} ->
             State2 = do_put(Bucket, Metric, Time, Value, State1),
             {noreply, State2};
-        {false, State1} ->
+        {false, _, State1} ->
             {noreply, State1}
     end;
 
@@ -404,9 +404,11 @@ do_put(Bucket, Metric, Time, Value, State = #state{cache = C})
     %% Technically, we could still write data that falls within a range that is
     %% to be deleted by the vacuum.  See the `timestamp()' function doc.
     case valid_ts(Time + Len, Bucket, State) of
-        {false, State1} ->
+        {false, Exp, State1} ->
+            lager:warning("[~p:~p] Trying to write beyond TTL: ~p -> ~p < ~p",
+                          [Bucket, Time, Len, Exp]),
             State1;
-        {true, State1} ->
+        {true, _, State1} ->
             case mcache:insert(C, BM, Time, Value) of
                 ok ->
                     ok;
@@ -440,9 +442,9 @@ valid_ts(TS, Bucket, State) ->
         %% past if writing batches but this is a problem for another day!
         {Exp, State1} when is_integer(Exp),
                            TS < Exp ->
-            {false, State1};
-        {_, State1} ->
-            {true, State1}
+            {false, Exp, State1};
+        {Exp, State1} ->
+            {true, Exp, State1}
     end.
 
 %% Return the latest point we'd ever want to save. This is more strict
@@ -473,14 +475,16 @@ get_lifetime(Bucket, State = #state{lifetimes = Lifetimes}) ->
         {ok, TTL} ->
             {TTL, State};
         error ->
-            TTL = dalmatiner_opt:lifetime(Bucket),
+            Resolution = dalmatiner_opt:resolution(Bucket),
+            %% We need to scale TTL to nanoseconds since we
+            %% deal with that internally.
+            TTL = dalmatiner_opt:lifetime(Bucket) * Resolution,
             Lifetimes1 = btrie:store(Bucket, TTL, Lifetimes),
             {TTL, State#state{lifetimes = Lifetimes1}}
     end.
 
 update_env(State) ->
     State.
-
 
 %% Handling a get request overload
 handle_overload_command({get, ReqID, _Bucket, _Metric, {_Time, _Count}},
@@ -510,6 +514,7 @@ nval_map(Ring) ->
 
 %% callback used by dynamic ring sizing to determine where requests should be
 %% forwarded.
+
 %% Puts/deletes are forwarded during the operation, all other requests are not
 
 %% We do use the sniffle_prefix to define bucket as the bucket in read/write
@@ -532,7 +537,6 @@ object_info({Bucket, {Metric, Time}}) ->
 
 %% We calculate the jitter (end) for a cache by reducing it to (at maximum)
 %% half the size.
-
 
 write_chunks(_IO, _Bucket, _Metric, []) ->
     ok;

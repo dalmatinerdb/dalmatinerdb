@@ -77,10 +77,10 @@ print_buckets([Bucket | R]) ->
          } ->
             io:format("~30s | ~-15s | ~-15s | ~-15s | ~-15s~n",
                       [Bucket,
-                       format_time(Res, ms),
-                       format_time(PPF * Res, ms),
-                       format_time(Grace, ns),
-                       infinity]);
+                       format_time(Res, ms),       % resolution
+                       format_time(PPF * Res, ms), % file size
+                       format_time(Grace, ns),     % grace
+                       infinity]);                 % ttl
         #{
            resolution := Res,
            ppf := PPF,
@@ -89,10 +89,10 @@ print_buckets([Bucket | R]) ->
          } ->
             io:format("~30s | ~-15s | ~-15s | ~-15s | ~-15s~n",
                       [Bucket,
-                       format_time(Res, ms),
-                       format_time(PPF * Res, ms),
-                       format_time(Grace, ns),
-                       format_time(TTL * Res, ms)])
+                       format_time(Res, ms),         % resolution
+                       format_time(PPF * Res, ms),   % file size
+                       format_time(Grace, ns),       % grace
+                       format_time(TTL * Res, ms)])  % ttl
     end,
     print_buckets(R).
 
@@ -129,7 +129,7 @@ ttl([BucketS, TTLs]) ->
                             TTLs, {duration, ms}),
                   TTLms div Res
           end,
-    io:format("TTL set to: ~s~n", [format_time(TTL*Res, ms)]),
+    io:format("TTL set to: ~s~n", [format_time(TTL * Res, ms)]),
     metric:update_ttl(Bucket, TTL),
     ok.
 
