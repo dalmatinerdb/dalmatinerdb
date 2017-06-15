@@ -9,6 +9,7 @@
                   dalmatiner_opt,
                   mstore,
                   mmath,
+                  mcache,
                   trie,
                   lager,
                   dalmatiner_vacuum,
@@ -17,7 +18,7 @@
                   clique,
                   riak_core
                  ]},
-  {included_applications, [k6_bytea]},
+  {included_applications, []},
   {mod, { metric_vnode_app, []}},
   {env, []}
  ]}.
