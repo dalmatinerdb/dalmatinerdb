@@ -33,13 +33,6 @@
  [{datatype, integer},
   {default, 604800}]}.
 
-%% @doc How many datapoints are cached before being written to disk. This
-%% is a maximum value, writes also occour before a specific metric is read,
-%% this effects lost data on crashes.
-{mapping, "cache_points", "metric_vnode.cache_points",
- [{datatype, integer},
-  {default, 120}]}.
-
 %% @doc How long data is kept by default, measured either in points
 %% or infinity for not deleting old data. This can be changed on a
 %% per bucket level using ddb-admin
@@ -203,3 +196,66 @@
 {mapping, "io.parallel_reads.queue_strategy", "metric_vnode.queue_strategy",
  [{default, fifo},
   {datatype, {enum, [fifo, filo]}}]}.
+
+%% @doc The cahe is bounded on size per vnode, metrics are cached
+%% until the size limit is reached then the cache will start to evict
+%% overflowing metrics, prioritizing old and large caches to reduce
+%% the number of flushes needed.
+{mapping, "vnode.cache.size", "metric_vnode.cache_size",
+ [{datatype, bytesize},
+  {default, "10MB"}]}.
+
+%% @doc To organize data the cache uses a two layer hash table
+%% while the lower layer is fixed tom 64 buckets the 1st layer can
+%% be configured.
+%% Choosing a larger number of buckets improves lookup times with
+%% large number of metrics but trades it for longer times for
+%% eviction and a larger (static) memory overhead.
+{mapping, "vnode.cache.buckets", "metric_vnode.buckets",
+ [{datatype, integer},
+  {default, 128}]}.
+
+%% @doc For each sub bucket a number of slots get reserved in the beginning
+%% this reduces the allocation need at start up and allows the first metrics
+%% to be introduced w/o needing to allocate the entry array.
+%% The total entries allocated at startup can be calculated by:
+%%
+%% bucketys * 64 * initial_entries
+{mapping, "vnode.cache.initial_entries", "metric_vnode.cache_initial_entries",
+ [{datatype, integer},
+  {default, 2}]}.
+
+
+%% @doc For each data chunk in a metric a number of points is pre-allocated
+%% this prevents the need to allocate data on every write. This datapoint array
+%% is doubled in size every time it grows too big.
+%%
+%% This data is not preallocated when there is no metric or datapoint written!
+{mapping, "vnode.cache.initial_data", "metric_vnode.cache_initial_data",
+ [{datatype, integer},
+  {default, 32}]}.
+
+
+
+%% @doc The cach uses 3 generations to determine idle metrics
+%% and prioritizes those for flushing during overflows.
+%% Aging happens every n inserts, during the aging process gen2
+%% gets merged into gen3 (more expensive), and gen1 gets copied to
+%% gen2 (very cheap). Active metrics get pulled back into gen1.
+%% The smaller the age cycle is the more often this happens.
+{mapping, "vnode.cache.age_cycle", "metric_vnode.cache_age_cycle",
+ [{datatype, integer},
+  {default, 1000000}]}.
+
+%% @doc The maximum gap allowed between two points that do not
+%% cause a sparese segmetnt to be created.
+%% Gaps means that the system will write 'undefined' points as
+%% they are used to fill the gaps. This means that for extreme
+%% out of order writes there is the chance that a defined datapoint
+%% that was written before gets overwritten with an undefined one.
+%% On the otherhand for spotty metrics that often drop a point or
+%% two setting this too low will increase the number of write
+%% operations as every gap will mean an additional one.
+{mapping, "vnode.cache.max_gap", "metric_vnode.cache_max_gap",
+ [{datatype, integer},
+  {default, 10}]}.
