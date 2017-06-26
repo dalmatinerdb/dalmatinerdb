@@ -582,7 +582,7 @@ get_overlap(Time, Count, [{CT, CD} | _R]) ->
     <<_:Skip/binary, Rest/binary>> = CD,
     %% See how many bytes we can get either the rest of
     %% count or the maximum lengt of our buffer
-    Take = min(Count * ?DATA_SIZE, byte_size(Rest)),
+    Take = min((Time + Count - CT) * ?DATA_SIZE, byte_size(Rest)),
     <<Bin:Take/binary, _/binary>> = Rest,
     Start = max(Time, CT),
     {ok, Start, Bin};
@@ -639,6 +639,20 @@ overlap_test() ->
     Data = [{1497181501, D1}, {1497181995, D2}],
     {ok, TOut, DOut} = get_overlap(Time, Count, Data),
     ?assert(byte_size(DOut) =< Count * ?DATA_SIZE),
+    ?assert(Time =< TOut),
+    ok.
+
+overlap_end_test() ->
+    Time = 1498484790,
+    Count = 21600,
+    D1 = << <<$1:64>> || _ <- lists:seq(1, 300) >>, % more then 240
+    Data = [{1498484790 + 21360, D1}],
+    {ok, TOut, DOut} = get_overlap(Time, Count, Data),
+    RCount = byte_size(DOut) div ?DATA_SIZE,
+    ?assertEqual(Time - TOut + 21600, 240),
+    ?assertEqual(240, RCount),
+    ?assertEqual(Time + Count, TOut + RCount),
+    ?assert((Time - TOut) * ?DATA_SIZE + byte_size(DOut) =< Count * ?DATA_SIZE),
     ?assert(Time =< TOut),
     ok.
 
