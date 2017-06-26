@@ -1,4 +1,4 @@
-VERSION=0.3.2
+VERSION=0.3.3
 COMPONENT_INTERNAL=ddb
 COMPONENT=dalmatinerdb
 DEPS="erlang" "coreutils" "sudo" "grep" "zlib" "bzip2" "gcc47-libs"
