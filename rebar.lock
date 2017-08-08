@@ -38,7 +38,7 @@
   1},
  {<<"mcache">>,
   {git,"https://github.com/dalmatinerdb/mcache.git",
-       {ref,"3e84a65add91bc239ea5cc8bc4e05f3580b7fb6a"}},
+       {ref,"b2c177a99261216f9103dcd706a4102a6f43da41"}},
   0},
  {<<"mmath">>,
   {git,"https://github.com/dalmatinerdb/mmath.git",

@@ -147,8 +147,7 @@ handle_command({bitmap, From, Ref, Bucket, Metric, Time},
                _Sender, State = #state{io = IO, cache = C})
   when is_binary(Bucket), is_binary(Metric), is_integer(Time),
        Time >= 0 ->
-    BM = encode_bm(Bucket, Metric),
-    case mcache:take(C, BM) of
+    case mcache:take(C, Bucket, Metric) of
         {ok, Data} ->
             write_chunks(State#state.io, Bucket, Metric, Data);
         _ ->
@@ -184,8 +183,7 @@ handle_command({put, Bucket, Metric, {Time, Value}}, _Sender, State)
 
 handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
                #state{cache = C, io=IO, node=N, partition=P} = State) ->
-    BM = encode_bm(Bucket, Metric),
-    case mcache:get(C, BM) of
+    case mcache:get(C, Bucket, Metric) of
         %% we do have cached data!
         {ok, Data} ->
             case get_overlap(Time, Count, Data) of
@@ -347,7 +345,7 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
                 State = #state{partition=P, node=N, cache = C, io = IO,
                                lifetimes = Lifetimes,
                                resolutions = Resolutions}) ->
-    mcache:remove_prefix(C, encode_b(Bucket)),
+    mcache:remove_bucket(C, Bucket),
     _Repply = metric_io:delete(IO, Bucket),
     R = btrie:new(),
     R1 = btrie:store(Bucket, t, R),
@@ -399,7 +397,6 @@ terminate(_Reason, #state{cache = C, io = IO}) ->
 
 do_put(Bucket, Metric, Time, Value, State = #state{cache = C})
   when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
-    BM = encode_bm(Bucket, Metric),
     Len = mmath_bin:length(Value),
     %% Technically, we could still write data that falls within a range that is
     %% to be deleted by the vacuum.  See the `timestamp()' function doc.
@@ -409,11 +406,10 @@ do_put(Bucket, Metric, Time, Value, State = #state{cache = C})
                           [Bucket, Time, Len, Exp]),
             State1;
         {true, _, State1} ->
-            case mcache:insert(C, BM, Time, Value) of
+            case mcache:insert(C, Bucket, Metric, Time, Value) of
                 ok ->
                     ok;
-                {overflow, BMOf, Overflow} ->
-                    {OfBucket, OfMetric} = decode_bm(BMOf),
+                {overflow, {OfBucket, OfMetric}, Overflow} ->
                     write_chunks(State#state.io, OfBucket, OfMetric, Overflow)
             end,
             State1
@@ -594,8 +590,7 @@ empty_cache(C, IO) ->
     case mcache:pop(C) of
         undefined ->
             ok;
-        {ok, BM , Data} ->
-            {Bucket, Metric} = decode_bm(BM),
+        {ok, {Bucket, Metric} , Data} ->
             write_chunks(IO, Bucket, Metric, Data),
             empty_cache(C, IO)
     end.
@@ -615,20 +610,6 @@ new_cache() ->
                 {max_gap, Gap},
                 {age_cycle, AgeCycle}
                ]).
-
-encode_b(Bucket) ->
-    BucketSize = byte_size(Bucket),
-    <<BucketSize:32, Bucket/binary>>.
-
-encode_bm(Bucket, Metric)->
-    BucketSize = byte_size(Bucket),
-    MetricSize = byte_size(Metric),
-    <<BucketSize:32, Bucket/binary,
-      MetricSize:32, Metric/binary>>.
-
-decode_bm(<<BucketSize:32, Bucket:BucketSize/binary,
-            MetricSize:32, Metric:MetricSize/binary>>) ->
-    {Bucket, Metric}.
 
 -ifdef(TEST).
 overlap_test() ->
