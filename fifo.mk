@@ -4,6 +4,8 @@ REBAR_VSN = $(shell erl -noshell -eval '{ok, F} = file:consult("rebar.config"), 
 VARS_VSN = $(shell grep 'bugsnag_app_version' rel/vars.config | sed -e 's/.*,//' -e 's/[^0-9.p]//g' -e 's/[.]$$//')
 APP_VSN = $(shell grep vsn apps/$(APP)/src/$(APP).app.src | sed 's/[^0-9.p]//g')
 
+.PHONY: tree
+
 compile: $(REBAR) .git/hooks/pre-commit
 	$(REBAR) compile
 
