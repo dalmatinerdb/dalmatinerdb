@@ -395,15 +395,15 @@ terminate(_Reason, #state{cache = C, io = IO}) ->
     metric_io:close(IO),
     ok.
 
-do_put(Bucket, Metric, Time, Value, State = #state{cache = C})
+do_put(Bucket, Metric, Time, Value, State = #state{partition=P, cache = C})
   when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     Len = mmath_bin:length(Value),
     %% Technically, we could still write data that falls within a range that is
     %% to be deleted by the vacuum.  See the `timestamp()' function doc.
     case valid_ts(Time + Len, Bucket, State) of
         {false, Exp, State1} ->
-            lager:warning("[~p:~p] Trying to write beyond TTL: ~p -> ~p < ~p",
-                          [Bucket, Time, Len, Exp]),
+            lager:warning("[~p:~p] Trying to write beyond TTL: ~p + ~p < ~p",
+                          [P, Bucket, Time, Len, Exp]),
             State1;
         {true, _, State1} ->
             case mcache:insert(C, Bucket, Metric, Time, Value) of
