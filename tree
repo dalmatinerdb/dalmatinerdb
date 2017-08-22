@@ -31,12 +31,12 @@
 │  └─ ibrowse─4.4.0
 ├─ ranch─1.1.0
 ├─ recon─2.3.2
-├─ riak_core─3.0.5
+├─ riak_core─3.0.8
 │  ├─ basho_stats─1.0.3
 │  ├─ blume─0.1.0
 │  ├─ chash─0.1.2
 │  ├─ clique─0.3.9
-│  ├─ cuttlefish─2.0.11
+│  ├─ cuttlefish─2.0.12
 │  │  └─ getopt─0.8.2
 │  ├─ eleveldb─2.2.20
 │  ├─ exometer_core─1.0.2
