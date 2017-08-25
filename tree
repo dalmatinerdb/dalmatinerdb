@@ -13,10 +13,10 @@
 │  ├─ lager_graylog─0.1.3
 │  └─ lager_logstash_backend─0.1.3
 │     └─ jsx─2.8.2
-├─ fifo_utils─0.1.38
+├─ fifo_utils─0.1.39
 │  ├─ jsone─1.4.5
-│  └─ uuid─1.5.4
-│     └─ quickrand─1.5.4
+│  ├─ quickrand─1.7.1
+│  └─ uuid─1.7.1
 ├─ hdr_histogram─0.2.0
 ├─ jsxd─0.2.4
 ├─ lager─3.2.4

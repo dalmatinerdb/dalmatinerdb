@@ -21,7 +21,7 @@
   0},
  {<<"exometer_core">>,{pkg,<<"basho_exometer_core">>,<<"1.0.2">>},1},
  {<<"fifo_lager">>,{pkg,<<"fifo_lager">>,<<"0.1.6">>},0},
- {<<"fifo_utils">>,{pkg,<<"fifo_utils">>,<<"0.1.38">>},0},
+ {<<"fifo_utils">>,{pkg,<<"fifo_utils">>,<<"0.1.39">>},0},
  {<<"folsom">>,{pkg,<<"folsom">>,<<"0.8.5">>},1},
  {<<"getopt">>,{pkg,<<"getopt">>,<<"0.8.2">>},2},
  {<<"goldrush">>,{pkg,<<"goldrush">>,<<"0.1.9">>},1},
@@ -56,7 +56,7 @@
  {<<"parse_trans">>,{pkg,<<"parse_trans">>,<<"2.9.0">>},2},
  {<<"pbkdf2">>,{pkg,<<"pbkdf2">>,<<"2.0.0">>},1},
  {<<"poolboy">>,{pkg,<<"basho_poolboy">>,<<"0.8.2">>},1},
- {<<"quickrand">>,{pkg,<<"quickrand">>,<<"1.5.4">>},2},
+ {<<"quickrand">>,{pkg,<<"quickrand">>,<<"1.7.1">>},1},
  {<<"ranch">>,{pkg,<<"ranch">>,<<"1.1.0">>},0},
  {<<"recon">>,{pkg,<<"recon">>,<<"2.3.2">>},0},
  {<<"riak_core">>,
@@ -68,7 +68,7 @@
  {<<"setup">>,{pkg,<<"setup">>,<<"1.7.0">>},2},
  {<<"snappiest">>,{pkg,<<"snappiest">>,<<"1.2.0">>},0},
  {<<"trie">>,{pkg,<<"trie">>,<<"1.7.1">>},0},
- {<<"uuid">>,{pkg,<<"uuid_erl">>,<<"1.5.4">>},1}]}.
+ {<<"uuid">>,{pkg,<<"uuid_erl">>,<<"1.7.1">>},1}]}.
 [
 {pkg_hash,[
  {<<"basho_stats">>, <<"7E1174151509C64FCC1934120ED32295E14F84DAAE7F84926BA2C8D3700D146C">>},
@@ -85,7 +85,7 @@
  {<<"eper">>, <<"F5FB2DAA0DF8878748E1C598428EDA942A173E5121FF35C1D632129B84593A3A">>},
  {<<"exometer_core">>, <<"DC4BC9B0B47EDEE0C053B16AC5B9C692E662C7E1513FFC96F4D928BC3328D65F">>},
  {<<"fifo_lager">>, <<"5D350A2C85F27F776B28E022A731B1B2F4A8C0D1703416C2553C4046AA09E837">>},
- {<<"fifo_utils">>, <<"0C2B3255442A7ABC6ACB2FD4DF1894861D6740ADDBEEF6B785CB35182A125E4D">>},
+ {<<"fifo_utils">>, <<"04151D9F840A6DC1430269C8AD65135ADB21212AC386DFD5D0955C74D3D1A87D">>},
  {<<"folsom">>, <<"94A027B56FE84FEED264F9B33CB4C6AC9A801FAD84B87DBDA0836CE83C3B8D69">>},
  {<<"getopt">>, <<"B17556DB683000BA50370B16C0619DF1337E7AF7ECBF7D64FBF8D1D6BCE3109B">>},
  {<<"goldrush">>, <<"F06E5D5F1277DA5C413E84D5A2924174182FB108DABB39D5EC548B27424CD106">>},
@@ -102,7 +102,7 @@
  {<<"parse_trans">>, <<"3F5F7B402928FB9FD200C891E635DE909045D1EFAC40CE3F924D3892898F85EB">>},
  {<<"pbkdf2">>, <<"11C23279FDED5C0027AB3996CFAE77805521D7EF4BABDE2BD7EC04A9086CF499">>},
  {<<"poolboy">>, <<"AD5524BF4B8D30EEE0E5386847B74DAD739BB6AE1893F3AF10F54D427ACC96E4">>},
- {<<"quickrand">>, <<"47ADD4755CC5F209CBEFFD6F47C84061196CD7FAD99FD8FD12418EB0D06B939D">>},
+ {<<"quickrand">>, <<"B0C2A41D08C955F055C44BED357660DE443CD9068A33ABA530076910B7333659">>},
  {<<"ranch">>, <<"F7ED6D97DB8C2A27CCA85CACBD543558001FC5A355E93A7BFF1E9A9065A8545B">>},
  {<<"recon">>, <<"4444C879BE323B1B133EEC5241CB84BD3821EA194C740D75617E106BE4744318">>},
  {<<"riak_ensemble">>, <<"6570463BF09F1200C003DE298C5D6615C418D3BF0A2DF5CAF469A9DF2558059A">>},
@@ -110,5 +110,5 @@
  {<<"setup">>, <<"15DF8E57C6DF9755E22BFB1AEF0C640BD97E9889396FDFB2A85A5536A9043674">>},
  {<<"snappiest">>, <<"25706FEBB5ECAEA900D879A89C6D967C8D1BF700F8546BEBD0DEA514A8CCBFB7">>},
  {<<"trie">>, <<"2B4249CEBD7007840C051D3833C7A0ECF84A5CF8837E5D51ADBD1A9726959A9A">>},
- {<<"uuid">>, <<"06240EFF3EAF013CC22274689B0C1FF6345645EE5D47A9E4ED7545EEB7698B23">>}]}
+ {<<"uuid">>, <<"252D12D1154BC75C40BC03E2E67714BD843DDFAD40FD3BC1541F65F622C9E7FC">>}]}
 ].
