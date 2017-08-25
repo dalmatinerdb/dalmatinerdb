@@ -37,8 +37,8 @@ case $2 in
         svccfg import /opt/local/dalmatinerdb/share/ddb.xml
         echo Trying to guess configuration ...
         IP=`ifconfig net0 | grep inet | $AWK '{print $2}'`
-        CONFFILE=/data/dalmatinerdb/etc/dalmatinerdb.conf
-        cp /opt/local/dalmatinerdb/etc/dalmatinerdb.conf ${CONFFILE}.example
+        CONFFILE=/data/dalmatinerdb/etc/ddb.conf
+        cp /opt/local/dalmatinerdb/etc/ddb.conf ${CONFFILE}.example
         if [ ! -f "${CONFFILE}" ]
         then
             echo "Creating new configuration from example file."
