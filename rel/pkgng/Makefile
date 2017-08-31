@@ -1,8 +1,7 @@
-VERSION=0.3.2
-COMPONENT_INTERNAL=ddb
 INSTALL_DIR=usr
 DEPS="coreutils" "sudo"
 
+include ../../config.mk
 include ../../_build/${REBARPROFILE}/lib/fifo_utils/priv/pkgng.mk
 
 .PHONY: package prepare clean
