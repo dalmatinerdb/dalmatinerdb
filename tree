@@ -13,7 +13,7 @@
 │  ├─ lager_graylog─0.1.3
 │  └─ lager_logstash_backend─0.1.3
 │     └─ jsx─2.8.2
-├─ fifo_utils─0.1.43
+├─ fifo_utils─0.1.44
 │  ├─ jsone─1.4.5
 │  ├─ quickrand─1.7.1
 │  └─ uuid─1.7.1
