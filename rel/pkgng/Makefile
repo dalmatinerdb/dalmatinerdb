@@ -1,5 +1,6 @@
 INSTALL_DIR=usr
 DEPS="coreutils" "sudo"
+REBARPROFILE ?= default
 
 include ../../config.mk
 include ../../_build/${REBARPROFILE}/lib/fifo_utils/priv/pkgng.mk
