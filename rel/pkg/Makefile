@@ -1,8 +1,6 @@
-VERSION=0.3.3
-COMPONENT_INTERNAL=ddb
-COMPONENT=dalmatinerdb
 DEPS="erlang" "coreutils" "sudo" "grep" "zlib" "bzip2" "gcc47-libs"
 
+include ../../config.mk
 include ../../_build/default/lib/fifo_utils/priv/pkg.mk
 
 .PHONY: prepare
