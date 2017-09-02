@@ -54,7 +54,12 @@ insert_metric(Metric, [{Time, Count} | Splits], PointsIn,
     Dict1 = dict:append(Idx, {Bucket, Metric, Time, Points}, Dict),
 
     CntName = <<Idx:160/integer, "-count">>,
-    BktCnt = dict:fetch(CntName, Dict1) + 1,
+    BktCnt = case dict:find(CntName, Dict1) of
+                 error ->
+                     1;
+                 {ok, N} ->
+                     N + 1
+             end,
     Dict2 = dict:store(CntName, BktCnt, Dict1),
 
     BD1 = BD#bkt_dict{dict = Dict2},
