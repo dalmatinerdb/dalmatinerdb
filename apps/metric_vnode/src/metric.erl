@@ -18,7 +18,9 @@
 mput(Nodes, Acc, W, N) ->
     ddb_histogram:timed_update(
       mput, dict, fold,
-      [fun(DocIdx, Data, ok) ->
+      [fun(DocIdx, _Data, R) when not is_integer(DocIdx) ->
+               R;
+          (DocIdx, Data, ok) ->
                do_mput(orddict:fetch(DocIdx, Nodes), Data, W, N);
           (DocIdx, Data, R) ->
                do_mput(orddict:fetch(DocIdx, Nodes), Data, W, N),
