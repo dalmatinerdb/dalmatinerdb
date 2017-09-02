@@ -2,11 +2,11 @@
 
 -include_lib("mmath/include/mmath.hrl").
 
--export([new/3, update_chash/1, flush/1, add/4, to_list/1]).
+-export([size/1, new/3, update_chash/1, flush/1, add/4, to_list/1]).
 
 -export_type([bkt_dict/0]).
 
--record(bkt_dict, {bucket, ppf, dict, n, w, nodes, cbin}).
+-record(bkt_dict, {bucket, ppf, dict, n, w, nodes, cbin, size = 0}).
 
 -type bkt_dict() :: #bkt_dict{}.
 
@@ -46,18 +46,34 @@ insert_metric(_Metric, [], <<>>, BD) ->
 
 insert_metric(Metric, [{Time, Count} | Splits], PointsIn,
                BD = #bkt_dict{bucket = Bucket, cbin = CBin, ppf = PPF,
-                              dict = Dict}) ->
+                              dict = Dict, size = MaxCnt}) ->
     Size = (Count * ?DATA_SIZE),
     <<Points:Size/binary, Rest/binary>> = PointsIn,
     DocIdx = riak_core_util:chash_key({Bucket, {Metric, Time div PPF}}),
     {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
     Dict1 = dict:append(Idx, {Bucket, Metric, Time, Points}, Dict),
-    BD1 = BD#bkt_dict{dict = Dict1},
-    insert_metric(Metric, Splits, Rest, BD1).
+
+    CntName = <<Idx:160/integer, "-count">>,
+    BktCnt = dict:fetch(CntName, Dict1) + 1,
+    Dict2 = dict:store(CntName, BktCnt, Dict1),
+
+    BD1 = BD#bkt_dict{dict = Dict2},
+    BD2 = case BktCnt of
+              BktCnt when BktCnt > MaxCnt ->
+                  BD1#bkt_dict{size = BktCnt};
+              _ ->
+                  BD1
+          end,
+    insert_metric(Metric, Splits, Rest, BD2).
+
+size(#bkt_dict{size = Size}) ->
+    Size.
 
 to_list(#bkt_dict{dict = Dict}) ->
-    L = dict:fold(fun (_Idx, Es, Acc) ->
-                          [Es | Acc]
+    L = dict:fold(fun (_Idx, Es, Acc) when is_integer(_Idx) ->
+                          [Es | Acc];
+                      (_Idx, _Es, Acc) ->
+                          Acc
                   end, [], Dict),
     lists:flatten(L).
 
