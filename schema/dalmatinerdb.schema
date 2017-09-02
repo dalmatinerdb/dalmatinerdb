@@ -15,7 +15,7 @@
  [{default, 1024},
   {datatype, integer}]}.
 
-%% @doc Maximum batch per vnode to be written at once on a tcp connection
+%% @doc Maximum batch per vnode to be written at once on a tcp connection.
 {mapping, "tcp.max_batch_size", "dalmatiner_db.max_bkt_batch_size",
  [{datatype, integer},
   {default, 500}]}.
