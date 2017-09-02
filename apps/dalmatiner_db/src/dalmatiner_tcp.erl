@@ -14,9 +14,11 @@
         }).
 
 -record(sstate,
-        {last = undefined :: non_neg_integer() | undefined,
-         max_diff = 1 :: pos_integer(),
-         dict :: bkt_dict:bkt_dict()}).
+        {
+          max_bkt_batch_size = 500,
+          last = undefined :: non_neg_integer() | undefined,
+          max_diff = 1 :: pos_integer(),
+          dict :: bkt_dict:bkt_dict()}).
 
 
 -type state() :: #state{}.
@@ -115,8 +117,11 @@ loop(Socket, Transport, State) ->
                                "and a max delay of: ~p", [Bucket, Delay]),
                     ok = Transport:setopts(Socket, [{packet, 0}]),
                     otters:finish(S2),
+                    {ok, BDSize} = application:get_env(
+                                     dalmatiner_db, max_bkt_batch_size, 500),
                     stream_loop(Socket, Transport,
                                 #sstate{max_diff = Delay,
+                                        max_bkt_batch_size = BDSize,
                                         dict = bkt_dict:new(Bucket,
                                                             State#state.n,
                                                             State#state.w)},
@@ -236,10 +241,17 @@ stream_loop(Socket, Transport,
                 dproto_tcp:decode_stream(Rest));
 
 stream_loop(Socket, Transport,
-            State = #sstate{dict = Dict, last = undefined},
+            State = #sstate{dict = Dict, last = undefined,
+                            max_bkt_batch_size = BDSize},
             {{stream, Metric, Time, Points}, Rest}) ->
     Dict1 = bkt_dict:add(Metric, Time, Points, Dict),
-    stream_loop(Socket, Transport, State#sstate{dict = Dict1, last = Time},
+    Dict2 = case bkt_dict:size(Dict1) of
+                X when X > BDSize ->
+                    flush(Dict1);
+                _ ->
+                    Dict1
+            end,
+    stream_loop(Socket, Transport, State#sstate{dict = Dict2, last = Time},
                 dproto_tcp:decode_stream(Rest));
 
 stream_loop(Socket, Transport,
