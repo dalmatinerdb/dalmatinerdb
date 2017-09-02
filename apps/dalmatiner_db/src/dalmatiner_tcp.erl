@@ -117,8 +117,8 @@ loop(Socket, Transport, State) ->
                                "and a max delay of: ~p", [Bucket, Delay]),
                     ok = Transport:setopts(Socket, [{packet, 0}]),
                     otters:finish(S2),
-                    {ok, BDSize} = application:get_env(
-                                     dalmatiner_db, max_bkt_batch_size, 500),
+                    BDSize = application:get_env(
+                               dalmatiner_db, max_bkt_batch_size, 500),
                     stream_loop(Socket, Transport,
                                 #sstate{max_diff = Delay,
                                         max_bkt_batch_size = BDSize,
