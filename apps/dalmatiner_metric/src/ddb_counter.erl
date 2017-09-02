@@ -59,7 +59,9 @@ fold_counters({Name, Count},
 
 collaps_counters([{Name, Count} | Counters]) ->
     Acc = #fold_acc{name = Name, count = Count},
-    #fold_acc{results = R} = lists:foldl(fun fold_counters/2, Acc, Counters),
-    R;
+    #fold_acc{results = R,
+              name = NOut,
+              count = COut} = lists:foldl(fun fold_counters/2, Acc, Counters),
+    [{NOut, COut} | R];
 collaps_counters([]) ->
     [].
