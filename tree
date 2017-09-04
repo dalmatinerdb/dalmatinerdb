@@ -17,7 +17,7 @@
 │  ├─ jsone─1.4.5
 │  ├─ quickrand─1.7.1
 │  └─ uuid─1.7.1
-├─ hdr_histogram─0.3.0
+├─ hdr_histogram─0.3.1
 ├─ jsxd─0.2.4
 ├─ lager─3.2.4
 │  └─ goldrush─0.1.9
