@@ -17,7 +17,7 @@
 │  ├─ jsone─1.4.5
 │  ├─ quickrand─1.7.1
 │  └─ uuid─1.7.1
-├─ hdr_histogram─0.3.1
+├─ hdr_histogram─0.3.2
 ├─ jsxd─0.2.4
 ├─ lager─3.2.4
 │  └─ goldrush─0.1.9
@@ -31,7 +31,7 @@
 │  └─ ibrowse─4.4.0
 ├─ ranch─1.1.0
 ├─ recon─2.3.2
-├─ riak_core─3.0.8
+├─ riak_core─3.0.9
 │  ├─ basho_stats─1.0.3
 │  ├─ blume─0.1.0
 │  ├─ chash─0.1.2
