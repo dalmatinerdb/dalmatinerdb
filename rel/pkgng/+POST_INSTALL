@@ -21,7 +21,7 @@ chown -R $USER:$GROUP /tmp/$USER/
 echo Trying to guess configuration ...
 IP=$(ifconfig $(netstat -r | grep default | awk '{ print $4 }') | grep 'inet' | awk -F ' ' '{ print $2 }')
 
-DISTCONFFILE=/usr/ddb/etc/ddb.conf
+DISTCONFFILE=/usr/local/lib/ddb/etc/ddb.conf
 CONFFILE=/data/dalmatinerdb/etc/ddb.conf
 
 if [ ! -f "${CONFFILE}" ]

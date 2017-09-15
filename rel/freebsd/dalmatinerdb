@@ -26,7 +26,7 @@ dalmatinerdb_start()
 {
 	if checkyesno ${rcvar}; then
 		echo "* starting dalmatiner db... "
-		/usr/local/bin/sudo -u dalmatinerdb /usr/ddb/bin/ddb start
+		/usr/local/bin/sudo -u dalmatinerdb /usr/local/lib/ddb/bin/ddb start
 	fi
 }
 
@@ -34,7 +34,7 @@ dalmatinerdb_stop()
 {
 	if checkyesno ${rcvar}; then
 		echo "* stopping dalmatiner db... "
-		/usr/local/bin/sudo -u dalmatinerdb /usr/ddb/bin/ddb stop
+		/usr/local/bin/sudo -u dalmatinerdb /usr/local/lib/ddb/bin/ddb stop
 	fi
 }
 
