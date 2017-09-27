@@ -52,7 +52,7 @@ package-smartos:
     - unzip eqcmini-2.01.0.zip
     - cd ..
     - epmd &
-    - ./rebar3 as eqc eqc --sname eqc
+    - ./rebar3 as eqc eqc
 
 eqc-smartos:
   <<: *eqc_definition
