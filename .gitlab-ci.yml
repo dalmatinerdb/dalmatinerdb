@@ -66,7 +66,7 @@ eqc-bsd:
 
 eqc-linux:
   <<: *eqc_definition
-  image: erlang:20
+  image: erlang:19
   before_script:
     - apt-get update
     - apt-get install -y --no-install-recommends unzip
