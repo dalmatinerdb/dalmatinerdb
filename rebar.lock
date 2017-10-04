@@ -9,7 +9,7 @@
  {<<"cuttlefish">>,{pkg,<<"cuttlefish">>,<<"2.0.12">>},1},
  {<<"dproto">>,
   {git,"https://gitlab.com/Project-FiFo/DalmatinerDB/dproto.git",
-       {ref,"f54803099e426e03074558992488ca47940bfea6"}},
+       {ref,"f43669a3bc314245416c5d99e43751e3a65fd806"}},
   0},
  {<<"dynamic_compile">>,{pkg,<<"dynamic_compile">>,<<"1.0.0">>},1},
  {<<"edown">>,{pkg,<<"edown">>,<<"0.8.1">>},0},
@@ -17,7 +17,7 @@
  {<<"eper">>,{pkg,<<"eper">>,<<"0.94.0">>},0},
  {<<"estore">>,
   {git,"https://gitlab.com/Project-FiFo/DalmatinerDB/estore.git",
-       {ref,"fb8f5c1ee8708e11bf58173e90f48f0a938222cd"}},
+       {ref,"863b6caaf587da017c6538d1c8072a98501243df"}},
   0},
  {<<"exometer_core">>,{pkg,<<"basho_exometer_core">>,<<"1.0.2">>},1},
  {<<"fifo_lager">>,{pkg,<<"fifo_lager">>,<<"0.1.8">>},0},
@@ -38,11 +38,11 @@
   1},
  {<<"mcache">>,
   {git,"https://gitlab.com/Project-FiFo/DalmatinerDB/mcache.git",
-       {ref,"076cc77986c18e71af4d483e19430572d5d3d941"}},
+       {ref,"6f85c07be437b6b3b997a2ffd434662b9039049d"}},
   0},
  {<<"mmath">>,
   {git,"https://gitlab.com/Project-FiFo/DalmatinerDB/mmath.git",
-       {ref,"1649b91eead0a3fd15afcbfb185388f7c075b7f0"}},
+       {ref,"3fd948307e1b89a073b06c99814c0b2edc4d25a6"}},
   0},
  {<<"mstore">>,
   {git,"https://gitlab.com/Project-FiFo/DalmatinerDB/mstore.git",
@@ -67,7 +67,7 @@
  {<<"riak_sysmon">>,{pkg,<<"riak_sysmon">>,<<"2.1.5">>},1},
  {<<"setup">>,{pkg,<<"setup">>,<<"1.7.0">>},2},
  {<<"snappiest">>,{pkg,<<"snappiest">>,<<"1.2.0">>},0},
- {<<"trie">>,{pkg,<<"trie">>,<<"1.6.0">>},0},
+ {<<"trie">>,{pkg,<<"trie">>,<<"1.7.2">>},0},
  {<<"uuid">>,{pkg,<<"uuid_erl">>,<<"1.7.2">>},1}]}.
 [
 {pkg_hash,[
@@ -109,6 +109,6 @@
  {<<"riak_sysmon">>, <<"2331BBCAEBE73EA7B2449F4C765827142476CC73D7D86999B4209EE005694D6B">>},
  {<<"setup">>, <<"15DF8E57C6DF9755E22BFB1AEF0C640BD97E9889396FDFB2A85A5536A9043674">>},
  {<<"snappiest">>, <<"25706FEBB5ECAEA900D879A89C6D967C8D1BF700F8546BEBD0DEA514A8CCBFB7">>},
- {<<"trie">>, <<"8D2B0C850A01B46FC4711AA1862D45D6AE3A0DA963127E44E6535EA88274D7D3">>},
+ {<<"trie">>, <<"CF3779ACF42DE76F8A9B74517E46449D3D31A827ED7A7C287B3A534945966237">>},
  {<<"uuid">>, <<"D596C8DD01A4AE48B9D8D51832CCC8F8302BF67ACD01336AEC3FCFAE6B9D2BC2">>}]}
 ].
