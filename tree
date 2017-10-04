@@ -4,10 +4,10 @@
 ├─ dalmatiner_metric─0.1.0
 ├─ dalmatiner_opt─0.1.0
 ├─ dalmatiner_vacuum─0.1.2
-├─ dproto─0.5.3
+├─ dproto─0.5.4
 ├─ edown─0.8.1
 ├─ eper─0.94.0
-├─ estore─0.1.9
+├─ estore─0.1.10
 ├─ event_vnode─0.1.0
 ├─ fifo_lager─0.1.8
 │  ├─ lager_graylog─0.1.3
@@ -21,7 +21,7 @@
 ├─ jsxd─0.2.4
 ├─ lager─3.2.4
 │  └─ goldrush─0.1.9
-├─ mcache─0.2.3
+├─ mcache─0.2.5
 ├─ metric_vnode─0.1.3
 ├─ mmath─0.2.20
 ├─ mstore─0.3.5
