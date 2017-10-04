@@ -1,0 +1,99 @@
+### Generic cli file for services
+stages:
+  - test     # run tets
+  - package  # verify package creation
+
+################################################################################
+## helpers
+################################################################################
+.not_triggered: &not_triggered
+  except:
+    - pipelines
+.is_triggered: &is_triggered
+  only:
+    - pipelines
+
+################################################################################
+## package stage
+################################################################################
+trigger_dialyzer:
+  <<: *is_triggered
+  image: erlang:19
+  stage: test
+  script:
+    - ./rebar3 upgrade $DOWNSTREAM_LIBRARY 
+    - ./rebar3 dialyzer
+  tags:
+    - gitlab-org-high-cpu
+
+trigger_xref:
+  <<: *is_triggered
+  image: erlang:19
+  stage: test
+  script:
+    - ./rebar3 upgrade $DOWNSTREAM_LIBRARY 
+    - ./rebar3 xref
+  tags:
+    - gitlab-org-high-cpu
+
+################################################################################
+## package stage
+################################################################################
+# We make sure our package builds on both FreeBSD and SmartOS
+
+smartos:
+  <<: *not_triggered
+  stage: package
+  script:
+    - export SUFFIX=$(/opt/local/bin/erl -noshell -eval '{{Y, MM, D}, {H, M, S}} = calendar:universal_time(), io:format("pre~4.10.0B~2.10.0B~2.10.0B~2.10.0B~2.10.0B~2.10.0B", [Y, MM, D, H, M, S]),init:stop()');
+    - export DS_VER=$(echo $CI_RUNNER_TAGS | sed 's/.*base64-\([0-9.]*\).*/\1/')
+    - export BRANCH=$(if [ "$CI_BUILD_REF_NAME" = "master" ]; then echo rel; else echo dev; fi)
+    - gmake dist
+    - mkdir -p rel/pkg/info
+    - s3cmd put rel/pkg/*.tgz  s3://release.project-fifo.net/pkg/$DS_VER/$BRANCH/
+    - pkg_info -X rel/pkg/*.tgz > rel/pkg/info/$(pkg_info -X rel/pkg/*.tgz | awk -F "=" '/FILE_NAME/ {print $2}')
+    - s3cmd put rel/pkg/info/* s3://release-info.project-fifo.net/pkg/$DS_VER/$BRANCH/
+    - 'curl --request POST --form "token=$CI_JOB_TOKEN" --form "ref=master" --form "variables[DS_VER]=$DS_VER" --form "variables[BRANCH]=$BRANCH" https://gitlab.com/api/v4/projects/$REPO_PID/trigger/pipeline'
+  tags:
+    - erlang-19
+    - smartos
+  only:
+    refs:
+      - master
+      - dev
+
+smartos_test:
+  stage: test
+  script:
+    - ./rebar3 as lint lint
+    - ./rebar3 xref
+    - ./rebar3 dialyzer
+  tags:
+    - erlang-19
+    - smartos
+  except:
+    - pipelines
+    - master
+    - dev
+
+################################################################################
+## bsd stage
+################################################################################
+bsd:
+  <<: *not_triggered
+  stage: package
+  script:
+    - export SUFFIX=$(/usr/local/bin/erl -noshell -eval '{{Y, MM, D}, {H, M, S}} = calendar:universal_time(), io:format("pre~4.10.0B~2.10.0B~2.10.0B~2.10.0B~2.10.0B~2.10.0B", [Y, MM, D, H, M, S]),init:stop()');
+    - export OS_VER=$(echo $CI_RUNNER_TAGS | sed 's/.*freebsd-\([0-9.]*\).*/\1/')
+    - export ARCH=$(uname -m)
+    - export BRANCH=$(if [ "$CI_BUILD_REF_NAME" = "master" ]; then echo rel; else echo dev; fi)
+    - gmake dist
+    - s3cmd put rel/pkgng/*.txz  s3://freebsd.project-fifo.net/$BRANCH/$ARCH/$OS_VER/
+    - 'curl --request POST --form "token=$CI_JOB_TOKEN" --form "ref=master" --form "variables[ARCH]=$ARCH" --form "variables[OS_VER]=$OS_VER" --form "variables[BRANCH]=$BRANCH" https://gitlab.com/api/v4/projects/$PKGNG_REPO_PID/trigger/pipeline'
+  tags:
+    - erlang-19
+    - freebsd-11.0
+  only:
+    refs:
+      - master
+      - dev
