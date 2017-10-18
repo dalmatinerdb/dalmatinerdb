@@ -60,6 +60,7 @@ smartos:
   only:
     refs:
       - master
+      - dev
       - /^dev-.*$/
 
 smartos_test:
