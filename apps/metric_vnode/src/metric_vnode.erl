@@ -4,6 +4,9 @@
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 -include_lib("mmath/include/mmath.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([start_vnode/1,
          init/1,
@@ -23,7 +26,6 @@
          handle_info/2,
          handle_overload_command/3,
          handle_overload_info/2,
-         cache_end/2,
          handle_exit/3]).
 
 -export([mput/3, put/5, get/4]).
@@ -32,7 +34,7 @@
          object_info/1,
          request_hash/1,
          nval_map/1
-         ]).
+        ]).
 
 -ignore_xref([
               object_info/1,
@@ -55,10 +57,7 @@
           partition :: pos_integer(),
           %% The node itself
           node :: node(),
-          %% The table id
-          tbl,
-          %% the number of chace points
-          cache_size = 1 :: pos_integer(),
+          cache,
           %% PID of the io node
           io :: metric_io:io_handle(),
           %% the current time
@@ -127,7 +126,6 @@ get(Preflist, ReqID, {Bucket, Metric}, {Time, Count}) ->
 init([Partition]) ->
     ok = dalmatiner_vacuum:register(),
     process_flag(trap_exit, true),
-    P = list_to_atom(integer_to_list(Partition)),
     WorkerPoolSize = case application:get_env(metric_vnode, async_workers) of
                          {ok, Val} ->
                              Val;
@@ -139,93 +137,19 @@ init([Partition]) ->
     {ok, update_env(#state{
                        partition = Partition,
                        node = node(),
-                       tbl = ets:new(P, [public, ordered_set]),
+                       cache = new_cache(),
                        io = IO,
                        now = timestamp()
                       }),
      [FoldWorkerPool]}.
 
-repair_update_cache(Bucket, Metric, Time, Count, Value,
-                    #state{tbl = T} = State) ->
-    case ets:lookup(T, {Bucket, Metric}) of
-        %% ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐
-        %% │Cache│     │     │     │     │     │Start│ ... │St+Si│     │
-        %% ├─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┤
-        %% │Rep. │     │Time │ ... │Ti+Co│     │     │     │     │     │
-        %% └─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┘
-        %%
-        %% If we repair on a place before the metric, we will just
-        %% write it!
-        [{{Bucket, Metric}, Start, _Size, _Time, _Array}]
-          when Time + Count < Start ->
-            ddb_counter:inc(<<"ooo_write">>),
-            metric_io:write(State#state.io, Bucket, Metric, Time, Value),
-            State;
-        %% ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐
-        %% │Cache│     │Start│ ... │St+Si│     │     │     │     │     │
-        %% ├─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┤
-        %% │Rep. │     │     │     │     │     │Time │ ... │Ti+Co│     │
-        %% └─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┘
-        %%
-        %% The data is entirely ahead of the cache, so we flush the
-        %% cache and use the repair request as new the cache.
-        [{{Bucket, Metric}, Start, Size, _Time, Array}]
-          when Start + Size < Time ->
-            Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
-            k6_bytea:delete(Array),
-            ets:delete(T, {Bucket, Metric}),
-            metric_io:write(State#state.io, Bucket, Metric, Start, Bin),
-            do_put(Bucket, Metric, Time, Value, State);
-        %% ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐
-        %% │Cache│     │     │     │Start│ ... │St+Si│     │     │     │
-        %% ├─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┤
-        %% │Rep. │     │     │     │     │Time │ ... │Ti+Co│     │     │
-        %% └─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┘
-        %%
-        %% Now it gets tricky. The repair intersects with the
-        %% cache - this should never happen but it probably will, so
-        %% it sucks!  There is no sane way to merge the values if
-        %% they intersect, however we know the following:
-        %% 1) A repair request, based on how it is built, will never
-        %%    contain unset(empty) values.
-        %% 2) A cache can be an entirely empty value or contain
-        %%    empty segments.
-        %% Based on that, the best approach is to flush the cache and
-        %% then also to flush the repair request. This ensures that
-        %% nothing will be overwritten with a empty value.
-        %%
-        %% - Flushing the repair once could lead to empties in the
-        %%   cache overwriting non-empties from the repair.
-        %% - Flushing the cache and caching the repair could lead to
-        %%   new empties in the new cache from the repair now
-        %%   overwriting non-empties from the previous cache.
-        [{{Bucket, Metric}, Start, Size, _Time, Array}] ->
-            Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
-            k6_bytea:delete(Array),
-            ets:delete(T, {Bucket, Metric}),
-            metric_io:write(State#state.io, Bucket, Metric, Start, Bin),
-            metric_io:write(State#state.io, Bucket, Metric, Time, Value),
-            State;
-        %% If we had no privious cache we can safely cache the
-        %% repair.
-        [] ->
-            do_put(Bucket, Metric, Time, Value, State)
-    end.
-
-
 handle_command({bitmap, From, Ref, Bucket, Metric, Time},
-               _Sender, State = #state{io = IO, tbl = T})
+               _Sender, State = #state{io = IO, cache = C})
   when is_binary(Bucket), is_binary(Metric), is_integer(Time),
        Time >= 0 ->
-    BM = {Bucket, Metric},
-    PPF = dalmatiner_opt:ppf(Bucket),
-    case ets:lookup(T, BM) of
-        [{BM, Start, Size, _End, Array}] when
-              (Start div PPF) =:= (Time div PPF) ->
-            ets:delete(T, {Bucket, Metric}),
-            Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
-            k6_bytea:delete(Array),
-            metric_io:write(IO, Bucket, Metric, Start, Bin);
+    case mcache:take(C, Bucket, Metric) of
+        {ok, Data} ->
+            write_chunks(State#state.io, Bucket, Metric, Data);
         _ ->
             ok
     end,
@@ -237,11 +161,10 @@ handle_command({repair, Bucket, Metric, Time, Value}, _Sender, State)
   when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     Count = mmath_bin:length(Value),
     case valid_ts(Time + Count, Bucket, State) of
-        {true, State1} ->
-            State2 = repair_update_cache(Bucket, Metric, Time, Count, Value,
-                                         State1),
+        {true, _, State1} ->
+            State2 = do_put(Bucket, Metric, Time, Value, State1),
             {noreply, State2};
-        {false, State1} ->
+        {false, _, State1} ->
             {noreply, State1}
     end;
 
@@ -259,53 +182,37 @@ handle_command({put, Bucket, Metric, {Time, Value}}, _Sender, State)
     {reply, ok, State1};
 
 handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
-               #state{tbl=T, io=IO, node=N, partition=P} = State) ->
-    BM = {Bucket, Metric},
-    case ets:lookup(T, BM) of
-        %% If our request is entirely cache we don't need to bother the IO node
-        [{BM, Start, Size, _Time, Array}]
-          when Start =< Time,
-               (Start + Size) >= (Time + Count)
-               ->
-            %% How many bytes can we skip?
-            SkipBytes = (Time - Start) * ?DATA_SIZE,
-            Data = k6_bytea:get(Array, SkipBytes, (Count * ?DATA_SIZE)),
-            {reply, {ok, ReqID, {P, N}, Data}, State};
-        %% The request is neither before, after nor entirely inside the cache
-        %% we have to read data, but apply cached part on top of it.
-        [{BM, Start, Size, _Time, Array}]
-          when
-              %% The window starts before the cache but ends in it
-              (Time < Start andalso Time + Count >= Start)
-
-              %% The window starts inside the cahce and ends afterwards
-              orelse (Time =< Start + Size andalso Time + Count > Start + Size)
-              ->
-            PartStart = max(Time, Start),
-            PartCount = min(Time + Count, Start + Size) - PartStart,
-            SkipBytes = (PartStart - Start) * ?DATA_SIZE,
-            Bin = k6_bytea:get(Array, SkipBytes, (PartCount * ?DATA_SIZE)),
-            Offset = PartStart - Time,
-            Part = {Offset, PartCount, Bin},
-            metric_io:read_rest(
-              IO, Bucket, Metric, Time, Count, Part, ReqID, Sender),
-            {noreply, State};
-        %% If we are here we know that there is either no cahce or the requested
-        %% window and the cache do not overlap, so we can simply serve it from
-        %% the io servers
+               #state{cache = C, io=IO, node=N, partition=P} = State) ->
+    case mcache:get(C, Bucket, Metric) of
+        %% we do have cached data!
+        {ok, Data} ->
+            case get_overlap(Time, Count, Data) of
+                %% but there is no overlap
+                undefined ->
+                    metric_io:read(IO, Bucket, Metric, Time, Count, ReqID,
+                                   Sender),
+                    {noreply, State};
+                %% we have all in the cache!
+                {ok, Time, Bin} when byte_size(Bin) div ?DATA_SIZE == Count ->
+                    {reply, {ok, ReqID, {P, N}, Bin}, State};
+                %% The request is neither before, after nor entirely inside the
+                %% cache we have to read data, but apply cached part on top of
+                %% it.
+                {ok, PartStart, Bin} ->
+                    Offset = PartStart - Time,
+                    Part = {Offset, byte_size(Bin) div ?DATA_SIZE, Bin},
+                    metric_io:read_rest(
+                      IO, Bucket, Metric, Time, Count, Part, ReqID, Sender),
+                    {noreply, State}
+            end;
         _ ->
             metric_io:read(IO, Bucket, Metric, Time, Count, ReqID, Sender),
             {noreply, State}
     end;
 
 handle_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, Sender,
-               State=#state{tbl=T, io = IO}) ->
-    ets:foldl(fun({{Bucket, Metric}, Start, Size, _, Array}, _) ->
-                      Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
-                      k6_bytea:delete(Array),
-                      metric_io:write(IO, Bucket, Metric, Start, Bin)
-              end, ok, T),
-    ets:delete_all_objects(T),
+               State=#state{cache = C, io = IO}) ->
+    empty_cache(C, IO),
     FinishFun =
         fun(Acc) ->
                 riak_core_vnode:reply(Sender, Acc)
@@ -318,13 +225,8 @@ handle_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, Sender,
     end.
 
 handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, Sender,
-                       State=#state{tbl=T, io = IO}) ->
-    ets:foldl(fun({{Bucket, Metric}, Start, Size, _, Array}, _) ->
-                      Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
-                      k6_bytea:delete(Array),
-                      metric_io:write(IO, Bucket, Metric, Start, Bin)
-              end, ok, T),
-    ets:delete_all_objects(T),
+                       State=#state{cache = C, io = IO}) ->
+    empty_cache(C, IO),
     FinishFun =
         fun(Acc) ->
                 riak_core_vnode:reply(Sender, Acc)
@@ -377,8 +279,8 @@ encode_handoff_item(Key, Value) ->
             term_to_binary({Key, Value})
     end.
 
-is_empty(State = #state{tbl = T, io=IO}) ->
-    case ets:first(T) == '$end_of_table' andalso metric_io:empty(IO) of
+is_empty(State = #state{cache = C, io = IO}) ->
+    case mcache:is_empty(C) andalso metric_io:empty(IO) of
         true ->
             {true, State};
         false ->
@@ -386,11 +288,12 @@ is_empty(State = #state{tbl = T, io=IO}) ->
             {false, {Count, objects}, State}
     end.
 
-delete(State = #state{io = IO, tbl = T, partition = P}) ->
+delete(State = #state{io = IO, partition = P}) ->
     lager:warning("[metric:~p] deleting vnode.", [P]),
-    ets:delete_all_objects(T),
     ok = metric_io:delete(IO),
-    {ok, State}.
+    %% We're sneaky, we let the Gc take care of deleting our cache
+    %% muhaha!
+    {ok, State#state{ cache = new_cache()}}.
 
 handle_coverage({metrics, Bucket}, _KS, Sender, State = #state{io = IO}) ->
     AsyncWork = fun() ->
@@ -439,18 +342,10 @@ handle_coverage(update_env, _KeySpaces, _Sender,
     {reply, Reply, update_env(State#state{io = IO1})};
 
 handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
-                State = #state{partition=P, node=N, tbl=T, io = IO,
+                State = #state{partition=P, node=N, cache = C, io = IO,
                                lifetimes = Lifetimes,
                                resolutions = Resolutions}) ->
-    ets:foldl(fun({{Bkt, Metric}, Start, Size, _, Array}, _)
-                    when Bkt /= Bucket ->
-                      Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
-                      k6_bytea:delete(Array),
-                      metric_io:write(IO, Bkt, Metric, Start, Bin);
-                 ({_, _, _, _, Array}, _) ->
-                      k6_bytea:delete(Array)
-              end, ok, T),
-    ets:delete_all_objects(T),
+    mcache:remove_bucket(C, Bucket),
     _Repply = metric_io:delete(IO, Bucket),
     R = btrie:new(),
     R1 = btrie:store(Bucket, t, R),
@@ -495,88 +390,27 @@ handle_exit(IO, E, State = #state{io = IO}) ->
 handle_exit(_PID, _Reason, State) ->
     {noreply, State}.
 
-terminate(_Reason, #state{tbl = T, io = IO}) ->
-    ets:foldl(fun({{Bucket, Metric}, Start, Size, _End, Array}, _) ->
-                      Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
-                      k6_bytea:delete(Array),
-                      metric_io:write(IO, Bucket, Metric, Start, Bin)
-              end, ok, T),
-    ets:delete(T),
+terminate(_Reason, #state{cache = C, io = IO}) ->
+    empty_cache(C, IO),
     metric_io:close(IO),
     ok.
 
-do_put(Bucket, Metric, Time, Value, State = #state{tbl = T,
-                                                   cache_size = CacheSize,
-                                                   io = IO})
+do_put(Bucket, Metric, Time, Value, State = #state{partition=P, cache = C})
   when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     Len = mmath_bin:length(Value),
-    BM = {Bucket, Metric},
-
     %% Technically, we could still write data that falls within a range that is
     %% to be deleted by the vacuum.  See the `timestamp()' function doc.
     case valid_ts(Time + Len, Bucket, State) of
-        {false, State1} ->
+        {false, Exp, State1} ->
+            lager:warning("[~p:~p] Trying to write beyond TTL: ~p + ~p < ~p",
+                          [P, Bucket, Time, Len, Exp]),
             State1;
-        {true, State1} ->
-            %% Elemements of the cacgh have the following logic:
-            %% 1: Bucket + Metric
-            %% 2: The start time (index in the file)
-            %% 3: Last written part of the buffer
-            %% 4: pre-computed end (end in the file)
-            %% 5: The binary cache
-            case ets:lookup(T, BM) of
-                %% If the data is before the first package in the cache we just
-                %% don't cache it this way we prevent overwriting already
-                %% written data.
-                [{BM, _Start, _Size, _End, _V}]
-                  when Time < _Start ->
-                    ddb_counter:inc(<<"ooo_write">>),
-                    metric_io:write(IO, Bucket, Metric, Time, Value);
-                %% When the Delta of start time and this package is greater
-                %% then the cache time we flush the cache and start a new cache
-                %% with a new package
-                [{BM, Start, Size, _End, Array}]
-                  when (Time + Len) >= _End, Len < CacheSize ->
-                    Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
-                    k6_bytea:set(Array, 0, Value),
-                    k6_bytea:set(Array, Len * ?DATA_SIZE,
-                                 <<0:(?DATA_SIZE * 8 * (CacheSize - Len))>>),
-                    %% We need this for mock
-                    End = ?MODULE:cache_end(Time, CacheSize),
-                    ets:update_element(T, BM, [{2, Time}, {3, Len},
-                                               {4, End}]),
-                    metric_io:write(IO, Bucket, Metric, Start, Bin);
-                %% In the case the data is already longer then the cache we
-                %% flush the cache
-                [{BM, Start, Size, _End, Array}]
-                  when (Time + Len) >= _End ->
-                    ets:delete(T, {Bucket, Metric}),
-                    Bin = k6_bytea:get(Array, 0, Size * ?DATA_SIZE),
-                    k6_bytea:delete(Array),
-                    metric_io:write(IO, Bucket, Metric, Start, Bin),
-                    metric_io:write(IO, Bucket, Metric, Time, Value);
-                %% Only update the Size section when the new
-                %% size is larger then the old size.
-                [{BM, Start, Size, _End, Array}]
-                  when (Time - Start) + Len > Size ->
-                    Idx = Time - Start,
-                    k6_bytea:set(Array, Idx * ?DATA_SIZE, Value),
-                    ets:update_element(T, BM, [{3, Idx + Len}]);
-                [{BM, Start, _Size, _End, Array}] ->
-                    Idx = Time - Start,
-                    k6_bytea:set(Array, Idx * ?DATA_SIZE, Value);
-                %% We don't have a cache yet and our data is smaller then
-                %% the current cache limit
-                [] when Len < CacheSize ->
-                    Array = k6_bytea:new(CacheSize * ?DATA_SIZE),
-                    k6_bytea:set(Array, 0, Value),
-                    %% We need this for mock
-                    End = ?MODULE:cache_end(Time, CacheSize),
-                    ets:insert(T, {BM, Time, Len, End, Array});
-                %% If we don't have a cache but our data is too big for the
-                %% cache we happiely write it directly
-                [] ->
-                    metric_io:write(IO, Bucket, Metric, Time, Value)
+        {true, _, State1} ->
+            case mcache:insert(C, Bucket, Metric, Time, Value) of
+                ok ->
+                    ok;
+                {overflow, {OfBucket, OfMetric}, Overflow} ->
+                    write_chunks(State#state.io, OfBucket, OfMetric, Overflow)
             end,
             State1
     end.
@@ -604,9 +438,9 @@ valid_ts(TS, Bucket, State) ->
         %% past if writing batches but this is a problem for another day!
         {Exp, State1} when is_integer(Exp),
                            TS < Exp ->
-            {false, State1};
-        {_, State1} ->
-            {true, State1}
+            {false, Exp, State1};
+        {Exp, State1} ->
+            {true, Exp, State1}
     end.
 
 %% Return the latest point we'd ever want to save. This is more strict
@@ -651,9 +485,7 @@ get_lifetime(Bucket, State = #state{lifetimes = Lifetimes}) ->
     end.
 
 update_env(State) ->
-    CT = application:get_env(metric_vnode, cache_size, 120),
-    State#state{cache_size = CT}.
-
+    State.
 
 %% Handling a get request overload
 handle_overload_command({get, ReqID, _Bucket, _Metric, {_Time, _Count}},
@@ -683,6 +515,7 @@ nval_map(Ring) ->
 
 %% callback used by dynamic ring sizing to determine where requests should be
 %% forwarded.
+
 %% Puts/deletes are forwarded during the operation, all other requests are not
 
 %% We do use the sniffle_prefix to define bucket as the bucket in read/write
@@ -706,9 +539,105 @@ object_info({Bucket, {Metric, Time}}) ->
 %% We calculate the jitter (end) for a cache by reducing it to (at maximum)
 %% half the size.
 
--spec cache_end(pos_integer(), pos_integer()) ->
-                       pos_integer().
+write_chunks(_IO, _Bucket, _Metric, []) ->
+    ok;
 
-cache_end(Start, CacheSize) ->
-    Jitter = rand:uniform(CacheSize div 2),
-    Start + CacheSize - Jitter.
+write_chunks(IO, Bucket, Metric, [{T, V} | R]) ->
+    metric_io:write(IO, Bucket, Metric, T, V),
+    write_chunks(IO, Bucket, Metric, R).
+
+%% We're completely before the data
+get_overlap(Time, Count, [{CT, CD} | R])
+  when CT + byte_size(CD) div ?DATA_SIZE  < Time ->
+    get_overlap(Time, Count, R);
+
+%% We're completely behind the data to read so we
+%% can stop and say we got nothing
+get_overlap(Time, Count, [{CT, _CD} | _R])
+  when CT > Time + Count ->
+    undefined;
+%% We overlap but data is spread over two chunks ...
+%% damn inconsistant writes ...
+get_overlap(Time, Count, [{CT, CD}, {CT1, CD1} | R])
+  when  Time >= CT, CT1 =< Time + Count ->
+    %% We fuse then with NULLs and continue
+    %% missing bits
+    %% We need to multiply the times by the ?DATA_SIZE
+    %% to get byte then multiply
+    MissingByte = (CT1 * ?DATA_SIZE - (CT * ?DATA_SIZE + byte_size(CD))),
+    %% the whole by 8 to get bit to get the bits
+    MissingBit = MissingByte * 8,
+    Data1 = <<CD/binary, 0:MissingBit, CD1/binary>>,
+    get_overlap(Time, Count, [{CT, Data1} | R]);
+get_overlap(Time, Count, [{CT, CD} | _R]) ->
+    %% If Time < CT we skip 0, if Time > CT our
+    %% request begins inside the chunk so we need
+    %% to skip.
+    Skip = max(Time - CT, 0) * ?DATA_SIZE,
+    %% Drop the skip
+    <<_:Skip/binary, Rest/binary>> = CD,
+    %% See how many bytes we can get either the rest of
+    %% count or the maximum lengt of our buffer
+    Take = min((Time + Count - CT) * ?DATA_SIZE, byte_size(Rest)),
+    <<Bin:Take/binary, _/binary>> = Rest,
+    Start = max(Time, CT),
+    {ok, Start, Bin};
+
+get_overlap(_Time, _Count, []) ->
+    undefined.
+
+empty_cache(C, IO) ->
+    case mcache:pop(C) of
+        undefined ->
+            ok;
+        {ok, {Bucket, Metric} , Data} ->
+            write_chunks(IO, Bucket, Metric, Data),
+            empty_cache(C, IO)
+    end.
+
+new_cache() ->
+    CacheSize = application:get_env(metric_vnode, cache_size, 1024*1024*10),
+    Buckets = application:get_env(metric_vnode, cache_buckets, 128),
+    AgeCycle = application:get_env(metric_vnode, cache_age_cycle, 1000000),
+    Gap = application:get_env(metric_vnode, cache_max_gap, 10),
+    InitEntries = application:get_env(metric_vnode, cache_initial_entries, 10),
+    InitData = application:get_env(metric_vnode, cache_initial_data, 10),
+    mcache:new(CacheSize,
+               [
+                {initial_data_size, InitData},
+                {initial_entries, InitEntries},
+                {buckets, Buckets},
+                {max_gap, Gap},
+                {age_cycle, AgeCycle}
+               ]).
+
+-ifdef(TEST).
+overlap_test() ->
+    Time = 1497181112,
+    Count = 1200,
+    D1 = << <<$1>> || _ <- lists:seq(1, 3608) >>,
+    D2 = << <<$2>> || _ <- lists:seq(1, 2520) >>,
+    Data = [{1497181501, D1}, {1497181995, D2}],
+    {ok, TOut, DOut} = get_overlap(Time, Count, Data),
+    ?assert(byte_size(DOut) =< Count * ?DATA_SIZE),
+    ?assert(Time =< TOut),
+    ok.
+
+overlap_end_test() ->
+    Time = 1498484790,
+    Count = 21600,
+    D1 = << <<$1:64>> || _ <- lists:seq(1, 300) >>, % more then 240
+    Data = [{1498484790 + 21360, D1}],
+    {ok, TOut, DOut} = get_overlap(Time, Count, Data),
+    RCount = byte_size(DOut) div ?DATA_SIZE,
+    ?assertEqual(Time - TOut + 21600, 240),
+    ?assertEqual(240, RCount),
+    ?assertEqual(Time + Count, TOut + RCount),
+    ?assert((Time - TOut) * ?DATA_SIZE + byte_size(DOut) =< Count * ?DATA_SIZE),
+    ?assert(Time =< TOut),
+    ok.
+
+-endif.
+
+%% {_, {_, _, _, {_, _, _, C, _, _, _, _}, _, _, _, _, _, _, _, _}}
+%% = sys:get_state(pid(0,637,0)).

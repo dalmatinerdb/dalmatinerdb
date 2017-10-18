@@ -127,7 +127,8 @@ handle_call(get, _From, State = #state{hist = H}) ->
              {<<"p95">>,    hdr_histogram:percentile(H, 95.0)},
              {<<"p99">>,    hdr_histogram:percentile(H, 99.0)},
              {<<"p999">>,   hdr_histogram:percentile(H, 99.9)},
-             {<<"p9999">>,  hdr_histogram:percentile(H, 99.99)}
+             {<<"p9999">>,  hdr_histogram:percentile(H, 99.99)},
+             {<<"count">>,  hdr_histogram:get_total_count(H)}
             ],
     hdr_histogram:close(H),
     {reply, Reply, State#state{hist = new()}}.
