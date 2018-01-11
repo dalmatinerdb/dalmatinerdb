@@ -374,10 +374,15 @@ needs_repair(MObj, Replies, true) ->
     {lists:any(different(MObj), Objs), MObj};
 
 needs_repair(MObj, Replies, {partial, N}) ->
-    Keep = byte_size(MObj) - N * ?DATA_SIZE,
-    <<Head:Keep/binary, _/binary>> = MObj,
-    Objs = [Obj || {_IdxNode, <<Obj:Keep/binary, _/binary>>} <- Replies],
-    {lists:any(different(Head), Objs), Head}.
+    case byte_size(MObj) - N * ?DATA_SIZE of
+        Keep when Keep > 0 ->
+            <<Head:Keep/binary, _/binary>> = MObj,
+            Objs = [Obj ||
+                       {_IdxNode, <<Obj:Keep/binary, _/binary>>} <- Replies],
+            {lists:any(different(Head), Objs), Head};
+        _ ->
+            {false, undefined}
+    end.
 
 
 needs_repair(MObj, Replies) ->
