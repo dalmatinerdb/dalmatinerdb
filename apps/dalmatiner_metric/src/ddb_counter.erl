@@ -26,7 +26,12 @@ inc(Type, N) when is_binary(Type) ->
         ets:update_counter(?COUNTERS, {Type, self()}, N)
     catch
         error:badarg ->
-            ets:insert(?COUNTERS, {{Type, self()}, N})
+            try
+                ets:insert(?COUNTERS, {{Type, self()}, N})
+            catch
+                _:_ ->
+                    error
+            end
     end,
     ok.
 
