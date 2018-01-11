@@ -74,11 +74,16 @@ start_link(Name) ->
     end.
 
 notify(Name, Value) ->
-    case ets:lookup(?TBL, Name) of
-        [{Name, Pid}] ->
-            gen_server:cast(Pid, {notify, Value});
-        _ ->
-            {error, not_found}
+    try
+        case ets:lookup(?TBL, Name) of
+            [{Name, Pid}] ->
+                gen_server:cast(Pid, {notify, Value});
+            _ ->
+                {error, not_found}
+        end
+    catch
+        _:_ ->
+            error
     end.
 
 %%%===================================================================
