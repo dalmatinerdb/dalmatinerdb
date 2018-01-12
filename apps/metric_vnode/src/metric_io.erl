@@ -547,7 +547,7 @@ handle_call(_Request, _From, State) ->
 
 
 handle_cast({inform, Bucket}, State) ->
-    lager:info("[~p] io node informed about: ~p", [Bucket]),
+    lager:info("io node binformed about: ~p", [Bucket]),
     {_, State1} = get_or_create_set(Bucket, State),
     {noreply, State1};
 
@@ -610,7 +610,12 @@ terminate(Reason, S = #state{mstores = MStore, reader_pool = Pool}) ->
     gb_trees:map(fun(_, {_, MSet}) ->
                          mstore:close(MSet)
                  end, MStore),
-    lager:error("[~p] io server terminated: ~p", [self(), Reason]),
+    case Reason of
+        shutdown ->
+            ok;
+        _ ->
+            lager:error("[~p] io server terminated: ~p", [self(), Reason])
+    end,
     case S#state.reader_pool of
         undefined ->
             ok;
@@ -752,6 +757,7 @@ do_read_bitmap(Bucket, Metric, Time, State) ->
             lager:warning("[IO] Unknown metric: ~p/~p", [Bucket, Metric]),
             {{error, not_found}, State}
     end.
+
 -spec do_read(binary(), binary(), non_neg_integer(), pos_integer(), state()) ->
                      {bitstring(), state()}.
 do_read(Bucket, Metric, Time, Count, State = #state{})
