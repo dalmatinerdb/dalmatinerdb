@@ -18,7 +18,7 @@
          empty/1, fold/3, delete/1, delete/2, delete/3, close/1,
          buckets/1, metrics/2, metrics/3,
          read/7, read_rest/8, write/5,
-         pid/1]).
+         pid/1, inform/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -111,6 +111,11 @@ write(Hdl = #io_handle{pid = Pid, max_async_write = MaxLen},
         _ ->
             io_cast(Hdl, {write, Bucket, Metric, Time, Value})
     end.
+
+-spec inform(io_handle(), binary()) -> ok.
+
+inform(Hdl, Bucket) ->
+    io_cast(Hdl, {inform, Bucket}).
 
 -spec swrite(io_handle(), binary(), binary(), non_neg_integer(), binary()) ->
                     ok.
@@ -540,6 +545,11 @@ handle_call(_Request, _From, State) ->
 %% @end
 %%--------------------------------------------------------------------
 
+
+handle_cast({inform, Bucket}, State) ->
+    lager:info("[~p] io node informed about: ~p", [Bucket]),
+    {_, State1} = get_or_create_set(Bucket, State),
+    {noreply, State1};
 
 handle_cast({write, Bucket, Metric, Time, Value}, State) ->
     State1 = do_write(Bucket, Metric, Time, Value, State),

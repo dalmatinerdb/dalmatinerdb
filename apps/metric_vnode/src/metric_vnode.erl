@@ -471,6 +471,9 @@ get_resolution(Bucket, State = #state{resolutions = Ress}) ->
         {ok, Resolution} ->
             {Resolution, State};
         error ->
+            %% We have not seen this bucket yet lets inform the io
+            %% node about it's existence.
+            metric_io:inform(State#state.io, Bucket),
             Resolution = dalmatiner_opt:resolution(Bucket),
             Ress1 = btrie:store(Bucket, Resolution, Ress),
             {Resolution, State#state{resolutions = Ress1}}
