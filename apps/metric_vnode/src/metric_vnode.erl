@@ -372,20 +372,30 @@ handle_info(vacuum, State = #state{io = IO, partition = P}) ->
     lager:info("[vaccum] Finalized vaccum for partution ~p.", [P]),
     {ok, State2};
 
-handle_info({'EXIT', IO, normal}, State = #state{io = IO}) ->
+handle_info({'EXIT', _PID, normal}, State) ->
     {ok, State};
 
-handle_info({'EXIT', IO, E}, State = #state{io = IO}) ->
-    {stop, E, State};
+handle_info({'EXIT', Pid, E}, State = #state{io = IO}) ->
+    case metric_io:pid(IO) of
+        R when R =:= Pid ->
+            {stop, E, State};
+        _ ->
+            {ok, State}
+    end;
 
 handle_info(_, State) ->
     {ok, State}.
 
-handle_exit(IO, normal, State = #state{io = IO}) ->
+handle_exit(_Pid, normal, State) ->
     {ok, State};
 
-handle_exit(IO, E, State = #state{io = IO}) ->
-    {stop, E, State};
+handle_exit(Pid, E, State = #state{io = IO}) ->
+    case metric_io:pid(IO) of
+        R when R =:= Pid ->
+            {stop, E, State};
+        _ ->
+            {ok, State}
+    end;
 
 handle_exit(_PID, _Reason, State) ->
     {noreply, State}.
