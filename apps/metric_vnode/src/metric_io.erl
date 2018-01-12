@@ -17,7 +17,8 @@
 -export([start_link/1, count/1, get_bitmap/6, update_env/1,
          empty/1, fold/3, delete/1, delete/2, delete/3, close/1,
          buckets/1, metrics/2, metrics/3,
-         read/7, read_rest/8, write/5]).
+         read/7, read_rest/8, write/5,
+         pid/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -70,6 +71,11 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
+
+
+-spec pid(io_handle()) -> pid().
+pid(#io_handle{pid = Pid}) ->
+    Pid.
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -590,10 +596,11 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, S = #state{mstores = MStore, reader_pool = Pool}) ->
+terminate(Reason, S = #state{mstores = MStore, reader_pool = Pool}) ->
     gb_trees:map(fun(_, {_, MSet}) ->
                          mstore:close(MSet)
                  end, MStore),
+    lager:error("[~p] io server terminated: ~p", [self(), Reason]),
     case S#state.reader_pool of
         undefined ->
             ok;
