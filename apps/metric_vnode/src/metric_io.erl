@@ -851,12 +851,23 @@ maybe_async_read_rest(Bucket, Metric, Time, Count, Part, ReqID, Sender,
 
 maybe_async_read_rest(Bucket, Metric, Time, Count, Part, ReqID, Sender,
                       State = #state{node = N, partition = P}) ->
-    {ReadTime, ReadCount, MergeFn} = read_rest_prepare_part(Time, Count, Part),
-    {D, State1} = do_read(Bucket, Metric, ReadTime, ReadCount, State),
-    Data = MergeFn(D),
-    Dc = compress(Data, State),
-    riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
-    State1.
+    case read_rest_prepare_part(Time, Count, Part) of
+        {ReadTime, ReadCount, MergeFn} when ReadCount < 1 ->
+            lager:error("READ COUNT < 1!!! B: ~p, M: ~p, T: ~p,"
+                        " C: ~p, rT: ~p, rC: ~p",
+                        [Bucket, Metric, Time, Count,
+                         ReadTime, ReadCount]),
+            Data = MergeFn(<<>>),
+            Dc = compress(Data, State),
+            riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
+            State;
+        {ReadTime, ReadCount, MergeFn} ->
+            {D, State1} = do_read(Bucket, Metric, ReadTime, ReadCount, State),
+            Data = MergeFn(D),
+            Dc = compress(Data, State),
+            riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
+            State1
+    end.
 
 read_rest_prepare_part(Time, Count, Part) ->
     case Part of
