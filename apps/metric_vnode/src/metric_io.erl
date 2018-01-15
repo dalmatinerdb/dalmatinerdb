@@ -17,8 +17,8 @@
 -export([start_link/1, count/1, get_bitmap/6, update_env/1,
          empty/1, fold/3, delete/1, delete/2, delete/3, close/1,
          buckets/1, metrics/2, metrics/3,
-         read/7, read_rest/8, write/5,
-         pid/1, inform/2]).
+         read/7, %%read_rest/8,
+         write/5, pid/1, inform/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -28,7 +28,8 @@
 -define(WEEK, 604800). %% Seconds in a week.
 
 -type entry() :: {non_neg_integer(), mstore:mstore()}.
--type read_part() :: {non_neg_integer(), pos_integer(), binary()}.
+%% -type read_part() ::
+%%         {non_neg_integer(), pos_integer(), binary()}.
 -record(state, {
           async_read = false :: boolean(),
           async_min_size = 4069 :: non_neg_integer(),
@@ -141,31 +142,32 @@ read(Hdl = #io_handle{pid = Pid, max_async_write = MaxLen},
                           ReqID, Sender})
     end.
 
--spec read_rest(io_handle(), binary(), binary(), non_neg_integer(),
-                pos_integer(), read_part(), term(), term()) ->
-                       ok | {error, _}.
-read_rest(Hdl = #io_handle{pid = Pid, max_async_write = MaxLen},
-          Bucket, Metric, Time, Count, Part, ReqID, Sender) ->
-    case erlang:process_info(Pid, message_queue_len) of
-        {message_queue_len, N} when N > MaxLen ->
-            sread_rest(Hdl, Bucket, Metric, Time, Count, Part, ReqID, Sender);
-        _ ->
-            io_cast(Hdl, {read_rest, Bucket, Metric, Time, Count,
-                          Part, ReqID, Sender})
-    end.
-
 -spec sread(io_handle(), binary(), binary(), non_neg_integer(),
             pos_integer(), term(), term()) ->
                    ok | {error, _}.
 sread(Hdl, Bucket, Metric, Time, Count, ReqID, Sender) ->
     io_call_r(Hdl, {read, Bucket, Metric, Time, Count, ReqID, Sender}).
 
--spec sread_rest(io_handle(), binary(), binary(), non_neg_integer(),
-                 pos_integer(), read_part(), term(), term()) ->
-                        ok | {error, _}.
-sread_rest(Hdl, Bucket, Metric, Time, Count, Part, ReqID, Sender) ->
-    io_call_r(
-      Hdl, {read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender}).
+%% -spec read_rest(io_handle(), binary(), binary(), non_neg_integer(),
+%%                 pos_integer(), read_part(), term(), term()) ->
+%%                        ok | {error, _}.
+%% read_rest(Hdl = #io_handle{pid = Pid, max_async_write = MaxLen},
+%%           Bucket, Metric, Time, Count, Part, ReqID, Sender) ->
+%%     case erlang:process_info(Pid, message_queue_len) of
+%%         {message_queue_len, N} when N > MaxLen ->
+%%             sread_rest(Hdl, Bucket, Metric, Time,
+%%                        Count, Part, ReqID, Sender);
+%%         _ ->
+%%             io_cast(Hdl, {read_rest, Bucket, Metric, Time, Count,
+%%                           Part, ReqID, Sender})
+%%     end.
+%%
+%% -spec sread_rest(io_handle(), binary(), binary(), non_neg_integer(),
+%%                  pos_integer(), read_part(), term(), term()) ->
+%%                         ok | {error, _}.
+%% sread_rest(Hdl, Bucket, Metric, Time, Count, Part, ReqID, Sender) ->
+%%     io_call_r(
+%%       Hdl, {read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender}).
 
 count(Hdl) ->
     io_call_r(Hdl, count).
