@@ -198,11 +198,18 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
                 %% The request is neither before, after nor entirely inside the
                 %% cache we have to read data, but apply cached part on top of
                 %% it.
-                {ok, PartStart, Bin} ->
-                    Offset = PartStart - Time,
-                    Part = {Offset, byte_size(Bin) div ?DATA_SIZE, Bin},
-                    metric_io:read_rest(
-                      IO, Bucket, Metric, Time, Count, Part, ReqID, Sender),
+                {ok, _PartStart, _Bin} ->
+                    %% This seems problematic, we'll just revert to old
+                    %% behaviour of write then read. Optinisations ca
+                    %% happen later.
+                    %% OLD:
+                    %%Offset = PartStart - Time,
+                    %%Part = {Offset, byte_size(Bin) div ?DATA_SIZE, Bin},
+                    %%metric_io:read_rest(
+                    %%  IO, Bucket, Metric, Time, Count, Part, ReqID, Sender),
+                    write_chunks(State#state.io, Bucket, Metric, Data),
+                    metric_io:read(IO, Bucket, Metric, Time, Count, ReqID,
+                                   Sender),
                     {noreply, State}
             end;
         _ ->
@@ -561,7 +568,7 @@ write_chunks(IO, Bucket, Metric, [{T, V} | R]) ->
 
 %% We're completely before the data
 get_overlap(Time, Count, [{CT, CD} | R])
-  when CT + byte_size(CD) div ?DATA_SIZE  < Time ->
+  when CT + (byte_size(CD) div ?DATA_SIZE)  < Time ->
     get_overlap(Time, Count, R);
 
 %% We're completely behind the data to read so we
