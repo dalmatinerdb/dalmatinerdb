@@ -198,11 +198,18 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
                 %% The request is neither before, after nor entirely inside the
                 %% cache we have to read data, but apply cached part on top of
                 %% it.
-                {ok, PartStart, Bin} ->
-                    Offset = PartStart - Time,
-                    Part = {Offset, byte_size(Bin) div ?DATA_SIZE, Bin},
-                    metric_io:read_rest(
-                      IO, Bucket, Metric, Time, Count, Part, ReqID, Sender),
+                {ok, _PartStart, _Bin} ->
+                    %% This seems problematic, we'll just revert to old
+                    %% behaviour of write then read. Optinisations ca
+                    %% happen later.
+                    %% OLD:
+                    %%Offset = PartStart - Time,
+                    %%Part = {Offset, byte_size(Bin) div ?DATA_SIZE, Bin},
+                    %%metric_io:read_rest(
+                    %%  IO, Bucket, Metric, Time, Count, Part, ReqID, Sender),
+                    write_chunks(State#state.io, Bucket, Metric, Data),
+                    metric_io:read(IO, Bucket, Metric, Time, Count, ReqID,
+                                   Sender),
                     {noreply, State}
             end;
         _ ->
@@ -372,20 +379,30 @@ handle_info(vacuum, State = #state{io = IO, partition = P}) ->
     lager:info("[vaccum] Finalized vaccum for partution ~p.", [P]),
     {ok, State2};
 
-handle_info({'EXIT', IO, normal}, State = #state{io = IO}) ->
+handle_info({'EXIT', _PID, normal}, State) ->
     {ok, State};
 
-handle_info({'EXIT', IO, E}, State = #state{io = IO}) ->
-    {stop, E, State};
+handle_info({'EXIT', Pid, E}, State = #state{io = IO}) ->
+    case metric_io:pid(IO) of
+        R when R =:= Pid ->
+            {stop, E, State};
+        _ ->
+            {ok, State}
+    end;
 
 handle_info(_, State) ->
     {ok, State}.
 
-handle_exit(IO, normal, State = #state{io = IO}) ->
+handle_exit(_Pid, normal, State) ->
     {ok, State};
 
-handle_exit(IO, E, State = #state{io = IO}) ->
-    {stop, E, State};
+handle_exit(Pid, E, State = #state{io = IO}) ->
+    case metric_io:pid(IO) of
+        R when R =:= Pid ->
+            {stop, E, State};
+        _ ->
+            {ok, State}
+    end;
 
 handle_exit(_PID, _Reason, State) ->
     {noreply, State}.
@@ -461,6 +478,9 @@ get_resolution(Bucket, State = #state{resolutions = Ress}) ->
         {ok, Resolution} ->
             {Resolution, State};
         error ->
+            %% We have not seen this bucket yet lets inform the io
+            %% node about it's existence.
+            metric_io:inform(State#state.io, Bucket),
             Resolution = dalmatiner_opt:resolution(Bucket),
             Ress1 = btrie:store(Bucket, Resolution, Ress),
             {Resolution, State#state{resolutions = Ress1}}
@@ -548,7 +568,7 @@ write_chunks(IO, Bucket, Metric, [{T, V} | R]) ->
 
 %% We're completely before the data
 get_overlap(Time, Count, [{CT, CD} | R])
-  when CT + byte_size(CD) div ?DATA_SIZE  < Time ->
+  when CT + (byte_size(CD) div ?DATA_SIZE)  < Time ->
     get_overlap(Time, Count, R);
 
 %% We're completely behind the data to read so we

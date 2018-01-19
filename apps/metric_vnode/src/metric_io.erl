@@ -17,7 +17,8 @@
 -export([start_link/1, count/1, get_bitmap/6, update_env/1,
          empty/1, fold/3, delete/1, delete/2, delete/3, close/1,
          buckets/1, metrics/2, metrics/3,
-         read/7, read_rest/8, write/5]).
+         read/7, %%read_rest/8,
+         write/5, pid/1, inform/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -27,7 +28,8 @@
 -define(WEEK, 604800). %% Seconds in a week.
 
 -type entry() :: {non_neg_integer(), mstore:mstore()}.
--type read_part() :: {non_neg_integer(), pos_integer(), binary()}.
+%% -type read_part() ::
+%%         {non_neg_integer(), pos_integer(), binary()}.
 -record(state, {
           async_read = false :: boolean(),
           async_min_size = 4069 :: non_neg_integer(),
@@ -71,6 +73,11 @@
 %%% API
 %%%===================================================================
 
+
+-spec pid(io_handle()) -> pid().
+pid(#io_handle{pid = Pid}) ->
+    Pid.
+
 %%--------------------------------------------------------------------
 %% @doc
 %% Starts the server
@@ -106,6 +113,11 @@ write(Hdl = #io_handle{pid = Pid, max_async_write = MaxLen},
             io_cast(Hdl, {write, Bucket, Metric, Time, Value})
     end.
 
+-spec inform(io_handle(), binary()) -> ok.
+
+inform(Hdl, Bucket) ->
+    io_cast(Hdl, {inform, Bucket}).
+
 -spec swrite(io_handle(), binary(), binary(), non_neg_integer(), binary()) ->
                     ok.
 swrite(Hdl, Bucket, Metric, Time, Value) ->
@@ -130,31 +142,32 @@ read(Hdl = #io_handle{pid = Pid, max_async_write = MaxLen},
                           ReqID, Sender})
     end.
 
--spec read_rest(io_handle(), binary(), binary(), non_neg_integer(),
-                pos_integer(), read_part(), term(), term()) ->
-                       ok | {error, _}.
-read_rest(Hdl = #io_handle{pid = Pid, max_async_write = MaxLen},
-          Bucket, Metric, Time, Count, Part, ReqID, Sender) ->
-    case erlang:process_info(Pid, message_queue_len) of
-        {message_queue_len, N} when N > MaxLen ->
-            sread_rest(Hdl, Bucket, Metric, Time, Count, Part, ReqID, Sender);
-        _ ->
-            io_cast(Hdl, {read_rest, Bucket, Metric, Time, Count,
-                          Part, ReqID, Sender})
-    end.
-
 -spec sread(io_handle(), binary(), binary(), non_neg_integer(),
             pos_integer(), term(), term()) ->
                    ok | {error, _}.
 sread(Hdl, Bucket, Metric, Time, Count, ReqID, Sender) ->
     io_call_r(Hdl, {read, Bucket, Metric, Time, Count, ReqID, Sender}).
 
--spec sread_rest(io_handle(), binary(), binary(), non_neg_integer(),
-                 pos_integer(), read_part(), term(), term()) ->
-                        ok | {error, _}.
-sread_rest(Hdl, Bucket, Metric, Time, Count, Part, ReqID, Sender) ->
-    io_call_r(
-      Hdl, {read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender}).
+%% -spec read_rest(io_handle(), binary(), binary(), non_neg_integer(),
+%%                 pos_integer(), read_part(), term(), term()) ->
+%%                        ok | {error, _}.
+%% read_rest(Hdl = #io_handle{pid = Pid, max_async_write = MaxLen},
+%%           Bucket, Metric, Time, Count, Part, ReqID, Sender) ->
+%%     case erlang:process_info(Pid, message_queue_len) of
+%%         {message_queue_len, N} when N > MaxLen ->
+%%             sread_rest(Hdl, Bucket, Metric, Time,
+%%                        Count, Part, ReqID, Sender);
+%%         _ ->
+%%             io_cast(Hdl, {read_rest, Bucket, Metric, Time, Count,
+%%                           Part, ReqID, Sender})
+%%     end.
+%%
+%% -spec sread_rest(io_handle(), binary(), binary(), non_neg_integer(),
+%%                  pos_integer(), read_part(), term(), term()) ->
+%%                         ok | {error, _}.
+%% sread_rest(Hdl, Bucket, Metric, Time, Count, Part, ReqID, Sender) ->
+%%     io_call_r(
+%%       Hdl, {read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender}).
 
 count(Hdl) ->
     io_call_r(Hdl, count).
@@ -535,6 +548,11 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 
 
+handle_cast({inform, Bucket}, State) ->
+    lager:info("io node binformed about: ~p", [Bucket]),
+    {_, State1} = get_or_create_set(Bucket, State),
+    {noreply, State1};
+
 handle_cast({write, Bucket, Metric, Time, Value}, State) ->
     State1 = do_write(Bucket, Metric, Time, Value, State),
     {noreply, State1};
@@ -590,10 +608,16 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, S = #state{mstores = MStore, reader_pool = Pool}) ->
+terminate(Reason, S = #state{mstores = MStore, reader_pool = Pool}) ->
     gb_trees:map(fun(_, {_, MSet}) ->
                          mstore:close(MSet)
                  end, MStore),
+    case Reason of
+        shutdown ->
+            ok;
+        _ ->
+            lager:error("[~p] io server terminated: ~p", [self(), Reason])
+    end,
     case S#state.reader_pool of
         undefined ->
             ok;
@@ -735,6 +759,7 @@ do_read_bitmap(Bucket, Metric, Time, State) ->
             lager:warning("[IO] Unknown metric: ~p/~p", [Bucket, Metric]),
             {{error, not_found}, State}
     end.
+
 -spec do_read(binary(), binary(), non_neg_integer(), pos_integer(), state()) ->
                      {bitstring(), state()}.
 do_read(Bucket, Metric, Time, Count, State = #state{})
@@ -828,12 +853,23 @@ maybe_async_read_rest(Bucket, Metric, Time, Count, Part, ReqID, Sender,
 
 maybe_async_read_rest(Bucket, Metric, Time, Count, Part, ReqID, Sender,
                       State = #state{node = N, partition = P}) ->
-    {ReadTime, ReadCount, MergeFn} = read_rest_prepare_part(Time, Count, Part),
-    {D, State1} = do_read(Bucket, Metric, ReadTime, ReadCount, State),
-    Data = MergeFn(D),
-    Dc = compress(Data, State),
-    riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
-    State1.
+    case read_rest_prepare_part(Time, Count, Part) of
+        {ReadTime, ReadCount, MergeFn} when ReadCount < 1 ->
+            lager:error("READ COUNT < 1!!! B: ~p, M: ~p, T: ~p,"
+                        " C: ~p, rT: ~p, rC: ~p",
+                        [Bucket, Metric, Time, Count,
+                         ReadTime, ReadCount]),
+            Data = MergeFn(<<>>),
+            Dc = compress(Data, State),
+            riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
+            State;
+        {ReadTime, ReadCount, MergeFn} ->
+            {D, State1} = do_read(Bucket, Metric, ReadTime, ReadCount, State),
+            Data = MergeFn(D),
+            Dc = compress(Data, State),
+            riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
+            State1
+    end.
 
 read_rest_prepare_part(Time, Count, Part) ->
     case Part of
