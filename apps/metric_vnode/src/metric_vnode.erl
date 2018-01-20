@@ -207,6 +207,8 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
                     %%Part = {Offset, byte_size(Bin) div ?DATA_SIZE, Bin},
                     %%metric_io:read_rest(
                     %%  IO, Bucket, Metric, Time, Count, Part, ReqID, Sender),
+                    %% We evict the data we're going to write from the cache.
+                    {ok, _} = mcache:take(C, Bucket, Metric),
                     write_chunks(State#state.io, Bucket, Metric, Data),
                     metric_io:read(IO, Bucket, Metric, Time, Count, ReqID,
                                    Sender),
