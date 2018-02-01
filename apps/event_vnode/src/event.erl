@@ -52,7 +52,6 @@ do_append(N, W, Bucket, C, Events) ->
 get(Bucket, Start, End, Filter) ->
     get(Bucket, split(Bucket), Start, End, Filter).
 
-
 get(Bucket, Split, Start, End, Filter) when
       Start div Split =:= End div Split->
     ddb_histogram:timed_update(
