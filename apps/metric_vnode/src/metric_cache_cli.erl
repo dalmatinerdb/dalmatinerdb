@@ -25,8 +25,7 @@ cache_stats(_CmdBase, _Args, Flags) when length(Flags) > 1 ->
     [clique_status:text("Can't specify both --all and --node flags")];
 cache_stats(_CmdBase, _Args, []) ->
     Stats = metric:cache_stats(),
-    [print_cache_stats(Stat) || Stat <- Stats],
-    ok;
+    [print_cache_stats(Stat) || Stat <- Stats];
 cache_stats(CmdBase, Args, [{all, _Val}]) ->
     cache_stats(CmdBase, Args, []);
     %% We can't execute on any node
@@ -42,17 +41,21 @@ print_bucket({Name, B}) ->
     Evictions = proplists:get_value(evictions, B),
     Count = proplists:get_value(count, B),
     Alloc = proplists:get_value(alloc, B),
-    io:format("  ~s:~n", [Name]),
-    io:format("  ~5B | ~15B | ~15B | ~15B | ~10B ~n",
-              [Age, Inserts, Evictions, Count, Alloc]).
+    [io_lib:format("  ~s:~n", [Name]),
+     io_lib:format("  ~5B | ~15B | ~15B | ~15B | ~10B ~n",
+               [Age, Inserts, Evictions, Count, Alloc])].
 
 print_cache_stats({I, C}) ->
     Count = proplists:get_value(count, C),
     Alloc = proplists:get_value(alloc, C),
-    io:format("~p: [~p byte / ~p elements]~n", [I, Alloc, Count]),
-    Buckets = proplists:get_value(buckets, C),
-    io:format("  Name~n"),
-    io:format("  ~5s | ~15s | ~15s | ~15s | ~15s ~n",
-              ["Age", "Inserts", "Evictions", "Count", "Alloc"]),
-    [print_bucket(B) || B <- Buckets],
-    ok.
+    case proplists:get_value(buckets, C) of
+        [] ->
+            [];
+    Buckets ->
+            [io_lib:format("~p: [~p byte / ~p elements]~n", [I, Alloc, Count]),
+             "  Name~n",
+             io_lib:format("  ~5s | ~15s | ~15s | ~15s | ~15s ~n",
+                           ["Age", "Inserts", "Evictions", "Count", "Alloc"])
+             |
+             [print_bucket(B) || B <- Buckets]]
+    end.
