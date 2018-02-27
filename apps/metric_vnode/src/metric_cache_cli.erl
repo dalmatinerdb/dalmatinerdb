@@ -39,11 +39,12 @@ print_bucket({Name, B}) ->
     Age = proplists:get_value(age, B),
     Inserts = proplists:get_value(total_inserts, B),
     Evictions = proplists:get_value(evictions, B),
+    EM = proplists:get_value(evict_multiplyer, B),
     Count = proplists:get_value(count, B),
     Alloc = proplists:get_value(alloc, B),
     [io_lib:format("  ~s:~n", [Name]),
-     io_lib:format("  ~5B | ~15B | ~15B | ~15B | ~10B ~n",
-               [Age, Inserts, Evictions, Count, Alloc])].
+     io_lib:format("  ~5B | ~2.2f~n |  ~15B | ~15B | ~15B | ~10B ~n",
+               [Age, EM, Inserts, Evictions, Count, Alloc])].
 
 print_cache_stats({I, C}) ->
     Count = proplists:get_value(count, C),
@@ -53,9 +54,9 @@ print_cache_stats({I, C}) ->
             [];
     Buckets ->
             [io_lib:format("~p: [~p byte / ~p elements]~n", [I, Alloc, Count]),
-             "  Name~n",
-             io_lib:format("  ~5s | ~15s | ~15s | ~15s | ~15s ~n",
-                           ["Age", "Inserts", "Evictions", "Count", "Alloc"])
+             "  Name\n",
+             io_lib:format("  ~5s | ~5s | ~15s | ~15s | ~15s | ~15s ~n",
+                           ["Age", "EM", "Inserts", "Evictions", "Count", "Alloc"])
              |
              [print_bucket(B) || B <- Buckets]]
     end.
