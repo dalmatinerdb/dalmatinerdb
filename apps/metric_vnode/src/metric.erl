@@ -9,7 +9,8 @@
          list/1,
          list/2,
          update_ttl/2,
-         update_env/0
+         update_env/0,
+         cache_stats/0
         ]).
 
 -ignore_xref([update_ttl/2, get/6, put/4, update_env/0]).
