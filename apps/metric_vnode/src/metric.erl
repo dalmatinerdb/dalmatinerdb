@@ -13,7 +13,7 @@
          cache_stats/0
         ]).
 
--ignore_xref([cache_stats/0, update_ttl/2, get/6, put/4, update_env/0]).
+-ignore_xref([update_ttl/2, get/6, put/4, update_env/0]).
 
 
 mput(Nodes, Acc, W, N) ->
@@ -61,9 +61,6 @@ update_ttl(Bucket, TTL) ->
 update_env() ->
     metric_coverage:start(update_env).
 
-cache_stats() ->
-    metric_coverage:start(cache_stats).
-
 list(Bucket) ->
     ddb_histogram:timed_update(
       list_metrics, metric_coverage, start, [{metrics, Bucket}]).
@@ -110,3 +107,13 @@ do_wait(W, O, N, ReqID) ->
         5000 ->
             {error, timeout}
     end.
+
+cache_stats() ->
+    Nodes = riak_core_vnode_master:all_nodes(metric_vnode),
+    States = [sys:get_state(P) || P <- Nodes],
+    Caches = [{element(2, element(2, S)),
+               element(4, element(4, element(2, S)))} || S <- States],
+    [{I, mcache:stats(C)} || {I, C} <- Caches].
+
+
+
