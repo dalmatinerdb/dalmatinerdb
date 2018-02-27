@@ -24,11 +24,13 @@ erlang$1:::user_trace*
   /*
    * We cache the relevant strings
    */
-  @[arg4] = count();
+  @dist = llquantize(arg4, 10, 0, 6, 20);
+  @count = count()
 }
 
 
 tick-1s
 {
-  printa(@);
+  printa(@dist);
+  printa(@count);
 }
