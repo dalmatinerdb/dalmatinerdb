@@ -674,9 +674,21 @@ new_store(Partition, Bucket) when is_binary(Bucket) ->
     BucketDir = bucket_dir(Bucket, Partition),
     PointsPerFile = dalmatiner_opt:ppf(Bucket),
     MaxOpenFiles = application:get_env(metric_vnode, max_files, 2),
+    Flags = case {application:get_env(metric_vnode, bitmap, false),
+                  application:get_env(metric_vnode, hpts, false)} of
+                {true, true} ->
+                    [bitmap, hpts];
+                {false, true} ->
+                    [hpts];
+                {true, false} ->
+                    [bitmap];
+                _ ->
+                    []
+            end,
     lager:debug("[metric_io:~p] Opening ~s@~p",
                 [Partition, Bucket, PointsPerFile]),
     {ok, MSet} = mstore:new(BucketDir, [{file_size, PointsPerFile},
+                                        {flags, Flags},
                                         {max_files, MaxOpenFiles}]),
     {0, MSet}.
 
