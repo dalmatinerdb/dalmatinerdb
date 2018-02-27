@@ -32,7 +32,7 @@
   1},
  {<<"mcache">>,
   {git,"https://gitlab.com/Project-FiFo/DalmatinerDB/mcache.git",
-       {ref,"47b63ae157efafd70a3ddd1650b0669e32f8e9dd"}},
+       {ref,"7177b4f66a9b79dd4e0814c7dd61bb759be9fca9"}},
   0},
  {<<"mmath">>,{pkg,<<"mmath">>,<<"0.2.24">>},0},
  {<<"mstore">>,{pkg,<<"mstore">>,<<"0.3.5">>},0},
@@ -44,7 +44,7 @@
  {<<"parse_trans">>,{pkg,<<"parse_trans">>,<<"2.9.0">>},2},
  {<<"pbkdf2">>,{pkg,<<"pbkdf2">>,<<"2.0.0">>},1},
  {<<"poolboy">>,{pkg,<<"basho_poolboy">>,<<"0.8.3">>},1},
- {<<"quickrand">>,{pkg,<<"quickrand">>,<<"1.7.2">>},1},
+ {<<"quickrand">>,{pkg,<<"quickrand">>,<<"1.7.3">>},1},
  {<<"ranch">>,{pkg,<<"ranch">>,<<"1.1.0">>},0},
  {<<"recon">>,{pkg,<<"recon">>,<<"2.3.4">>},0},
  {<<"riak_core">>,{pkg,<<"riak_core_ng">>,<<"3.0.9">>},0},
@@ -52,8 +52,8 @@
  {<<"riak_sysmon">>,{pkg,<<"riak_sysmon">>,<<"2.1.5">>},1},
  {<<"setup">>,{pkg,<<"setup">>,<<"1.7.0">>},2},
  {<<"snappiest">>,{pkg,<<"snappiest">>,<<"1.2.0">>},0},
- {<<"trie">>,{pkg,<<"trie">>,<<"1.7.2">>},0},
- {<<"uuid">>,{pkg,<<"uuid_erl">>,<<"1.7.2">>},1}]}.
+ {<<"trie">>,{pkg,<<"trie">>,<<"1.7.3">>},0},
+ {<<"uuid">>,{pkg,<<"uuid_erl">>,<<"1.7.3">>},1}]}.
 [
 {pkg_hash,[
  {<<"basho_stats">>, <<"7E1174151509C64FCC1934120ED32295E14F84DAAE7F84926BA2C8D3700D146C">>},
@@ -91,7 +91,7 @@
  {<<"parse_trans">>, <<"3F5F7B402928FB9FD200C891E635DE909045D1EFAC40CE3F924D3892898F85EB">>},
  {<<"pbkdf2">>, <<"11C23279FDED5C0027AB3996CFAE77805521D7EF4BABDE2BD7EC04A9086CF499">>},
  {<<"poolboy">>, <<"DD450B69BFC3548A40EF6D3F6A7EC997FF9A6B6E293A37D091181140632DCD00">>},
- {<<"quickrand">>, <<"E856F3C69FEC00D1ACCA8E56CB452B650E838D3A9720811410F439121EFAFE59">>},
+ {<<"quickrand">>, <<"0E4FB48FAC904FE0C6E21D7E8C31A288A0700E1E81A35B38B649FC119079755D">>},
  {<<"ranch">>, <<"F7ED6D97DB8C2A27CCA85CACBD543558001FC5A355E93A7BFF1E9A9065A8545B">>},
  {<<"recon">>, <<"B406C2FCCDEAA0D94E23B5E30AE3D635A2D461E363A5C9C6316897037CF050D2">>},
  {<<"riak_core">>, <<"F6E27FB67C9CB9A3FB7AEF38EC1BB5633624D7B78E32E73FE7A0045F3514F032">>},
@@ -99,6 +99,6 @@
  {<<"riak_sysmon">>, <<"2331BBCAEBE73EA7B2449F4C765827142476CC73D7D86999B4209EE005694D6B">>},
  {<<"setup">>, <<"15DF8E57C6DF9755E22BFB1AEF0C640BD97E9889396FDFB2A85A5536A9043674">>},
  {<<"snappiest">>, <<"25706FEBB5ECAEA900D879A89C6D967C8D1BF700F8546BEBD0DEA514A8CCBFB7">>},
- {<<"trie">>, <<"CF3779ACF42DE76F8A9B74517E46449D3D31A827ED7A7C287B3A534945966237">>},
- {<<"uuid">>, <<"D596C8DD01A4AE48B9D8D51832CCC8F8302BF67ACD01336AEC3FCFAE6B9D2BC2">>}]}
+ {<<"trie">>, <<"B2F68E2075DF2085E7C02B0C891BACB6782C281F8CA7BABAF4C3E8C266C3BCAB">>},
+ {<<"uuid">>, <<"C5DF97D1A3D626235C2415E74053C47B2138BB863C5CD802AB5CAECB8ECC019F">>}]}
 ].
