@@ -25,7 +25,7 @@ cache_stats(_CmdBase, _Args, Flags) when length(Flags) > 1 ->
     [clique_status:text("Can't specify both --all and --node flags")];
 cache_stats(_CmdBase, _Args, []) ->
     Stats = metric:cache_stats(),
-    [print_cache_stats(Stat) || Stat <- Stats];
+    [clique_status:text([print_cache_stats(Stat) || Stat <- Stats])];
 cache_stats(CmdBase, Args, [{all, _Val}]) ->
     cache_stats(CmdBase, Args, []);
     %% We can't execute on any node
