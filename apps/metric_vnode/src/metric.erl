@@ -106,3 +106,13 @@ do_wait(W, O, N, ReqID) ->
         5000 ->
             {error, timeout}
     end.
+
+cache_stats() ->
+    Nodes = riak_core_vnode_master:all_nodes(metric_vnode),
+    States = [sys:get_state(P) || P <- Nodes],
+    Caches = [{element(2, element(2, S)),
+               element(4, element(4, element(2, S)))} || S <- States],
+    [{I, mcache:stats(C)} || {I, C} <- Caches].
+
+
+
