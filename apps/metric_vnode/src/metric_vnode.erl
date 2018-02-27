@@ -350,12 +350,6 @@ handle_coverage(update_env, _KeySpaces, _Sender,
     Reply = {ok, undefined, {P, N}, btrie:new()},
     {reply, Reply, update_env(State#state{io = IO1})};
 
-handle_coverage(cache_stats, _KeySpaces, _Sender,
-                State = #state{partition=P, node=N, cache = C}) ->
-    R = btrie:store(term_to_binary({P, N}), mcache:stats(C), btrie:new()),
-    Reply = {ok, undefined, {P, N}, R},
-    {reply, Reply, State};
-
 handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
                 State = #state{partition=P, node=N, cache = C, io = IO,
                                lifetimes = Lifetimes,
