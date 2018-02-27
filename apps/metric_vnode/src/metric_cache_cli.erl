@@ -53,7 +53,7 @@ print_cache_stats({I, C}) ->
             Count = proplists:get_value(count, C),
             Alloc = proplists:get_value(alloc, C),
             EM = proplists:get_value(evict_multiplyer, C),
-            [io_lib:format("~p: [~2.2f~n EM | ~p byte | ~p elements]~n",
+            [io_lib:format("~p: [~5.2f~n EM | ~p byte | ~p elements]~n",
                            [I, EM, Alloc, Count]),
              "  Name\n",
              io_lib:format("  ~5s |~15s | ~15s | ~15s | ~15s ~n",
