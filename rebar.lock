@@ -32,7 +32,7 @@
   1},
  {<<"mcache">>,
   {git,"https://gitlab.com/Project-FiFo/DalmatinerDB/mcache.git",
-       {ref,"6bfa57cf946c67da68737ee391a1f7c9ad12d3e3"}},
+       {ref,"d3fa707e638d092c46e5a4f53e8e68c82ad554bf"}},
   0},
  {<<"mmath">>,{pkg,<<"mmath">>,<<"0.2.24">>},0},
  {<<"mstore">>,{pkg,<<"mstore">>,<<"0.3.5">>},0},
