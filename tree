@@ -24,7 +24,7 @@
 ├─ mcache─v0.2.6+build.73.ref7177b4f
 ├─ metric_vnode─0.1.3
 ├─ mmath─0.2.24
-├─ mstore─0.3.5
+├─ mstore─v0.3.5+build.197.ref640a0d1
 ├─ mstore_inspector─0.1.1
 ├─ otters─0.2.10
 │  ├─ dynamic_compile─1.0.0
