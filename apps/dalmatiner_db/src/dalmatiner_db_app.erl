@@ -10,6 +10,11 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
+    CHashSize = application:get_env(dalmatiner_db, chash_cache_size,
+                                    16*1024*1024),
+    CHashRatio = application:get_env(dalmatiner_db, chash_cache_ratio,
+                                     0.4),
+    e2qc:setup(chash, [{size, CHashSize}, {ratio, CHashRatio}]),
     ddb_histogram:register(get),
     ddb_histogram:register(put),
     ddb_histogram:register(mput),
