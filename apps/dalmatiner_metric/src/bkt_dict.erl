@@ -61,7 +61,8 @@ update_chash(BD = #bkt_dict{n = N}) ->
     BD#bkt_dict{nodes = Nodes2, cbin = CBin, ring_size = RingSize}.
 
 
-%% From CHashBin bevcause we did something horribly wrong here ...
+%% We need to a adjust that since we are using the ord dict to lookup
+%% And that lookup will result in giving THE FOLLOWING index.
 responsible_index(<<HashKey:160/integer>>, Size) ->
     responsible_index(HashKey, Size);
 responsible_index(HashKey, Size) ->
