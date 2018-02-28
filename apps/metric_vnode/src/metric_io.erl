@@ -20,6 +20,8 @@
          read/7, %%read_rest/8,
          write/5, pid/1, inform/2]).
 
+-ignore_xref([inform/2]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
