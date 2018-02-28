@@ -16,16 +16,6 @@
 -ignore_xref([update_ttl/2, get/6, put/4, update_env/0]).
 
 
-mput(Nodes, Tid, W, N) when is_integer(Tid) ->
-    ddb_histogram:timed_update(
-      mput, ets, foldl,
-      [fun({DocIdx, Data}, ok) ->
-               do_mput(orddict:fetch(DocIdx, Nodes), Data, W, N);
-          ({DocIdx, Data}, R) ->
-               do_mput(orddict:fetch(DocIdx, Nodes), Data, W, N),
-               R
-       end, ok, Tid]);
-
 mput(Nodes, Acc, W, N) ->
     ddb_histogram:timed_update(
       mput, dict, fold,
