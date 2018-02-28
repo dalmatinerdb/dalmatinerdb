@@ -17,7 +17,6 @@
                   dproto,
                   mstore,
                   mmath,
-                  e2qc,
                   dalmatiner_vacuum,
                   dalmatiner_metric,
                   snappiest,

@@ -67,11 +67,7 @@ insert_metric(Metric, [{Time, Count} | Splits], PointsIn,
                               size = MaxCnt}) ->
     Size = (Count * ?DATA_SIZE),
     <<Points:Size/binary, Rest/binary>> = PointsIn,
-    Key = {Bucket, {Metric, Time div PPF}},
-    DocIdx = e2qc:cache(chash, Key,
-                        fun() ->
-                                riak_core_util:chash_key(Key)
-                        end),
+    DocIdx = riak_core_util:chash_key({Bucket, {Metric, Time div PPF}}),
     {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
     L1 = case ets:lookup(Dict, Idx) of
                 [] ->
