@@ -15,6 +15,7 @@
 
 -record(sstate,
         {
+          recv_size = 0,
           max_bkt_batch_size = 500,
           last = undefined :: non_neg_integer() | undefined,
           max_diff = 1 :: pos_integer(),
@@ -279,15 +280,17 @@ stream_loop(Socket, Transport, State = #sstate{dict = Dict},
     batch_loop(Socket, Transport, State#sstate{dict = Dict1, last = undefined},
                Time, dproto_tcp:decode_batch(Acc));
 
-stream_loop(Socket, Transport, State = #sstate{max_diff = D},
+stream_loop(Socket, Transport, State = #sstate{max_diff = D, recv_size = Size},
             {incomplete, Acc}) ->
-    case Transport:recv(Socket, 0, min(D * 1000, 5000)) of
+    case Transport:recv(Socket, Size, min(D * 750, 5000)) of
         {ok, Data} ->
             Acc1 = <<Acc/binary, Data/binary>>,
-            stream_loop(Socket, Transport, State,
+            stream_loop(Socket, Transport, State#sstate{recv_size = Size + 64},
                         dproto_tcp:decode_stream(Acc1));
         {error, timeout} ->
-            stream_loop(Socket, Transport, State, {incomplete, Acc});
+            stream_loop(Socket, Transport,
+                        State#sstate{recv_size = max(0, Size - 512)},
+                        {incomplete, Acc});
         {error, closed} ->
             bkt_dict:flush(State#sstate.dict),
             ok;
