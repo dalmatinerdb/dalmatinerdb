@@ -9,8 +9,7 @@
 -record(bkt_dict, {
           bucket    :: binary(),
           ppf       :: pos_integer(),
-          dict      :: ets:tid(),
-          counters  :: ets:tid(),
+          dict      :: dicts:dict(),
           n         :: pos_integer(),
           w         :: pos_integer(),
           nodes     :: list() | undefined,
@@ -25,13 +24,8 @@
                  bkt_dict().
 new(Bkt, N, W) ->
     PPF = dalmatiner_opt:ppf(Bkt),
-    Dict = ets:new(bkt_dict, [ordered_set]),
-    Counters = ets:new(bkt_dict_counters, [ordered_set]),
-    update_chash(#bkt_dict{bucket = Bkt,
-                           ppf = PPF,
-                           dict = Dict,
-                           counters = Counters,
-                           n = N, w = W}).
+    Dict = dict:new(),
+    update_chash(#bkt_dict{bucket = Bkt, ppf = PPF, dict = Dict, n = N, w = W}).
 
 -spec add(binary(), pos_integer(), binary(), bkt_dict()) ->
                  bkt_dict().
@@ -43,12 +37,10 @@ add(Metric, Time, Points, BD = #bkt_dict{ppf = PPF}) ->
 
 -spec flush(bkt_dict()) ->
                  bkt_dict().
-flush(BD = #bkt_dict{dict = Dict, counters = Counters, w = W, n = N}) ->
+flush(BD = #bkt_dict{dict = Dict, w = W, n = N}) ->
     BD1 = #bkt_dict{nodes = Nodes} = update_chash(BD),
     metric:mput(Nodes, Dict, W, N),
-    ets:delete_all_objects(Dict),
-    ets:delete_all_objects(Counters),
-    BD1.
+    BD1#bkt_dict{dict = dict:new()}.
 
 
 -spec update_chash(bkt_dict()) ->
@@ -61,7 +53,8 @@ update_chash(BD = #bkt_dict{n = N}) ->
     BD#bkt_dict{nodes = Nodes2, cbin = CBin, ring_size = RingSize}.
 
 
-%% From CHashBin bevcause we did something horribly wrong here ...
+%% We need to a adjust that since we are using the ord dict to lookup
+%% And that lookup will result in giving THE FOLLOWING index.
 responsible_index(<<HashKey:160/integer>>, Size) ->
     responsible_index(HashKey, Size);
 responsible_index(HashKey, Size) ->
@@ -75,34 +68,40 @@ insert_metric(_Metric, [], <<>>, BD) ->
     BD;
 
 insert_metric(Metric, [{Time, Count} | Splits], PointsIn,
-               BD = #bkt_dict{bucket = Bucket, ppf = PPF,
-                              dict = Dict, counters = Counters,
-                              size = MaxCnt, ring_size = RingSize}) ->
+              BD = #bkt_dict{bucket = Bucket, ppf = PPF,
+                             dict = Dict, size = MaxCnt,
+                             ring_size = RingSize}) ->
     Size = (Count * ?DATA_SIZE),
     <<Points:Size/binary, Rest/binary>> = PointsIn,
     DocIdx = riak_core_util:chash_key({Bucket, {Metric, Time div PPF}}),
     Idx = responsible_index(DocIdx, RingSize),
-    L1 = case ets:lookup(Dict, Idx) of
-                [] ->
-                 [{Bucket, Metric, Time, Points}];
-             [{Idx, L0}] ->
-                 [{Bucket, Metric, Time, Points} | L0]
-         end,
-    ets:insert(Dict, {Idx, L1}),
-    BktCnt = ets:update_counter(Counters, Idx, 1, {Idx, 1}),
-    BD1 = case BktCnt of
+    Dict1 = dict:append(Idx, {Bucket, Metric, Time, Points}, Dict),
+    CntName = <<Idx:160/integer, "-count">>,
+    BktCnt = case dict:find(CntName, Dict1) of
+                 error ->
+                     1;
+                 {ok, N} ->
+                     N + 1
+             end,
+    Dict2 = dict:store(CntName, BktCnt, Dict1),
+
+    BD1 = BD#bkt_dict{dict = Dict2},
+    BD2 = case BktCnt of
               BktCnt when BktCnt > MaxCnt ->
-                  BD#bkt_dict{size = BktCnt};
+                  BD1#bkt_dict{size = BktCnt};
               _ ->
-                  BD
+                  BD1
           end,
-    insert_metric(Metric, Splits, Rest, BD1).
+    insert_metric(Metric, Splits, Rest, BD2).
 
 size(#bkt_dict{size = Size}) ->
     Size.
 
 to_list(#bkt_dict{dict = Dict}) ->
-    L = ets:foldl(fun ({_Idx, Es}, Acc) ->
-                          [Es | Acc]
+    L = dict:fold(fun (_Idx, Es, Acc) when is_integer(_Idx) ->
+                          [Es | Acc];
+                      (_Idx, _Es, Acc) ->
+                          Acc
                   end, [], Dict),
     lists:flatten(L).
+
