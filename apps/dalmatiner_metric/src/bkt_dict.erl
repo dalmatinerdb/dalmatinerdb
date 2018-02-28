@@ -7,15 +7,16 @@
 -export_type([bkt_dict/0]).
 
 -record(bkt_dict, {
-          bucket   :: binary(),
-          ppf      :: pos_integer(),
-          dict     :: ets:tid(),
-          counters :: ets:tid(),
-          n        :: pos_integer(),
-          w        :: pos_integer(),
-          nodes    :: list() | undefined,
-          cbin     :: list() | undefined,
-          size = 0 :: non_neg_integer()
+          bucket    :: binary(),
+          ppf       :: pos_integer(),
+          dict      :: ets:tid(),
+          counters  :: ets:tid(),
+          n         :: pos_integer(),
+          w         :: pos_integer(),
+          nodes     :: list() | undefined,
+          cbin      :: list() | undefined,
+          ring_size :: non_neg_integer() | undefined,
+          size = 0  :: non_neg_integer()
          }).
 
 -type bkt_dict() :: #bkt_dict{}.
@@ -54,21 +55,33 @@ flush(BD = #bkt_dict{dict = Dict, counters = Counters, w = W, n = N}) ->
                  bkt_dict().
 update_chash(BD = #bkt_dict{n = N}) ->
     {ok, CBin} = riak_core_ring_manager:get_chash_bin(),
+    RingSize = chashbin:num_partitions(CBin),
     Nodes1 = chash:nodes(chashbin:to_chash(CBin)),
     Nodes2 = [{I, riak_core_apl:get_apl(I, N, metric)} || {I, _} <- Nodes1],
-    BD#bkt_dict{nodes = Nodes2, cbin = CBin}.
+    BD#bkt_dict{nodes = Nodes2, cbin = CBin, ring_size = RingSize}.
+
+
+%% From CHashBin bevcause we did something horribly wrong here ...
+responsible_index(<<HashKey:160/integer>>, Size) ->
+    responsible_index(HashKey, Size);
+responsible_index(HashKey, Size) ->
+    Inc = chash:ring_increment(Size),
+    %% (((HashKey div Inc) + 1) rem Size) * Inc.
+    %% We had to remove the - 1 ...
+    ((HashKey div Inc) rem Size) * Inc.
+
 
 insert_metric(_Metric, [], <<>>, BD) ->
     BD;
 
 insert_metric(Metric, [{Time, Count} | Splits], PointsIn,
-               BD = #bkt_dict{bucket = Bucket, cbin = CBin, ppf = PPF,
+               BD = #bkt_dict{bucket = Bucket, ppf = PPF,
                               dict = Dict, counters = Counters,
-                              size = MaxCnt}) ->
+                              size = MaxCnt, ring_size = RingSize}) ->
     Size = (Count * ?DATA_SIZE),
     <<Points:Size/binary, Rest/binary>> = PointsIn,
     DocIdx = riak_core_util:chash_key({Bucket, {Metric, Time div PPF}}),
-    {Idx, _} = chashbin:itr_value(chashbin:exact_iterator(DocIdx, CBin)),
+    Idx = responsible_index(DocIdx, RingSize),
     L1 = case ets:lookup(Dict, Idx) of
                 [] ->
                  [{Bucket, Metric, Time, Points}];
