@@ -475,36 +475,43 @@ expiry(Bucket, State = #state{now=Now}) ->
             {Exp, State2}
     end.
 
-get_resolution(Bucket, State = #state{resolutions = Ress}) ->
-    case btrie:find(Bucket, Ress) of
-        {ok, Resolution} ->
-            {Resolution, State};
-        error ->
-            %% We have not seen this bucket yet lets inform the io
-            %% node about it's existence.
-            metric_io:inform(State#state.io, Bucket),
-            Resolution = dalmatiner_opt:resolution(Bucket),
-            Ress1 = btrie:store(Bucket, Resolution, Ress),
-            {Resolution, State#state{resolutions = Ress1}}
-    end.
+get_resolution(Bucket, State = #state{resolutions = _Ress}) ->
+    %% case btrie:find(Bucket, Ress) of
+    %%     {ok, Resolution} ->
+    %%         {Resolution, State};
+    %%     error ->
+    %%         %% We have not seen this bucket yet lets inform the io
+    %%         %% node about it's existence.
+    %%         metric_io:inform(State#state.io, Bucket),
+    %%         Resolution = dalmatiner_opt:resolution(Bucket),
+    %%         Ress1 = btrie:store(Bucket, Resolution, Ress),
+    %%         {Resolution, State#state{resolutions = Ress1}}
+    %% end.
+    {dalmatiner_opt:resolution(Bucket), State}.
 
-get_lifetime(Bucket, State = #state{lifetimes = Lifetimes}) ->
-    case btrie:find(Bucket, Lifetimes) of
-        {ok, TTL} ->
-            {TTL, State};
-        error ->
-            Resolution = dalmatiner_opt:resolution(Bucket),
-            %% We need to scale TTL to nanoseconds since we
-            %% deal with that internally.
-            TTL = case dalmatiner_opt:lifetime(Bucket) of
-                      infinity ->
-                          infinity;
-                      T ->
-                          T * Resolution
-                  end,
-            Lifetimes1 = btrie:store(Bucket, TTL, Lifetimes),
-            {TTL, State#state{lifetimes = Lifetimes1}}
-    end.
+get_lifetime(Bucket, State = #state{lifetimes = _Lifetimes}) ->
+    %% case btrie:find(Bucket, Lifetimes) of
+    %%     {ok, TTL} ->
+    %%         {TTL, State};
+    %%     error ->
+    %%         Resolution = dalmatiner_opt:resolution(Bucket),
+    %%         %% We need to scale TTL to nanoseconds since we
+    %%         %% deal with that internally.
+    %%         TTL = case dalmatiner_opt:lifetime(Bucket) of
+    %%                   infinity ->
+    %%                       infinity;
+    %%                   T ->
+    %%                       T * Resolution
+    %%               end,
+    %%         Lifetimes1 = btrie:store(Bucket, TTL, Lifetimes),
+    %%         {TTL, State#state{lifetimes = Lifetimes1}}
+    %% end.
+    {case dalmatiner_opt:lifetime(Bucket) of
+        infinity ->
+            infinity;
+        T ->
+            T * dalmatiner_opt:resolution(Bucket)
+    end, State}.
 
 update_env(State) ->
     State.
