@@ -52,7 +52,11 @@
   0},
  {<<"mstore">>,
   {git,"https://gitlab.com/Project-FiFo/DalmatinerDB/mstore.git",
+<<<<<<< HEAD
        {ref,"921517169b50fa72a9e8b60a70d552efe6f06f6e"}},
+=======
+       {ref,"640a0d1bf8527faf512bacd79243f3fd011e2f93"}},
+>>>>>>> libbump-again
   0},
  {<<"mstore_inspector">>,
   {git,"https://gitlab.com/Project-FiFo/DalmatinerDB/mstore_inspector.git",
@@ -74,7 +78,10 @@
  {<<"riak_sysmon">>,{pkg,<<"riak_sysmon">>,<<"2.1.5">>},1},
  {<<"setup">>,{pkg,<<"setup">>,<<"1.7.0">>},2},
  {<<"snappiest">>,{pkg,<<"snappiest">>,<<"1.2.0">>},0},
+<<<<<<< HEAD
  {<<"sqlmig">>,{pkg,<<"sqlmig">>,<<"0.1.5">>},1},
+=======
+>>>>>>> libbump-again
  {<<"trie">>,{pkg,<<"trie">>,<<"1.7.3">>},0},
  {<<"uuid">>,{pkg,<<"uuid_erl">>,<<"1.7.3">>},1}]}.
 [
@@ -124,7 +131,10 @@
  {<<"riak_sysmon">>, <<"2331BBCAEBE73EA7B2449F4C765827142476CC73D7D86999B4209EE005694D6B">>},
  {<<"setup">>, <<"15DF8E57C6DF9755E22BFB1AEF0C640BD97E9889396FDFB2A85A5536A9043674">>},
  {<<"snappiest">>, <<"25706FEBB5ECAEA900D879A89C6D967C8D1BF700F8546BEBD0DEA514A8CCBFB7">>},
+<<<<<<< HEAD
  {<<"sqlmig">>, <<"8208D222A9335C1B1171F4FD1CE4150CF28B1FDF37CA9A66715AC434ED9B9AF4">>},
+=======
+>>>>>>> libbump-again
  {<<"trie">>, <<"B2F68E2075DF2085E7C02B0C891BACB6782C281F8CA7BABAF4C3E8C266C3BCAB">>},
  {<<"uuid">>, <<"C5DF97D1A3D626235C2415E74053C47B2138BB863C5CD802AB5CAECB8ECC019F">>}]}
 ].
