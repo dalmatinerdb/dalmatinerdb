@@ -37,7 +37,7 @@
  {<<"mmath">>,{pkg,<<"mmath">>,<<"0.2.24">>},0},
  {<<"mstore">>,
   {git,"https://gitlab.com/Project-FiFo/DalmatinerDB/mstore.git",
-       {ref,"640a0d1bf8527faf512bacd79243f3fd011e2f93"}},
+       {ref,"921517169b50fa72a9e8b60a70d552efe6f06f6e"}},
   0},
  {<<"mstore_inspector">>,
   {git,"https://gitlab.com/Project-FiFo/DalmatinerDB/mstore_inspector.git",
