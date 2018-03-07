@@ -28,7 +28,7 @@
          handle_overload_info/2,
          handle_exit/3]).
 
--export([mput/3, put/5, get/4]).
+-export([mput/3, put/5, get/5]).
 
 -export([
          object_info/1,
@@ -64,6 +64,7 @@
           now :: pos_integer() ,
           %% Resolution cache
           resolutions = btrie:new(),
+          hpts = btrie:new(),
           %% TTL cache
           lifetimes  = btrie:new()
          }).
@@ -118,9 +119,10 @@ mput(Preflist, ReqID, Data) ->
                                    {raw, ReqID, self()},
                                    ?MASTER).
 
-get(Preflist, ReqID, {Bucket, Metric}, {Time, Count}) ->
+get(Preflist, ReqID, {Bucket, Metric}, HPTS, {Time, Count}) ->
     riak_core_vnode_master:command(Preflist,
-                                   {get, ReqID, Bucket, Metric, {Time, Count}},
+                                   {get, ReqID, Bucket, Metric, HPTS,
+                                    {Time, Count}},
                                    {fsm, undefined, self()},
                                    ?MASTER).
 init([Partition]) ->
@@ -181,20 +183,35 @@ handle_command({put, Bucket, Metric, {Time, Value}}, _Sender, State)
     State1=  do_put(Bucket, Metric, Time, Value, State),
     {reply, ok, State1};
 
-handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
+handle_command({get, ReqID, Bucket, Metric, HPTS, {Time, Count}}, Sender,
                #state{cache = C, io=IO, node=N, partition=P} = State) ->
     case mcache:get(C, Bucket, Metric) of
         %% we do have cached data!
         {ok, Data} ->
-            case get_overlap(Time, Count, Data) of
+            {BktHPTS, State1} = get_hpts(Bucket, State),
+            DataSize = case BktHPTS of
+                           true ->
+                               ?DATA_SIZE * 2;
+                           false ->
+                               ?DATA_SIZE
+                       end,
+            case get_overlap(Time, Count, DataSize, Data) of
                 %% but there is no overlap
                 undefined ->
-                    metric_io:read(IO, Bucket, Metric, Time, Count, ReqID,
-                                   Sender),
-                    {noreply, State};
+                    metric_io:read(IO, Bucket, Metric, Time, Count, HPTS,
+                                   ReqID, Sender),
+                    {noreply, State1};
                 %% we have all in the cache!
-                {ok, Time, Bin} when byte_size(Bin) div ?DATA_SIZE == Count ->
-                    {reply, {ok, ReqID, {P, N}, Bin}, State};
+                {ok, Time, Bin} when byte_size(Bin) div DataSize == Count ->
+                    %% We might need to alter the reply
+                    case {BktHPTS, HPTS} of
+                        {true, false} ->
+                            {reply, {ok, ReqID, {P, N},
+                                     mmath_hpts:values(Bin)}, State1};
+                        _ ->
+                            {reply, {ok, ReqID, {P, N}, Bin}, State1}
+                    end;
+
                 %% The request is neither before, after nor entirely inside the
                 %% cache we have to read data, but apply cached part on top of
                 %% it.
@@ -204,18 +221,19 @@ handle_command({get, ReqID, Bucket, Metric, {Time, Count}}, Sender,
                     %% happen later.
                     %% OLD:
                     %%Offset = PartStart - Time,
-                    %%Part = {Offset, byte_size(Bin) div ?DATA_SIZE, Bin},
+                    %%Part = {Offset, byte_size(Bin) div DataSize, Bin},
                     %%metric_io:read_rest(
                     %%  IO, Bucket, Metric, Time, Count, Part, ReqID, Sender),
                     %% We evict the data we're going to write from the cache.
                     {ok, _} = mcache:take(C, Bucket, Metric),
-                    write_chunks(State#state.io, Bucket, Metric, Data),
-                    metric_io:read(IO, Bucket, Metric, Time, Count, ReqID,
-                                   Sender),
-                    {noreply, State}
+                    write_chunks(State1#state.io, Bucket, Metric, Data),
+                    metric_io:read(IO, Bucket, Metric, Time, Count, HPTS,
+                                   ReqID, Sender),
+                    {noreply, State1}
             end;
         _ ->
-            metric_io:read(IO, Bucket, Metric, Time, Count, ReqID, Sender),
+            metric_io:read(IO, Bucket, Metric, Time, Count,
+                           HPTS, ReqID, Sender),
             {noreply, State}
     end;
 
@@ -353,6 +371,7 @@ handle_coverage(update_env, _KeySpaces, _Sender,
 handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
                 State = #state{partition=P, node=N, cache = C, io = IO,
                                lifetimes = Lifetimes,
+                               hpts = HPTSs,
                                resolutions = Resolutions}) ->
     mcache:remove_bucket(C, Bucket),
     _Repply = metric_io:delete(IO, Bucket),
@@ -361,7 +380,9 @@ handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
     Reply = {ok, undefined, {P, N}, R1},
     LT1 = btrie:erase(Bucket, Lifetimes),
     Rs1 = btrie:erase(Bucket, Resolutions),
+    HPTSs1 = btrie:erase(HPTSs, Resolutions),
     {reply, Reply, State#state{lifetimes = LT1,
+                               hpts = HPTSs1,
                                resolutions = Rs1}}.
 
 handle_info(vacuum, State = #state{io = IO, partition = P}) ->
@@ -488,6 +509,19 @@ get_resolution(Bucket, State = #state{resolutions = Ress}) ->
             {Resolution, State#state{resolutions = Ress1}}
     end.
 
+get_hpts(Bucket, State = #state{hpts = HPTSs}) ->
+    case btrie:find(Bucket, HPTSs) of
+        {ok, Resolution} ->
+            {Resolution, State};
+        error ->
+            %% We have not seen this bucket yet lets inform the io
+            %% node about it's existence.
+            metric_io:inform(State#state.io, Bucket),
+            HPTS = dalmatiner_opt:hpts(Bucket),
+            HPTSs1 = btrie:store(Bucket, HPTS, HPTSs),
+            {HPTS, State#state{hpts = HPTSs1}}
+    end.
+
 get_lifetime(Bucket, State = #state{lifetimes = Lifetimes}) ->
     case btrie:find(Bucket, Lifetimes) of
         {ok, TTL} ->
@@ -577,43 +611,43 @@ write_chunks(IO, Bucket, Metric, [{T, V} | R]) ->
     write_chunks(IO, Bucket, Metric, R).
 
 %% We're completely before the data
-get_overlap(Time, Count, [{CT, CD} | R])
-  when CT + (byte_size(CD) div ?DATA_SIZE)  < Time ->
-    get_overlap(Time, Count, R);
+get_overlap(Time, Count, DataSize, [{CT, CD} | R])
+  when CT + (byte_size(CD) div DataSize)  < Time ->
+    get_overlap(Time, Count, DataSize, R);
 
 %% We're completely behind the data to read so we
 %% can stop and say we got nothing
-get_overlap(Time, Count, [{CT, _CD} | _R])
+get_overlap(Time, Count, _DataSize, [{CT, _CD} | _R])
   when CT > Time + Count ->
     undefined;
 %% We overlap but data is spread over two chunks ...
 %% damn inconsistant writes ...
-get_overlap(Time, Count, [{CT, CD}, {CT1, CD1} | R])
+get_overlap(Time, Count, DataSize, [{CT, CD}, {CT1, CD1} | R])
   when  Time >= CT, CT1 =< Time + Count ->
     %% We fuse then with NULLs and continue
     %% missing bits
-    %% We need to multiply the times by the ?DATA_SIZE
+    %% We need to multiply the times by the DataSize
     %% to get byte then multiply
-    MissingByte = (CT1 * ?DATA_SIZE - (CT * ?DATA_SIZE + byte_size(CD))),
+    MissingByte = (CT1 * DataSize - (CT * DataSize + byte_size(CD))),
     %% the whole by 8 to get bit to get the bits
     MissingBit = MissingByte * 8,
     Data1 = <<CD/binary, 0:MissingBit, CD1/binary>>,
-    get_overlap(Time, Count, [{CT, Data1} | R]);
-get_overlap(Time, Count, [{CT, CD} | _R]) ->
+    get_overlap(Time, Count, DataSize, [{CT, Data1} | R]);
+get_overlap(Time, Count, DataSize, [{CT, CD} | _R]) ->
     %% If Time < CT we skip 0, if Time > CT our
     %% request begins inside the chunk so we need
     %% to skip.
-    Skip = max(Time - CT, 0) * ?DATA_SIZE,
+    Skip = max(Time - CT, 0) * DataSize,
     %% Drop the skip
     <<_:Skip/binary, Rest/binary>> = CD,
     %% See how many bytes we can get either the rest of
     %% count or the maximum lengt of our buffer
-    Take = min((Time + Count - CT) * ?DATA_SIZE, byte_size(Rest)),
+    Take = min((Time + Count - CT) * DataSize, byte_size(Rest)),
     <<Bin:Take/binary, _/binary>> = Rest,
     Start = max(Time, CT),
     {ok, Start, Bin};
 
-get_overlap(_Time, _Count, []) ->
+get_overlap(_Time, _Count, _DAtaSize, []) ->
     undefined.
 
 empty_cache(C, IO) ->
@@ -648,8 +682,9 @@ overlap_test() ->
     D1 = << <<$1>> || _ <- lists:seq(1, 3608) >>,
     D2 = << <<$2>> || _ <- lists:seq(1, 2520) >>,
     Data = [{1497181501, D1}, {1497181995, D2}],
-    {ok, TOut, DOut} = get_overlap(Time, Count, Data),
-    ?assert(byte_size(DOut) =< Count * ?DATA_SIZE),
+    DataSize = ?DATA_SIZE,
+    {ok, TOut, DOut} = get_overlap(Time, Count, DataSize, Data),
+    ?assert(byte_size(DOut) =< Count * DataSize),
     ?assert(Time =< TOut),
     ok.
 
@@ -658,12 +693,13 @@ overlap_end_test() ->
     Count = 21600,
     D1 = << <<$1:64>> || _ <- lists:seq(1, 300) >>, % more then 240
     Data = [{1498484790 + 21360, D1}],
-    {ok, TOut, DOut} = get_overlap(Time, Count, Data),
-    RCount = byte_size(DOut) div ?DATA_SIZE,
+    {ok, TOut, DOut} = get_overlap(Time, Count, ?DATA_SIZE, Data),
+    DataSize = ?DATA_SIZE,
+    RCount = byte_size(DOut) div DataSize,
     ?assertEqual(Time - TOut + 21600, 240),
     ?assertEqual(240, RCount),
     ?assertEqual(Time + Count, TOut + RCount),
-    ?assert((Time - TOut) * ?DATA_SIZE + byte_size(DOut) =< Count * ?DATA_SIZE),
+    ?assert((Time - TOut) *DataSize + byte_size(DOut) =< Count * DataSize),
     ?assert(Time =< TOut),
     ok.
 

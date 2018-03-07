@@ -16,16 +16,24 @@ list() ->
     [B || {B, R} <- Bs, R /= ['$deleted']].
 
 -spec info(binary()) ->
-    dproto_tcp:bucket_info().
+                  {ok, dproto_tcp:bucket_info()} |
+                  {error, missing}.
 
 info(Bucket) ->
-    Resolution = dalmatiner_opt:resolution(Bucket),
-    PPF = dalmatiner_opt:ppf(Bucket),
-    TTL = dalmatiner_opt:lifetime(Bucket),
-    Grace = dalmatiner_opt:grace(Bucket),
-    #{
-       resolution => Resolution,
-       ppf => PPF,
-       ttl => TTL,
-       grace => Grace
-     }.
+    case dalmatiner_opt:bucket_exists(Bucket) of
+        true ->
+            Resolution = dalmatiner_opt:resolution(Bucket),
+            PPF = dalmatiner_opt:ppf(Bucket),
+            TTL = dalmatiner_opt:lifetime(Bucket),
+            Grace = dalmatiner_opt:grace(Bucket),
+            HPTS = dalmatiner_opt:hpts(Bucket),
+            {ok, #{
+               resolution => Resolution,
+               ppf => PPF,
+               ttl => TTL,
+               grace => Grace,
+               hpts => HPTS
+              }};
+        false ->
+            {error, missing}
+    end.

@@ -25,11 +25,19 @@ handle_work(#read_req{
                count       = Count,
                compression = Compression,
                map_fn      = Map,
-               req_id      = ReqID
+               req_id      = ReqID,
+               hpts        = HPTS
               }, _Sender, State = #state{index = P, node = N}) ->
+    HPTSOpts = case HPTS of
+                   true ->
+                       [with_timestamp];
+                   false ->
+                       []
+               end,
     {ok, Data} = ddb_histogram:timed_update(
                    {mstore, read},
-                   mstore, get, [MSetc, Metric, Time, Count, [one_off]]),
+                   mstore, get, [MSetc, Metric, Time, Count,
+                                 [one_off | HPTSOpts]]),
     mstore:close(MSetc),
     Data1 = case Map of
                 undefined -> Data;

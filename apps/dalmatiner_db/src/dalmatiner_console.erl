@@ -31,30 +31,47 @@ delete([BucketS]) ->
     metric:delete(Bucket),
     dalmatiner_opt:delete(Bucket).
 
-create([BucketS, ResS, PPFS, TTLS]) ->
-    ok = create([BucketS, ResS, PPFS]),
+create([BucketS, ResS, PPFS, HPTS, TTLS]) ->
+    ok = create([BucketS, ResS, PPFS, HPTS]),
     ttl([BucketS, TTLS]);
 
-create([BucketS, ResS, PPFS, TTLS, GraceS]) ->
-    ok = create([BucketS, ResS, PPFS, TTLS]),
+create([BucketS, ResS, PPFS, HPTS, TTLS, GraceS]) ->
+    ok = create([BucketS, ResS, HPTS, PPFS, TTLS]),
     Bucket = list_to_binary(BucketS),
     Grace = decode_time(GraceS, ns),
     io:format("Setting grace to: ~s~n", [format_time(Grace, ns)]),
     dalmatiner_opt:set_grace(Bucket, Grace);
 
-create([BucketS, ResS, PPFS]) ->
+create([BucketS, ResS, PPFS, HPTSs]) ->
     Bucket = list_to_binary(BucketS),
+    HPTS = case HPTSs of
+               "true" ->
+                   true;
+               "enabled" ->
+                   enabled;
+               "false" ->
+                   false;
+               "disabled" ->
+                   false
+           end,
     Res = cuttlefish_datatypes:from_string(
             ResS, {duration, ms}),
-    dalmatiner_opt:set_resolution(Bucket, Res),
+
     PPF = cuttlefish_datatypes:from_string(
             PPFS, {duration, ms}) div Res,
-    dalmatiner_opt:set_ppf(Bucket, PPF),
-    io:format("Carated ~s with a resolution of ~s and ~s worth of points "
-              "per file.~n",
-              [Bucket,
-               format_time(Res, ms),
-               format_time(PPF * Res, ms)]).
+    case dalmatiner_opt:bucket_exists(Bucket) of
+        true ->
+            io:format("Bucket ~s already exists", [Bucket]);
+        false ->
+            dalmatiner_opt:set_resolution(Bucket, Res),
+            dalmatiner_opt:set_ppf(Bucket, PPF),
+            dalmatiner_opt:set_hpts(Bucket, HPTS),
+            io:format("Carated ~s with a resolution of ~s and ~s "
+                      "worth of points per file.~n",
+                      [Bucket,
+                       format_time(Res, ms),
+                       format_time(PPF * Res, ms)])
+    end.
 
 buckets([]) ->
     Bkts = dalmatiner_bucket:list(),
@@ -69,30 +86,32 @@ print_buckets([]) ->
     ok;
 print_buckets([Bucket | R]) ->
     case dalmatiner_bucket:info(Bucket) of
-        #{
+        {ok, #{
            resolution := Res,
            ppf := PPF,
            grace := Grace,
            ttl := infinity
-         } ->
+         }} ->
             io:format("~30s | ~-15s | ~-15s | ~-15s | ~-15s~n",
                       [Bucket,
                        format_time(Res, ms),       % resolution
                        format_time(PPF * Res, ms), % file size
                        format_time(Grace, ns),     % grace
                        infinity]);                 % ttl
-        #{
+        {ok, #{
            resolution := Res,
            ppf := PPF,
            grace := Grace,
            ttl := TTL
-         } ->
+         }} ->
             io:format("~30s | ~-15s | ~-15s | ~-15s | ~-15s~n",
                       [Bucket,
                        format_time(Res, ms),         % resolution
                        format_time(PPF * Res, ms),   % file size
                        format_time(Grace, ns),       % grace
-                       format_time(TTL * Res, ms)])  % ttl
+                       format_time(TTL * Res, ms)]); % ttl
+        {error, missing} ->
+            io:format("BUCKET MISSING: ~p~n", [Bucket])
     end,
     print_buckets(R).
 
