@@ -373,6 +373,8 @@ needs_repair(MObj, Replies, true) ->
     Objs = [Obj || {_IdxNode, Obj} <- Replies],
     {lists:any(different(MObj), Objs), MObj};
 
+needs_repair(not_found, _Replies, {partial, _N}) ->
+    {false, undefined};
 needs_repair(MObj, Replies, {partial, N}) ->
     case byte_size(MObj) - N * ?DATA_SIZE of
         Keep when Keep > 0 ->
