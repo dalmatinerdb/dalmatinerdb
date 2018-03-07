@@ -25,7 +25,7 @@
 -define(INTERVAL, 1000).
 -define(BUCKET, <<"dalmatinerdb">>).
 
--record(state, {running = false, dict, prefix, list = []}).
+-record(state, {time = 0, running = false, dict, prefix, list = []}).
 
 %%%===================================================================
 %%% API
@@ -83,7 +83,9 @@ init([]) ->
             lager:info("[ddb] Self monitoring is enabled."),
             spawn(fun delay_tick/0)
     end,
-    {ok, #state{dict = Dict, prefix = list_to_binary(atom_to_list(node()))}}.
+    T = os:system_time(millisecond),
+    {ok, #state{time = T, dict = Dict,
+                prefix = list_to_binary(atom_to_list(node()))}}.
 
 
 %%--------------------------------------------------------------------
@@ -142,16 +144,19 @@ handle_cast(_Msg, State) ->
 
 
 handle_info(tick,
-            State = #state{running = true, prefix = Prefix, dict = Dict0}) ->
+            State = #state{time = T0, running = true,
+                           prefix = Prefix, dict = Dict0}) ->
     %% Initialize what we need
     Dict = bkt_dict:update_chash(Dict0),
     Time = timestamp(),
 
     %% Add our own counters
+    T = os:system_time(millisecond),
+    Delta = (T - T0) / 1000,
     Counts = ddb_counter:get_and_clean(),
     DictC = lists:foldl(fun ({Name, Count}, Acc) ->
                                 add_metric(Prefix, metric_name(Name),
-                                           Time, Count, Acc)
+                                           Time, round(Count / Delta), Acc)
                         end, Dict, Counts),
 
     %% Add our own histograms
@@ -180,6 +185,7 @@ handle_info(tick,
 
     erlang:send_after(?INTERVAL, self(), tick),
     {noreply, State#state{list = AsList,
+                          time = T,
                           dict = DictFlushed}};
 
 handle_info(_Info, State) ->
