@@ -147,7 +147,7 @@ counter_fold({Name, Count}, {Prefix, Time, Delta, SeenAcc, DictAcc}) ->
     Metric = metric_name(Name),
     SeenAcc1 = maybe_idx(Prefix, Metric, [Prefix | Metric],
                          [
-                          {<<>>, <<"type">>, <<"count">>}
+                          {<<"ddb">>, <<"type">>, <<"count">>}
                          ],
                          SeenAcc),
     DictAcc1 = add_metric(Prefix, Metric,
@@ -212,7 +212,7 @@ maybe_idx(Host, Metric, Key, Tags, Seen) ->
         false ->
             dqe_idx:add(?BUCKET, Metric,
                         ?BUCKET, Key,
-                        undefined, [{<<>>, <<"host">>, Host} | Tags]),
+                        undefined, [{<<"ddb">>, <<"host">>, Host} | Tags]),
             sets:add_element(SetKey, Seen);
         true ->
             Seen
@@ -223,11 +223,11 @@ get_handoff_metrics(Prefix, Time, {Seen, Dict}) ->
     P1 = [Prefix, <<"handoffs">>, <<"inbound">>],
     P2 = [Prefix, <<"handoffs">>, <<"outbound">>],
     Seen1 = maybe_idx(Prefix, [<<"handoffs">>], P1,
-                      [{<<>>, <<"direction">>, <<"inbound">>}],
+                      [{<<"ddb">>, <<"direction">>, <<"inbound">>}],
                      Seen),
     Dict1 = add_to_dict(P1, Time, length(Inbound), Dict),
     Seen2 = maybe_idx(Prefix, [<<"handoffs">>], P2,
-                      [{<<>>, <<"direction">>, <<"outbound">>}],
+                      [{<<"ddb">>, <<"direction">>, <<"outbound">>}],
                      Seen1),
     Dict2 = add_to_dict(P2, Time, length(Outbound), Dict1),
     {Seen2, Dict2}.
