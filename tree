@@ -5,6 +5,14 @@
 ├─ dalmatiner_opt─0.1.0
 ├─ dalmatiner_vacuum─0.1.2
 ├─ dproto─0.5.4
+├─ dqe_idx─0.4.4
+├─ dqe_idx_ddb─0.5.1
+│  └─ ddb_connection─0.4.3
+│     └─ ddb_client─0.5.7
+├─ dqe_idx_pg─0.5.7
+│  ├─ pgapp─0.0.2
+│  │  └─ epgsql─3.3.0
+│  └─ sqlmig─0.1.5
 ├─ edown─0.8.1
 ├─ eper─0.94.0
 ├─ estore─0.1.10
@@ -24,11 +32,12 @@
 ├─ mcache─v0.2.6+build.75.refe37bd4f
 ├─ metric_vnode─0.1.3
 ├─ mmath─0.2.24
-├─ mstore─v0.3.5+build.199.ref9215171
+├─ mstore─0.3.5+build.199.ref9215171
 ├─ mstore_inspector─0.1.1
 ├─ otters─0.2.10
 │  ├─ dynamic_compile─1.0.0
 │  └─ ibrowse─4.4.0
+├─ poolboy─1.5.1
 ├─ ranch─1.1.0
 ├─ recon─2.3.4
 ├─ riak_core─3.0.9
@@ -46,7 +55,6 @@
 │  │  └─ bear─0.8.5
 │  ├─ jam─1.0.0
 │  ├─ pbkdf2─2.0.0
-│  ├─ poolboy─0.8.3
 │  ├─ riak_ensemble─2.4.0
 │  └─ riak_sysmon─2.1.5
 ├─ snappiest─1.2.0

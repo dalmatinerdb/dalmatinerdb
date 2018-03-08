@@ -11,7 +11,9 @@
     %% for hdr histograms
     hdr_histogram,
     %% For folsom counters
-    folsom
+    folsom,
+    dqe_idx,
+    dqe_idx_pg
    ]},
   {env,[]},
   {modules, []},

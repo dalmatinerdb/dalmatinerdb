@@ -28,6 +28,7 @@ start_link() ->
 
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([]) ->
+    dqe_idx:init(),
     Metrics = {dalmatiner_metrics,
                {dalmatiner_metrics, start_link, []},
                permanent, infinity, worker, [dalmatiner_metrics]},

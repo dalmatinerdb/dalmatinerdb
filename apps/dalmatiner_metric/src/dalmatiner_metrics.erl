@@ -25,7 +25,8 @@
 -define(INTERVAL, 1000).
 -define(BUCKET, <<"dalmatinerdb">>).
 
--record(state, {time = 0, running = false, dict, prefix, list = []}).
+-record(state, {time = 0, running = false, dict, prefix, list = [],
+                seen = sets:new()}).
 
 %%%===================================================================
 %%% API
@@ -142,10 +143,21 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 
+counter_fold({Name, Count}, {Prefix, Time, Delta, SeenAcc, DictAcc}) ->
+    Metric = metric_name(Name),
+    SeenAcc1 = maybe_idx(Prefix, Metric, [Prefix | Metric],
+                         [
+                          {<<>>, <<"type">>, <<"count">>}
+                         ],
+                         SeenAcc),
+    DictAcc1 = add_metric(Prefix, Metric,
+                          Time, round(Count / Delta), DictAcc),
+    {Prefix, Time, Delta, SeenAcc1, DictAcc1}.
 
 handle_info(tick,
             State = #state{time = T0, running = true,
-                           prefix = Prefix, dict = Dict0}) ->
+                           prefix = Prefix, dict = Dict0,
+                           seen = Seen}) ->
     %% Initialize what we need
     Dict = bkt_dict:update_chash(Dict0),
     Time = timestamp(),
@@ -154,51 +166,71 @@ handle_info(tick,
     T = os:system_time(millisecond),
     Delta = (T - T0) / 1000,
     Counts = ddb_counter:get_and_clean(),
-    DictC = lists:foldl(fun ({Name, Count}, Acc) ->
-                                add_metric(Prefix, metric_name(Name),
-                                           Time, round(Count / Delta), Acc)
-                        end, Dict, Counts),
-
+    AccIn = {Prefix, Time, Delta, Seen, Dict},
+    {_, _, _, SeenC, DictC} = lists:foldl(fun counter_fold/2, AccIn, Counts),
+    AccC = {SeenC, DictC},
     %% Add our own histograms
     Hists = ddb_histogram:get(),
-    DictH = lists:foldl(
-              fun ({Name, Vals}, Acc1) ->
-                      Pfx1 = [Prefix, metric_name(Name)],
-                      lists:foldl(
-                        fun({K, V}, Acc2) ->
-                                add_metric(Pfx1, [K], Time, V, Acc2)
-                        end, Acc1, Vals)
-              end, DictC, Hists),
+    AccH = lists:foldl(
+             fun ({Name, Vals}, Acc1) ->
+                     Metric = metric_name(Name),
+                     lists:foldl(
+                       fun({K, V}, {SeenAcc, Acc2}) ->
+                               Metric1 = Metric ++ [K],
+                               SeenAcc1 = maybe_idx(Prefix, Metric1,
+                                                    [Prefix | Metric1],
+                                                    [], SeenAcc),
+                               {SeenAcc1, add_metric(Prefix, Metric1,
+                                                     Time, V, Acc2)}
+                       end, Acc1, Vals)
+             end, AccC, Hists),
 
     %% Add folsom data to the dict
     Spec = folsom_metrics:get_metrics_info(),
-    DictF = do_metrics(Prefix, Time, Spec, DictH),
+    AccF = do_metrics(Prefix, Time, Spec, AccH),
 
     %% Add riak_core related data
-    DictR = get_handoff_metrics(Prefix, Time, DictF),
+    {SeenR, DictR} = get_handoff_metrics(Prefix, Time, AccF),
 
 
     %% Keep a list with info
     AsList = bkt_dict:to_list(DictR),
     %% Send
     DictFlushed = bkt_dict:flush(DictR),
-
     erlang:send_after(?INTERVAL, self(), tick),
     {noreply, State#state{list = AsList,
                           time = T,
+                          seen = SeenR,
                           dict = DictFlushed}};
 
 handle_info(_Info, State) ->
     {noreply, State}.
 
-get_handoff_metrics(Prefix, Time, Dict) ->
+maybe_idx(Host, Metric, Key, Tags, Seen) ->
+    SetKey = {Metric, Tags},
+    case sets:is_element(SetKey, Seen) of
+        false ->
+            dqe_idx:add(?BUCKET, Metric,
+                        ?BUCKET, Key,
+                        undefined, [{<<>>, <<"host">>, Host} | Tags]),
+            sets:add_element(SetKey, Seen);
+        true ->
+            Seen
+    end.
+get_handoff_metrics(Prefix, Time, {Seen, Dict}) ->
     Inbound = riak_core_handoff_manager:status({direction, inbound}),
     Outbound = riak_core_handoff_manager:status({direction, outbound}),
-
-    Dict1 = add_to_dict([Prefix, <<"handoffs">>, <<"inbound">>],
-                        Time, length(Inbound), Dict),
-    add_to_dict([Prefix, <<"handoffs">>, <<"outbound">>],
-                Time, length(Outbound), Dict1).
+    P1 = [Prefix, <<"handoffs">>, <<"inbound">>],
+    P2 = [Prefix, <<"handoffs">>, <<"outbound">>],
+    Seen1 = maybe_idx(Prefix, [<<"handoffs">>], P1,
+                      [{<<>>, <<"direction">>, <<"inbound">>}],
+                     Seen),
+    Dict1 = add_to_dict(P1, Time, length(Inbound), Dict),
+    Seen2 = maybe_idx(Prefix, [<<"handoffs">>], P2,
+                      [{<<>>, <<"direction">>, <<"outbound">>}],
+                     Seen1),
+    Dict2 = add_to_dict(P2, Time, length(Outbound), Dict1),
+    {Seen2, Dict2}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -235,32 +267,36 @@ do_metrics(_Prefix, _Time, [], Acc) ->
 
 do_metrics(Prefix, Time, [{N, [{type, histogram} | _]} | Spec], Acc) ->
     Stats = folsom_metrics:get_histogram_statistics(N),
-    Prefix1 = [Prefix, metric_name(N)],
+    Prefix1 = [Prefix | metric_name(N)],
     Acc1 = build_histogram(Stats, Prefix1, Time, Acc),
     do_metrics(Prefix, Time, Spec, Acc1);
 
-do_metrics(Prefix, Time, [{N, [{type, spiral} | _]} | Spec], Acc) ->
+do_metrics(Prefix, Time, [{N, [{type, spiral} | _]} | Spec], {Seen, Acc}) ->
     [{count, Count}, {one, One}] = folsom_metrics:get_metric_value(N),
     K = metric_name(N),
-    Acc1 = add_metric(Prefix, [K, <<"count">>], Time, Count, Acc),
-    Acc2 = add_metric(Prefix, [K, <<"one">>], Time, One, Acc1),
-    do_metrics(Prefix, Time, Spec, Acc2);
+    %io:format("spiral: ~p~n", [K]),
+    Acc1 = add_metric(Prefix, K ++ [<<"count">>], Time, Count, Acc),
+    Acc2 = add_metric(Prefix, K ++ [<<"one">>], Time, One, Acc1),
+    do_metrics(Prefix, Time, Spec, {Seen, Acc2});
 
-
-do_metrics(Prefix, Time, [{N, [{type, counter} | _]} | Spec], Acc) ->
+do_metrics(Prefix, Time, [{N, [{type, counter} | _]} | Spec], {Seen, Acc}) ->
     Count = folsom_metrics:get_metric_value(N),
     Acc1 = add_metric(Prefix, N, Time, Count, Acc),
-    do_metrics(Prefix, Time, Spec, Acc1);
+    %io:format("counter: ~p~n", [N]),
+    do_metrics(Prefix, Time, Spec, {Seen, Acc1});
 
-do_metrics(Prefix, Time, [{N, [{type, duration} | _]} | Spec], Acc) ->
+do_metrics(Prefix, Time, [{N, [{type, duration} | _]} | Spec], {Seen, Acc}) ->
     Stats = folsom_metrics:get_metric_value(N),
-    Prefix1 = [Prefix, metric_name(N)],
+    K = metric_name(N),
+    Prefix1 = [Prefix | K],
+    %io:format("Duration: ~p~n", [K]),
     Acc1 = build_histogram(Stats, Prefix1, Time, Acc),
-    do_metrics(Prefix, Time, Spec, Acc1);
+    do_metrics(Prefix, Time, Spec, {Seen, Acc1});
 
-
-do_metrics(Prefix, Time, [{N, [{type, meter} | _]} | Spec], Acc) ->
-    Prefix1 = [Prefix, metric_name(N)],
+do_metrics(Prefix, Time, [{N, [{type, meter} | _]} | Spec], {Seen, Acc}) ->
+    K = metric_name(N),
+    Prefix1 = [Prefix | K],
+    %io:format("meter: ~p~n", [K]),
     [{count, Count},
      {one, One},
      {five, Five},
@@ -283,10 +319,10 @@ do_metrics(Prefix, Time, [{N, [{type, meter} | _]} | Spec], Acc) ->
                       [<<"five_to_fifteen">>], Time, FiveToFifteen, Acc7),
     Acc9 = add_metric(Prefix1,
                       [<<"one_to_fifteen">>], Time, OneToFifteen, Acc8),
-    do_metrics(Prefix, Time, Spec, Acc9).
+    do_metrics(Prefix, Time, Spec, {Seen, Acc9}).
 
 add_metric(Prefix, Name, Time, Value, Acc) ->
-    add_to_dict([Prefix, metric_name(Name)], Time, Value, Acc).
+    add_to_dict([Prefix | metric_name(Name)], Time, Value, Acc).
 
 -spec add_to_dict([binary() | [binary()]], integer(), integer() | float(),
                   bkt_dict:bkt_dict()) ->
@@ -300,12 +336,12 @@ timestamp() ->
     os:system_time(seconds).
 
 metric_name(B) when is_binary(B) ->
-    B;
+    [B];
 metric_name(L) when is_list(L) ->
-    erlang:list_to_binary(L);
+    [erlang:list_to_binary(L)];
 metric_name(N1) when
       is_atom(N1) ->
-    a2b(N1);
+    [a2b(N1)];
 metric_name({N1, N2}) when
       is_atom(N1), is_atom(N2) ->
     [a2b(N1), a2b(N2)];
@@ -325,60 +361,61 @@ a2b(A) ->
 build_histogram([], _Prefix, _Time, Acc) ->
     Acc;
 
-build_histogram([{min, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"min">>, Time, V, Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{min, V} | H], Prefix, Time, {SAcc, DAcc}) ->
+    %io:format("histogram: ~p~n", [Prefix]),
+    DAcc1 = add_metric(Prefix, <<"min">>, Time, V, DAcc),
+    build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
-build_histogram([{max, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"max">>, Time, V, Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{max, V} | H], Prefix, Time, {SAcc, DAcc}) ->
+    DAcc1 = add_metric(Prefix, <<"max">>, Time, V, DAcc),
+    build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
-build_histogram([{arithmetic_mean, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"arithmetic_mean">>, Time, V, Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{arithmetic_mean, V} | H], Prefix, Time, {SAcc, DAcc}) ->
+    DAcc1 = add_metric(Prefix, <<"arithmetic_mean">>, Time, V, DAcc),
+    build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
-build_histogram([{geometric_mean, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"geometric_mean">>, Time, V, Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{geometric_mean, V} | H], Prefix, Time, {SAcc, DAcc}) ->
+    DAcc1 = add_metric(Prefix, <<"geometric_mean">>, Time, V, DAcc),
+    build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
-build_histogram([{harmonic_mean, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"harmonic_mean">>, Time, V, Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{harmonic_mean, V} | H], Prefix, Time, {SAcc, DAcc}) ->
+    DAcc1 = add_metric(Prefix, <<"harmonic_mean">>, Time, V, DAcc),
+    build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
-build_histogram([{median, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"median">>, Time, V, Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{median, V} | H], Prefix, Time, {SAcc, DAcc}) ->
+    DAcc1 = add_metric(Prefix, <<"median">>, Time, V, DAcc),
+    build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
-build_histogram([{variance, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"variance">>, Time, V, Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{variance, V} | H], Prefix, Time, {SAcc, DAcc}) ->
+    DAcc1 = add_metric(Prefix, <<"variance">>, Time, V, DAcc),
+    build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
-build_histogram([{standard_deviation, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"standard_deviation">>, Time, V, Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{standard_deviation, V} | H], Prefix, Time, {SAcc, DAcc}) ->
+    DAcc1 = add_metric(Prefix, <<"standard_deviation">>, Time, V, DAcc),
+    build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
-build_histogram([{skewness, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"skewness">>, Time, V, Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{skewness, V} | H], Prefix, Time, {SAcc, DAcc}) ->
+    DAcc1 = add_metric(Prefix, <<"skewness">>, Time, V, DAcc),
+    build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
-build_histogram([{kurtosis, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"kurtosis">>, Time, V, Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{kurtosis, V} | H], Prefix, Time, {SAcc, DAcc}) ->
+    DAcc1 = add_metric(Prefix, <<"kurtosis">>, Time, V, DAcc),
+    build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
-build_histogram([{percentile, Ps} | H], Prefix, Time, Acc) ->
-    Acc1 = lists:foldl(
+build_histogram([{percentile, Ps} | H], Prefix, Time, {SAcc, DAcc}) ->
+    DAcc1 = lists:foldl(
              fun({N, V}, AccIn) ->
                      P = integer_to_binary(N),
                      add_metric(Prefix, <<"p", P/binary>>, Time, V, AccIn)
-             end, Acc, Ps),
-    build_histogram(H, Prefix, Time, Acc1);
+             end, DAcc, Ps),
+    build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
-build_histogram([{n, V} | H], Prefix, Time, Acc) ->
-    Acc1 = add_metric(Prefix, <<"count">>, Time, V, Acc),
-    build_histogram(H, Prefix, Time, Acc1);
+build_histogram([{n, V} | H], Prefix, Time, {SAcc, DAcc}) ->
+    DAcc1 = add_metric(Prefix, <<"count">>, Time, V, DAcc),
+    build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
-build_histogram([_ | H], Prefix, Time, Acc) ->
-    build_histogram(H, Prefix, Time, Acc).
+build_histogram([_ | H], Prefix, Time, {SAcc, DAcc}) ->
+    build_histogram(H, Prefix, Time, {SAcc, DAcc}).
 
 delay_tick() ->
     riak_core:wait_for_application(dalmatiner_db),
