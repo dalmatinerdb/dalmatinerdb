@@ -512,17 +512,25 @@ update_env(State) ->
 %% Handling a get request overload
 handle_overload_command({get, ReqID, _Bucket, _Metric, {_Time, _Count}},
                         Sender, Idx) ->
+    ddb_counter:inc({<<"drop">>, <<"read">>}),
     riak_core_vnode:reply(Sender, {fail, ReqID, Idx, overload});
 
 %% Handling write failures
 handle_overload_command({put, _Bucket, _Metric, {_Time, _Value}},
                         {raw, ReqID, _PID} = Sender, Idx) ->
+    ddb_counter:inc({<<"drop">>, <<"write">>}),
+    riak_core_vnode:reply(Sender, {fail, ReqID, Idx, overload});
+handle_overload_command({mput, _Data},
+                        {raw, ReqID, _PID} = Sender, Idx) ->
+    ddb_counter:inc({<<"drop">>, <<"write">>}),
     riak_core_vnode:reply(Sender, {fail, ReqID, Idx, overload});
 handle_overload_command(_, {raw, ReqID, _PID} = Sender, Idx) ->
+    ddb_counter:inc({<<"overflow">>, <<"other">>}),
     riak_core_vnode:reply(Sender, {fail, ReqID, Idx, overload});
 
 %% Handling other failures
 handle_overload_command(_Req, Sender, Idx) ->
+    ddb_counter:inc({<<"overflow">>, <<"other">>}),
     riak_core_vnode:reply(Sender, {fail, Idx, overload}).
 
 handle_overload_info(_, _Idx) ->
