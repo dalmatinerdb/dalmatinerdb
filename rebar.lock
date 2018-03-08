@@ -52,15 +52,7 @@
   0},
  {<<"mstore">>,
   {git,"https://gitlab.com/Project-FiFo/DalmatinerDB/mstore.git",
-<<<<<<< HEAD
-<<<<<<< HEAD
        {ref,"921517169b50fa72a9e8b60a70d552efe6f06f6e"}},
-=======
-       {ref,"640a0d1bf8527faf512bacd79243f3fd011e2f93"}},
->>>>>>> libbump-again
-=======
-       {ref,"921517169b50fa72a9e8b60a70d552efe6f06f6e"}},
->>>>>>> HPTS support
   0},
  {<<"mstore_inspector">>,
   {git,"https://gitlab.com/Project-FiFo/DalmatinerDB/mstore_inspector.git",
@@ -70,7 +62,7 @@
  {<<"parse_trans">>,{pkg,<<"parse_trans">>,<<"2.9.0">>},2},
  {<<"pbkdf2">>,{pkg,<<"pbkdf2">>,<<"2.0.0">>},1},
  {<<"pgapp">>,{pkg,<<"pgapp">>,<<"0.0.2">>},1},
- {<<"poolboy">>,{pkg,<<"basho_poolboy">>,<<"0.8.2">>},1},
+ {<<"poolboy">>,{pkg,<<"poolboy">>,<<"1.5.1">>},0},
  {<<"quickrand">>,{pkg,<<"quickrand">>,<<"1.7.3">>},1},
  {<<"ranch">>,{pkg,<<"ranch">>,<<"1.1.0">>},0},
  {<<"recon">>,{pkg,<<"recon">>,<<"2.3.4">>},0},
@@ -82,10 +74,7 @@
  {<<"riak_sysmon">>,{pkg,<<"riak_sysmon">>,<<"2.1.5">>},1},
  {<<"setup">>,{pkg,<<"setup">>,<<"1.7.0">>},2},
  {<<"snappiest">>,{pkg,<<"snappiest">>,<<"1.2.0">>},0},
-<<<<<<< HEAD
  {<<"sqlmig">>,{pkg,<<"sqlmig">>,<<"0.1.5">>},1},
-=======
->>>>>>> libbump-again
  {<<"trie">>,{pkg,<<"trie">>,<<"1.7.3">>},0},
  {<<"uuid">>,{pkg,<<"uuid_erl">>,<<"1.7.3">>},1}]}.
 [
@@ -127,7 +116,7 @@
  {<<"parse_trans">>, <<"3F5F7B402928FB9FD200C891E635DE909045D1EFAC40CE3F924D3892898F85EB">>},
  {<<"pbkdf2">>, <<"11C23279FDED5C0027AB3996CFAE77805521D7EF4BABDE2BD7EC04A9086CF499">>},
  {<<"pgapp">>, <<"3E104BB777C8455D8B26D1538B67ABE0188EE97B1DF973FD936C2204CB316196">>},
- {<<"poolboy">>, <<"AD5524BF4B8D30EEE0E5386847B74DAD739BB6AE1893F3AF10F54D427ACC96E4">>},
+ {<<"poolboy">>, <<"6B46163901CFD0A1B43D692657ED9D7E599853B3B21B95AE5AE0A777CF9B6CA8">>},
  {<<"quickrand">>, <<"0E4FB48FAC904FE0C6E21D7E8C31A288A0700E1E81A35B38B649FC119079755D">>},
  {<<"ranch">>, <<"F7ED6D97DB8C2A27CCA85CACBD543558001FC5A355E93A7BFF1E9A9065A8545B">>},
  {<<"recon">>, <<"B406C2FCCDEAA0D94E23B5E30AE3D635A2D461E363A5C9C6316897037CF050D2">>},
@@ -135,10 +124,7 @@
  {<<"riak_sysmon">>, <<"2331BBCAEBE73EA7B2449F4C765827142476CC73D7D86999B4209EE005694D6B">>},
  {<<"setup">>, <<"15DF8E57C6DF9755E22BFB1AEF0C640BD97E9889396FDFB2A85A5536A9043674">>},
  {<<"snappiest">>, <<"25706FEBB5ECAEA900D879A89C6D967C8D1BF700F8546BEBD0DEA514A8CCBFB7">>},
-<<<<<<< HEAD
  {<<"sqlmig">>, <<"8208D222A9335C1B1171F4FD1CE4150CF28B1FDF37CA9A66715AC434ED9B9AF4">>},
-=======
->>>>>>> libbump-again
  {<<"trie">>, <<"B2F68E2075DF2085E7C02B0C891BACB6782C281F8CA7BABAF4C3E8C266C3BCAB">>},
  {<<"uuid">>, <<"C5DF97D1A3D626235C2415E74053C47B2138BB863C5CD802AB5CAECB8ECC019F">>}]}
 ].
