@@ -322,7 +322,7 @@ do_metrics(Prefix, Time, [{N, [{type, meter} | _]} | Spec], {Seen, Acc}) ->
     do_metrics(Prefix, Time, Spec, {Seen, Acc9}).
 
 add_metric(Prefix, Name, Time, Value, Acc) ->
-    add_to_dict([Prefix | metric_name(Name)], Time, Value, Acc).
+    add_to_dict([Prefix | Name], Time, Value, Acc).
 
 -spec add_to_dict([binary() | [binary()]], integer(), integer() | float(),
                   bkt_dict:bkt_dict()) ->
@@ -363,55 +363,55 @@ build_histogram([], _Prefix, _Time, Acc) ->
 
 build_histogram([{min, V} | H], Prefix, Time, {SAcc, DAcc}) ->
     %io:format("histogram: ~p~n", [Prefix]),
-    DAcc1 = add_metric(Prefix, <<"min">>, Time, V, DAcc),
+    DAcc1 = add_metric(Prefix, [<<"min">>], Time, V, DAcc),
     build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
 build_histogram([{max, V} | H], Prefix, Time, {SAcc, DAcc}) ->
-    DAcc1 = add_metric(Prefix, <<"max">>, Time, V, DAcc),
+    DAcc1 = add_metric(Prefix, [<<"max">>], Time, V, DAcc),
     build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
 build_histogram([{arithmetic_mean, V} | H], Prefix, Time, {SAcc, DAcc}) ->
-    DAcc1 = add_metric(Prefix, <<"arithmetic_mean">>, Time, V, DAcc),
+    DAcc1 = add_metric(Prefix, [<<"arithmetic_mean">>], Time, V, DAcc),
     build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
 build_histogram([{geometric_mean, V} | H], Prefix, Time, {SAcc, DAcc}) ->
-    DAcc1 = add_metric(Prefix, <<"geometric_mean">>, Time, V, DAcc),
+    DAcc1 = add_metric(Prefix, [<<"geometric_mean">>], Time, V, DAcc),
     build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
 build_histogram([{harmonic_mean, V} | H], Prefix, Time, {SAcc, DAcc}) ->
-    DAcc1 = add_metric(Prefix, <<"harmonic_mean">>, Time, V, DAcc),
+    DAcc1 = add_metric(Prefix, [<<"harmonic_mean">>], Time, V, DAcc),
     build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
 build_histogram([{median, V} | H], Prefix, Time, {SAcc, DAcc}) ->
-    DAcc1 = add_metric(Prefix, <<"median">>, Time, V, DAcc),
+    DAcc1 = add_metric(Prefix, [<<"median">>], Time, V, DAcc),
     build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
 build_histogram([{variance, V} | H], Prefix, Time, {SAcc, DAcc}) ->
-    DAcc1 = add_metric(Prefix, <<"variance">>, Time, V, DAcc),
+    DAcc1 = add_metric(Prefix, [<<"variance">>], Time, V, DAcc),
     build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
 build_histogram([{standard_deviation, V} | H], Prefix, Time, {SAcc, DAcc}) ->
-    DAcc1 = add_metric(Prefix, <<"standard_deviation">>, Time, V, DAcc),
+    DAcc1 = add_metric(Prefix, [<<"standard_deviation">>], Time, V, DAcc),
     build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
 build_histogram([{skewness, V} | H], Prefix, Time, {SAcc, DAcc}) ->
-    DAcc1 = add_metric(Prefix, <<"skewness">>, Time, V, DAcc),
+    DAcc1 = add_metric(Prefix, [<<"skewness">>], Time, V, DAcc),
     build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
 build_histogram([{kurtosis, V} | H], Prefix, Time, {SAcc, DAcc}) ->
-    DAcc1 = add_metric(Prefix, <<"kurtosis">>, Time, V, DAcc),
+    DAcc1 = add_metric(Prefix, [<<"kurtosis">>], Time, V, DAcc),
     build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
 build_histogram([{percentile, Ps} | H], Prefix, Time, {SAcc, DAcc}) ->
     DAcc1 = lists:foldl(
              fun({N, V}, AccIn) ->
                      P = integer_to_binary(N),
-                     add_metric(Prefix, <<"p", P/binary>>, Time, V, AccIn)
+                     add_metric(Prefix, [<<"p", P/binary>>], Time, V, AccIn)
              end, DAcc, Ps),
     build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
 build_histogram([{n, V} | H], Prefix, Time, {SAcc, DAcc}) ->
-    DAcc1 = add_metric(Prefix, <<"count">>, Time, V, DAcc),
+    DAcc1 = add_metric(Prefix, [<<"count">>], Time, V, DAcc),
     build_histogram(H, Prefix, Time, {SAcc, DAcc1});
 
 build_histogram([_ | H], Prefix, Time, {SAcc, DAcc}) ->
