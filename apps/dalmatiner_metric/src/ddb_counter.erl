@@ -19,9 +19,14 @@ inc(Type) ->
     inc(Type, 1).
 
 inc(Type, N) when is_atom(Type) ->
-    inc(atom_to_binary(Type, utf8), N);
+    inc_(atom_to_binary(Type, utf8), N);
 
 inc(Type, N) when is_binary(Type) ->
+    inc_(Type, N);
+inc({T1, T2} = Type, N) when is_binary(T1), is_binary(T2) ->
+    inc_(Type, N).
+
+inc_(Type, N) ->
     try
         ets:update_counter(?COUNTERS, {Type, self()}, N)
     catch
