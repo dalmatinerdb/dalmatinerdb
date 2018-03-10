@@ -446,13 +446,20 @@ do_put(Bucket, Metric, Time, Value, State = #state{partition=P, cache = C})
                           [P, Bucket, Time, Len, Exp]),
             State1;
         {true, _, State1} ->
-            case mcache:insert(C, Bucket, Metric, Time, Value) of
+            {BktHPTS, State2} = get_hpts(Bucket, State1),
+            R = case BktHPTS of
+                    true ->
+                        mcache:insert_hpts(C, Bucket, Metric, Time, Value);
+                    false ->
+                        mcache:insert(C, Bucket, Metric, Time, Value)
+                end,
+            case R of
                 ok ->
                     ok;
                 {overflow, {OfBucket, OfMetric}, Overflow} ->
                     write_chunks(State#state.io, OfBucket, OfMetric, Overflow)
             end,
-            State1
+            State2
     end.
 
 

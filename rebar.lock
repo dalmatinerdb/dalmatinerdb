@@ -44,7 +44,7 @@
   1},
  {<<"mcache">>,
   {git,"https://gitlab.com/Project-FiFo/DalmatinerDB/mcache.git",
-       {ref,"91e7dfae9abd7dc7cf4c67efcf888680633fc33a"}},
+       {ref,"351d0f8e9b1be53a0d3c120338ff9780b9177c26"}},
   0},
  {<<"mmath">>,
   {git,"https://gitlab.com/Project-FiFo/DalmatinerDB/mmath.git",
