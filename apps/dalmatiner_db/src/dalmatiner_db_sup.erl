@@ -30,6 +30,7 @@ init([]) ->
                 {dalmatiner_read_fsm_sup, start_link, []},
                 permanent, infinity, supervisor, [dalmatiner_read_fsm_sup]},
     fix_non_hpts_buckets(),
+    ensure_ddb(),
     {ok, {{one_for_one, 5, 10},
           [WriteFSMs, ReadFSMs]}}.
 
@@ -43,3 +44,19 @@ fix_non_hpts_buckets() ->
              ok
      end|| {B, R} <- Bs, R /= ['$deleted']].
 
+
+ensure_ddb() ->
+    Bucket = <<"dalmatinerdb">>,
+    Res = cuttlefish_datatypes:from_string(
+            "1s", {duration, ms}),
+
+    PPF = cuttlefish_datatypes:from_string(
+            "1w", {duration, ms}) div Res,
+    case dalmatiner_opt:bucket_exists(Bucket) of
+        true ->
+            ok;
+        false ->
+            dalmatiner_opt:set_resolution(Bucket, Res),
+            dalmatiner_opt:set_ppf(Bucket, PPF),
+            dalmatiner_opt:set_hpts(Bucket, false)
+    end.
