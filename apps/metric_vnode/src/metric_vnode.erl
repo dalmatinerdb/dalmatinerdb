@@ -673,13 +673,16 @@ new_cache() ->
     Gap = application:get_env(metric_vnode, cache_max_gap, 10),
     InitEntries = application:get_env(metric_vnode, cache_initial_entries, 10),
     InitData = application:get_env(metric_vnode, cache_initial_data, 10),
+    EvictionTarget = application:get_env(
+                       metric_vnode, eviction_scan_target, 0.1),
     mcache:new(CacheSize,
                [
                 {initial_data_size, InitData},
                 {initial_entries, InitEntries},
                 {buckets, Buckets},
                 {max_gap, Gap},
-                {age_cycle, AgeCycle}
+                {age_cycle, AgeCycle},
+                {eviction_target, EvictionTarget}
                ]).
 
 -ifdef(TEST).
