@@ -329,7 +329,7 @@ add_metric(Prefix, Name, Time, Value, Acc) ->
                          bkt_dict:bkt_dict().
 add_to_dict(MetricL, Time, Value, Dict) ->
     Metric = dproto:metric_from_list(lists:flatten(MetricL)),
-    Data = mmath_bin:from_list([Value]),
+    Data = mmath_hpts:from_list([{Time, Value}]),
     bkt_dict:add(Metric, Time, Data, Dict).
 
 timestamp() ->

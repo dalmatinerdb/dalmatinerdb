@@ -11,13 +11,13 @@
 -behaviour(gen_server).
 
 -include_lib("mmath/include/mmath.hrl").
--include("metric_io.hrl").
+-include_lib("metric_vnode/include/metric_io.hrl").
 
 %% API
 -export([start_link/1, count/1, get_bitmap/6, update_env/1,
          empty/1, fold/3, delete/1, delete/2, delete/3, close/1,
          buckets/1, metrics/2, metrics/3,
-         read/7, %%read_rest/8,
+         read/8, %%read_rest/8,
          write/5, pid/1, inform/2]).
 
 -ignore_xref([inform/2]).
@@ -132,23 +132,23 @@ get_bitmap(Hdl, Bucket, Metric, Time, Ref, Sender) ->
     io_cast(Hdl, {get_bitmap, Bucket, Metric, Time, Ref, Sender}).
 
 -spec read(io_handle(), binary(), binary(), non_neg_integer(),
-           pos_integer(), term(), term()) ->
+           pos_integer(), boolean(), term(), term()) ->
                   ok | {error, _}.
 read(Hdl = #io_handle{pid = Pid, max_async_write = MaxLen},
-     Bucket, Metric, Time, Count, ReqID, Sender) ->
+     Bucket, Metric, Time, Count, HPTS, ReqID, Sender) ->
     case erlang:process_info(Pid, message_queue_len) of
         {message_queue_len, N} when N > MaxLen ->
-            sread(Hdl, Bucket, Metric, Time, Count, ReqID, Sender);
+            sread(Hdl, Bucket, Metric, Time, Count, HPTS, ReqID, Sender);
         _ ->
             io_cast(Hdl, {read, Bucket, Metric, Time, Count,
-                          ReqID, Sender})
+                          HPTS, ReqID, Sender})
     end.
 
 -spec sread(io_handle(), binary(), binary(), non_neg_integer(),
-            pos_integer(), term(), term()) ->
+            pos_integer(), boolean(), term(), term()) ->
                    ok | {error, _}.
-sread(Hdl, Bucket, Metric, Time, Count, ReqID, Sender) ->
-    io_call_r(Hdl, {read, Bucket, Metric, Time, Count, ReqID, Sender}).
+sread(Hdl, Bucket, Metric, Time, Count, HPTS, ReqID, Sender) ->
+    io_call_r(Hdl, {read, Bucket, Metric, Time, Count, HPTS, ReqID, Sender}).
 
 %% -spec read_rest(io_handle(), binary(), binary(), non_neg_integer(),
 %%                 pos_integer(), read_part(), term(), term()) ->
@@ -520,17 +520,18 @@ handle_call({write, Bucket, Metric, Time, Value}, _From, State) ->
     State1 = do_write(Bucket, Metric, Time, Value, State),
     {reply, ok, State1};
 
-handle_call({read, Bucket, Metric, Time, Count, ReqID, Sender},
+handle_call({read, Bucket, Metric, Time, Count, HPTS, ReqID, Sender},
             _From, State = #state{async_read = Async}) ->
-    State1 = maybe_async_read(Bucket, Metric, Time, Count, ReqID,
+    State1 = maybe_async_read(Bucket, Metric, Time, Count, HPTS, ReqID,
                               Sender, State#state{async_read = false}),
     State2 = State1#state{async_read = Async},
     {reply, ok, State2};
 
-handle_call({read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender},
+handle_call({read_rest, Bucket, Metric, Time, Count, Part, HPTS, ReqID, Sender},
             _From, State = #state{async_read = Async}) ->
-    State1 = maybe_async_read_rest(Bucket, Metric, Time, Count, Part, ReqID,
-                                   Sender, State#state{async_read = false}),
+    State1 = maybe_async_read_rest(
+               Bucket, Metric, Time, Count, Part, HPTS,
+               ReqID, Sender, State#state{async_read = false}),
     State2 = State1#state{async_read = Async},
     {reply, ok, State2};
 
@@ -564,14 +565,15 @@ handle_cast({get_bitmap, Bucket, Metric, Time, Ref, Sender}, State) ->
     Sender ! {reply, Ref, D},
     {noreply, State1};
 
-handle_cast({read, Bucket, Metric, Time, Count, ReqID, Sender}, State) ->
-    State1 = maybe_async_read(Bucket, Metric, Time, Count, ReqID,
+handle_cast({read, Bucket, Metric, Time, Count, HPTS, ReqID, Sender}, State) ->
+    State1 = maybe_async_read(Bucket, Metric, Time, Count, HPTS, ReqID,
                               Sender, State),
     {noreply, State1};
 handle_cast({read_rest, Bucket, Metric, Time, Count, Part, ReqID, Sender},
             State) ->
-    State1 = maybe_async_read_rest(Bucket, Metric, Time, Count, Part, ReqID,
-                                   Sender, State),
+    HPTS = false,
+    State1 = maybe_async_read_rest(Bucket, Metric, Time, Count, Part, HPTS,
+                                   ReqID, Sender, State),
     {noreply, State1};
 
 handle_cast(update_env, State) ->
@@ -677,7 +679,7 @@ new_store(Partition, Bucket) when is_binary(Bucket) ->
     PointsPerFile = dalmatiner_opt:ppf(Bucket),
     MaxOpenFiles = application:get_env(metric_vnode, max_files, 2),
     Flags = case {application:get_env(metric_vnode, bitmap, false),
-                  application:get_env(metric_vnode, hpts, false)} of
+                  dalmatiner_opt:hpts(Bucket)} of
                 {true, true} ->
                     [bitmap, hpts];
                 {false, true} ->
@@ -691,6 +693,7 @@ new_store(Partition, Bucket) when is_binary(Bucket) ->
                 [Partition, Bucket, PointsPerFile]),
     {ok, MSet} = mstore:new(BucketDir, [{file_size, PointsPerFile},
                                         {flags, Flags},
+
                                         {max_files, MaxOpenFiles}]),
     {0, MSet}.
 
@@ -774,19 +777,34 @@ do_read_bitmap(Bucket, Metric, Time, State) ->
             {{error, not_found}, State}
     end.
 
--spec do_read(binary(), binary(), non_neg_integer(), pos_integer(), state()) ->
+-spec do_read(binary(), binary(), non_neg_integer(), pos_integer(),
+              boolean(), state()) ->
                      {bitstring(), state()}.
-do_read(Bucket, Metric, Time, Count, State = #state{})
+do_read(Bucket, Metric, Time, Count, HPTS, State = #state{})
   when is_binary(Bucket), is_binary(Metric), is_integer(Count) ->
+    Opts = case HPTS of
+               true ->
+                   [with_timestamp];
+               false ->
+                   []
+           end,
     case get_set(Bucket, State) of
         {ok, {{_LastWritten, MSet}, S2}} ->
             {ok, Data} = ddb_histogram:timed_update(
                            {mstore, read},
-                           mstore, get, [MSet, Metric, Time, Count, [one_off]]),
+                           mstore, get, [MSet, Metric, Time, Count,
+                                         [one_off | Opts]]),
             {Data, S2};
         _ ->
             lager:warning("[IO] Unknown metric: ~p/~p", [Bucket, Metric]),
-            {mmath_bin:empty(Count), State}
+            R = case HPTS of
+                    true ->
+                        mmath_bin:empty(Count*2);
+                    false ->
+                        mmath_bin:empty(Count)
+                end,
+
+            {R, State}
     end.
 
 list_buckets(#state{dir = PartitionDir}) ->
@@ -805,7 +823,7 @@ compress(Data, #state{compression = none}) ->
 %% async_min_size is meant to prevent many tiny reads to create a
 %% insane ammount of processes where it becomes more exensive
 %% to create and tear down then it is to do the reads themselfs.
-maybe_async_read(Bucket, Metric, Time, Count, ReqID, Sender,
+maybe_async_read(Bucket, Metric, Time, Count, HPTS, ReqID, Sender,
                  State = #state{async_read = true, reader_pool = Pool,
                                 node = N, partition = P,
                                 async_min_size = MinSize})
@@ -819,7 +837,8 @@ maybe_async_read(Bucket, Metric, Time, Count, ReqID, Sender,
                       time        = Time,
                       count       = Count,
                       compression = State#state.compression,
-                      req_id      = ReqID
+                      req_id      = ReqID,
+                      hpts        = HPTS
                      },
             riak_core_vnode_worker_pool:handle_work(Pool, Work, Sender),
             State1;
@@ -830,20 +849,27 @@ maybe_async_read(Bucket, Metric, Time, Count, ReqID, Sender,
             riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
             State
     end;
-maybe_async_read(Bucket, Metric, Time, Count, ReqID, Sender,
+maybe_async_read(Bucket, Metric, Time, Count, HPTS, ReqID, Sender,
                  State = #state{node = N, partition = P}) ->
-    {D, State1} = do_read(Bucket, Metric, Time, Count, State),
+    {D, State1} = do_read(Bucket, Metric, Time, Count, HPTS, State),
     Dc = compress(D, State),
     riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
     State1.
 
-maybe_async_read_rest(Bucket, Metric, Time, Count, Part, ReqID, Sender,
+maybe_async_read_rest(Bucket, Metric, Time, Count, Part, HPTS, ReqID, Sender,
                       State = #state{node = N, partition = P, async_read = true,
                                      reader_pool = Pool,
                                      async_min_size = MinSize})
   when Count >= MinSize,
        Pool =/= undefined ->
-    {ReadTime, ReadCount, MergeFn} = read_rest_prepare_part(Time, Count, Part),
+    DataSize = case HPTS of
+                   true ->
+                       ?DATA_SIZE * 2;
+                   false ->
+                       ?DATA_SIZE
+               end,
+    {ReadTime, ReadCount, MergeFn} = read_rest_prepare_part(Time, Count,
+                                                            Part, DataSize),
     case get_set(Bucket, State) of
         {ok, {{_LastWritten, MSet}, State1}} ->
             Work = #read_req{
@@ -853,21 +879,33 @@ maybe_async_read_rest(Bucket, Metric, Time, Count, Part, ReqID, Sender,
                       count       = ReadCount,
                       map_fn      = MergeFn,
                       compression = State#state.compression,
-                      req_id      = ReqID
+                      req_id      = ReqID,
+                      hpts        = HPTS
                      },
             riak_core_vnode_worker_pool:handle_work(Pool, Work, Sender),
             State1;
         _ ->
-            D = mmath_bin:empty(Count),
+            D = case HPTS of
+                    true ->
+                        mmath_bin:empty(Count*2);
+                    false ->
+                        mmath_bin:empty(Count)
+                end,
             Data = MergeFn(D),
             Dc = compress(Data, State),
             riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
             State
     end;
 
-maybe_async_read_rest(Bucket, Metric, Time, Count, Part, ReqID, Sender,
+maybe_async_read_rest(Bucket, Metric, Time, Count, Part, HPTS, ReqID, Sender,
                       State = #state{node = N, partition = P}) ->
-    case read_rest_prepare_part(Time, Count, Part) of
+    DataSize = case HPTS of
+                   true ->
+                       ?DATA_SIZE*2;
+                   false ->
+                       ?DATA_SIZE
+               end,
+    case read_rest_prepare_part(Time, Count, Part, DataSize) of
         {ReadTime, ReadCount, MergeFn} when ReadCount < 1 ->
             lager:error("READ COUNT < 1!!! B: ~p, M: ~p, T: ~p,"
                         " C: ~p, rT: ~p, rC: ~p",
@@ -878,14 +916,15 @@ maybe_async_read_rest(Bucket, Metric, Time, Count, Part, ReqID, Sender,
             riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
             State;
         {ReadTime, ReadCount, MergeFn} ->
-            {D, State1} = do_read(Bucket, Metric, ReadTime, ReadCount, State),
+            {D, State1} = do_read(Bucket, Metric, ReadTime, ReadCount,
+                                  HPTS, State),
             Data = MergeFn(D),
             Dc = compress(Data, State),
             riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Dc}),
             State1
     end.
 
-read_rest_prepare_part(Time, Count, Part) ->
+read_rest_prepare_part(Time, Count, Part, DataSize) ->
     case Part of
         {Offset, Len, Bin} when Offset =:= 0 ->
             ReadTime = Time + Len,
@@ -905,10 +944,10 @@ read_rest_prepare_part(Time, Count, Part) ->
             ReadTime = Time,
             ReadCount = Count,
             MergeFn = fun(ReadData) ->
-                              S = ?DATA_SIZE,
-                              D1 = binary_part(ReadData, 0, Offset * S),
-                              D2 = binary_part(ReadData, Count * S,
-                                               (Offset + Len - Count) * S),
+                              D1 = binary_part(ReadData, 0, Offset * DataSize),
+                              D2 = binary_part(
+                                     ReadData, Count * DataSize,
+                                     (Offset + Len - Count) * DataSize),
                               <<D1/binary, Bin/binary, D2/binary>>
                       end,
             {ReadTime, ReadCount, MergeFn}

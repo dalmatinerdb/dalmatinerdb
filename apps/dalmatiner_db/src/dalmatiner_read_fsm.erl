@@ -26,6 +26,7 @@
 -type reply_src() :: {partition(), term()}.
 -type metric_element() :: binary().
 -type read_opts() :: [dproto_tcp:read_repair_opt() |
+                      hpts |
                       {read_repair, {partial, pos_integer()}} |
                       dproto_tcp:read_r_opt() |
                       {n, pos_integer()}].
@@ -47,7 +48,8 @@
                 val,
                 vnode,
                 system,
-                replies=[] :: [reply_src()]}).
+                hpts = false :: boolean(),
+                replies=[]   :: [reply_src()]}).
 -type state() :: #state{}.
 
 -ignore_xref([
@@ -119,6 +121,7 @@ init([ReqId, {VNode, System}, Op, From, Entity, Val, Opts]) ->
     {ok, RR} = get_rr_opt(Opts),
     {ok, N} = get_n_opt(Opts),
     {ok, R} = get_r_opt(Opts, N),
+    HPTS = proplists:get_bool(hpts, Opts),
     Compression = application:get_env(dalmatiner_db,
                                       metric_transport_compression, snappy),
 
@@ -131,6 +134,7 @@ init([ReqId, {VNode, System}, Op, From, Entity, Val, Opts]) ->
                 op = Op,
                 val = Val,
                 vnode = VNode,
+                hpts = HPTS,
                 system = System,
                 entity = Entity},
     {ok, prepare, SD, 0}.
@@ -150,16 +154,19 @@ execute(timeout, SD0=#state{req_id=ReqId,
                             entity=Entity,
                             op=Op,
                             val=Val,
+                            hpts = HPTS,
                             preflist=Prelist}) ->
     case Entity of
         undefined ->
             metric_vnode:Op(Prelist, ReqId);
         {Bucket, {Metric, _}} ->
-            case Val of
-                undefined ->
+            case {Op, Val} of
+                {_, undefined} ->
                     metric_vnode:Op(Prelist, ReqId, {Bucket, Metric});
-                _ ->
-
+                {get, Val} ->
+                    metric_vnode:get(Prelist, ReqId, {Bucket, Metric},
+                                     HPTS, Val);
+                {_, Val} ->
                     metric_vnode:Op(Prelist, ReqId, {Bucket, Metric}, Val)
             end;
         {Bucket, _Time} ->
@@ -244,19 +251,20 @@ finalize(_, SD=#state{read_repair = false}) ->
     {stop, normal, SD};
 
 
-finalize(timeout, SD=#state{system = event,
-                            replies = Replies,
-                            entity = {Bucket, _Time}}) ->
-    repair_events(Bucket, Replies),
-    {stop, normal, SD};
-
 finalize(timeout, SD=#state{
                         val = {Time, _},
                         read_repair = RR,
                         replies=Replies,
-                        entity=Entity}) ->
+                        hpts = HPTS,
+                        entity=Entity = {Bucket, {_Metric, _}}}) ->
+    DataSize = case HPTS andalso dalmatiner_opt:hpts(Bucket) of
+                   true ->
+                       ?DATA_SIZE * 2;
+                   false ->
+                       ?DATA_SIZE
+                   end,
     MObj = merge_metrics(Replies),
-    case needs_repair(MObj, Replies, RR) of
+    case needs_repair(MObj, Replies, DataSize, RR) of
         {true, RObj} ->
             %% needs_repair also checks weather we decided to drop part of the
             %% result as it is too new (when partial is passed), the new
@@ -266,7 +274,12 @@ finalize(timeout, SD=#state{
             {stop, normal, SD};
         {false, _} ->
             {stop, normal, SD}
-    end.
+    end;
+finalize(timeout, SD=#state{system = event,
+                            replies = Replies,
+                            entity = {Bucket, _Time}}) ->
+    repair_events(Bucket, Replies),
+    {stop, normal, SD}.
 
 handle_info(_Info, _StateName, StateData) ->
     {stop, badmsg, StateData}.
@@ -369,14 +382,14 @@ reconcile(Vals) ->
 %%
 %% @doc Given the merged object `MObj' and a list of `Replies'
 %% determine if repair is needed.
-needs_repair(MObj, Replies, true) ->
+needs_repair(MObj, Replies, _DataSize, true) ->
     Objs = [Obj || {_IdxNode, Obj} <- Replies],
     {lists:any(different(MObj), Objs), MObj};
 
-needs_repair(not_found, _Replies, {partial, _N}) ->
+needs_repair(not_found, _Replies, _DataSize, {partial, _N}) ->
     {false, undefined};
-needs_repair(MObj, Replies, {partial, N}) ->
-    case byte_size(MObj) - N * ?DATA_SIZE of
+needs_repair(MObj, Replies, DataSize, {partial, N}) ->
+    case byte_size(MObj) - N * DataSize of
         Keep when Keep > 0 ->
             <<Head:Keep/binary, _/binary>> = MObj,
             Objs = [Obj ||

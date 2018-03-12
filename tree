@@ -1,14 +1,14 @@
 [0m├─ bitmap─0.2.3
 │  └─ cf─0.2.2
-├─ dalmatiner_db─0.3.4
+├─ dalmatiner_db─0.4.0
 ├─ dalmatiner_metric─0.1.0
 ├─ dalmatiner_opt─0.1.0
 ├─ dalmatiner_vacuum─0.1.2
-├─ dproto─0.5.4
+├─ dproto─0.5.6
 ├─ dqe_idx─0.4.4
-├─ dqe_idx_ddb─0.5.1
-│  └─ ddb_connection─0.4.3
-│     └─ ddb_client─0.5.7
+├─ dqe_idx_ddb─0.5.2
+│  └─ ddb_connection─0.4.4
+│     └─ ddb_client─0.5.9
 ├─ dqe_idx_pg─0.5.7
 │  ├─ pgapp─0.0.2
 │  │  └─ epgsql─3.3.0
@@ -29,10 +29,10 @@
 ├─ jsxd─0.2.4
 ├─ lager─3.2.4
 │  └─ goldrush─0.1.9
-├─ mcache─v0.2.6+build.75.refe37bd4f
+├─ mcache─0.3.1
 ├─ metric_vnode─0.1.3
-├─ mmath─0.2.24
-├─ mstore─0.3.5+build.199.ref9215171
+├─ mmath─0.2.25
+├─ mstore─0.3.7
 ├─ mstore_inspector─0.1.1
 ├─ otters─0.2.10
 │  ├─ dynamic_compile─1.0.0
