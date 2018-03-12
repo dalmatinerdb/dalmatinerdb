@@ -29,6 +29,17 @@ init([]) ->
     ReadFSMs = {dalmatiner_read_fsm_sup,
                 {dalmatiner_read_fsm_sup, start_link, []},
                 permanent, infinity, supervisor, [dalmatiner_read_fsm_sup]},
+    fix_non_hpts_buckets(),
     {ok, {{one_for_one, 5, 10},
           [WriteFSMs, ReadFSMs]}}.
+
+
+fix_non_hpts_buckets() ->
+    Bs = riak_core_metadata:to_list({<<"buckets">>, <<"resolution">>}),
+    [case riak_core_metadata:get({<<"buckets">>, <<"hpts">>}, B) of
+         undefined ->
+             dalmatiner_opt:set_hpts(B, false);
+         _ ->
+             ok
+     end|| {B, R} <- Bs, R /= ['$deleted']].
 
