@@ -70,11 +70,6 @@ init([]) ->
     %% We want a high priority so we don't get scheduled back and have false
     %% reporting.
     process_flag(priority, high),
-    {ok, N} = application:get_env(dalmatiner_db, n),
-    {ok, W} = application:get_env(dalmatiner_db, w),
-    lager:info("[metrics] Initializing metric watcher with N: ~p, W: ~p at an "
-               "interval of ~pms.", [N, W, ?INTERVAL]),
-    Dict = bkt_dict:new(?BUCKET, N, W),
     %% We will delay starting ticks until all services are started uo
     %% that way we won't try to send data before the services are ready
     case application:get_env(dalmatiner_db, self_monitor) of
@@ -84,9 +79,7 @@ init([]) ->
             lager:info("[ddb] Self monitoring is enabled."),
             spawn(fun delay_tick/0)
     end,
-    T = os:system_time(millisecond),
-    {ok, #state{time = T, dict = Dict,
-                prefix = list_to_binary(atom_to_list(node()))}}.
+    {ok, #state{prefix = list_to_binary(atom_to_list(node()))}}.
 
 
 %%--------------------------------------------------------------------
@@ -108,9 +101,29 @@ handle_call(get_list, _From, State = #state{list = List}) ->
              || {_, M, _, V} <- List],
     {reply, {ok, List1}, State#state{running = true}};
 handle_call(start, _From, State = #state{running = false}) ->
+    {ok, N} = application:get_env(dalmatiner_db, n),
+    {ok, W} = application:get_env(dalmatiner_db, w),
+    lager:info("[metrics] Initializing metric watcher with N: ~p, W: ~p at an "
+               "interval of ~pms.", [N, W, ?INTERVAL]),
+    Bucket = <<"dalmatinerdb">>,
+    case dalmatiner_opt:bucket_exists(Bucket) of
+        true ->
+            ok;
+        false ->
+            Res = cuttlefish_datatypes:from_string(
+                    "1s", {duration, ms}),
+
+            PPF = cuttlefish_datatypes:from_string(
+                    "1w", {duration, ms}) div Res,
+            dalmatiner_opt:set_resolution(Bucket, Res),
+            dalmatiner_opt:set_ppf(Bucket, PPF),
+            dalmatiner_opt:set_hpts(Bucket, false)
+    end,
+    Dict = bkt_dict:new(?BUCKET, N, W),
     erlang:send_after(?INTERVAL, self(), tick),
     Reply = ok,
-    {reply, Reply, State#state{running = true}};
+    T = os:system_time(millisecond),
+    {reply, Reply, State#state{running = true, time = T, dict = Dict}};
 handle_call(stop, _From, State = #state{running = true}) ->
     Reply = ok,
     {reply, Reply, State#state{running = false}};
