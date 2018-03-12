@@ -266,3 +266,16 @@
  [{datatype, integer},
   {default, 10}]}.
 
+
+%% @doc When our cache is full we have to find a suitable entry
+%% to delete. This is a tradeoff between finding the largest one
+%% and not looking for too long.
+%% This value tells the system what percentage of the cache should
+%% it aim for scanning to find a suitable element for eviction.
+%% Larger numbers mean more time spent scanning, while smaller
+%% numbers in average smaller elements are evicted leading to more
+%% IO operations.
+{mapping, "vnode.cache.eviction_scan_target", "metric_vnode.eviction_scan_target",
+ [{datatype, float},
+  {default, 0.01}]}.
+
