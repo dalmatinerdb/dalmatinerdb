@@ -63,10 +63,7 @@
           %% the current time
           now :: pos_integer() ,
           %% Resolution cache
-          resolutions = btrie:new(),
-          hpts = btrie:new(),
-          %% TTL cache
-          lifetimes  = btrie:new()
+          bucket_info :: btrie:new()
          }).
 
 -define(MASTER, metric_vnode_master).
@@ -188,7 +185,7 @@ handle_command({get, ReqID, Bucket, Metric, HPTS, {Time, Count}}, Sender,
     case mcache:get(C, Bucket, Metric) of
         %% we do have cached data!
         {ok, Data} ->
-            {BktHPTS, State1} = get_hpts(Bucket, State),
+            {#{htps := BktHPTS}, State1} = get_bucket_info(Bucket, State),
             DataSize = case BktHPTS of
                            true ->
                                ?DATA_SIZE * 2;
@@ -355,12 +352,12 @@ handle_coverage(list, _KS, Sender, State = #state{io = IO}) ->
 
 handle_coverage({update_ttl, Bucket}, _KeySpaces, _Sender,
                 State = #state{partition=P, node=N,
-                               lifetimes = Lifetimes}) ->
-    LT1 = btrie:erase(Bucket, Lifetimes),
+                               bucket_info = BktInfo}) ->
+    BktInfo1 = btrie:erase(Bucket, BktInfo),
     R = btrie:new(),
     R1 = btrie:store(Bucket, t, R),
     Reply = {ok, undefined, {P, N}, R1},
-    {reply, Reply, State#state{lifetimes = LT1}};
+    {reply, Reply, State#state{bucket_info = BktInfo1}};
 
 handle_coverage(update_env, _KeySpaces, _Sender,
                 State = #state{partition=P, node=N, io = IO}) ->
@@ -370,20 +367,14 @@ handle_coverage(update_env, _KeySpaces, _Sender,
 
 handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
                 State = #state{partition=P, node=N, cache = C, io = IO,
-                               lifetimes = Lifetimes,
-                               hpts = HPTSs,
-                               resolutions = Resolutions}) ->
+                               bucket_info = BktInfo}) ->
     mcache:remove_bucket(C, Bucket),
     _Repply = metric_io:delete(IO, Bucket),
     R = btrie:new(),
     R1 = btrie:store(Bucket, t, R),
     Reply = {ok, undefined, {P, N}, R1},
-    LT1 = btrie:erase(Bucket, Lifetimes),
-    Rs1 = btrie:erase(Bucket, Resolutions),
-    HPTSs1 = btrie:erase(HPTSs, Resolutions),
-    {reply, Reply, State#state{lifetimes = LT1,
-                               hpts = HPTSs1,
-                               resolutions = Rs1}}.
+    BktInfo1 = btrie:erase(Bucket, BktInfo),
+    {reply, Reply, State#state{bucket_info = BktInfo1}}.
 
 handle_info(vacuum, State = #state{io = IO, partition = P}) ->
     lager:info("[vaccum] Starting vaccum for partition ~p.", [P]),
@@ -440,13 +431,13 @@ do_put(Bucket, Metric, Time, Value, State = #state{partition=P, cache = C})
     Len = mmath_bin:length(Value),
     %% Technically, we could still write data that falls within a range that is
     %% to be deleted by the vacuum.  See the `timestamp()' function doc.
-    case valid_ts(Time + Len, Bucket, State) of
-        {false, Exp, State1} ->
+    {Info = #{htps := BktHPTS}, State1} = get_bucket_info(Bucket, State),
+    case valid_ts(Time + Len, Info, State1) of
+        {false, Exp, State2} ->
             lager:warning("[~p:~p] Trying to write beyond TTL: ~p + ~p < ~p",
                           [P, Bucket, Time, Len, Exp]),
-            State1;
-        {true, _, State1} ->
-            {BktHPTS, State2} = get_hpts(Bucket, State1),
+            State2;
+        {true, _, State2} ->
             R = case BktHPTS of
                     true ->
                         mcache:insert_hpts(C, Bucket, Metric, Time, Value);
@@ -457,7 +448,7 @@ do_put(Bucket, Metric, Time, Value, State = #state{partition=P, cache = C})
                 ok ->
                     ok;
                 {overflow, {OfBucket, OfMetric}, Overflow} ->
-                    write_chunks(State#state.io, OfBucket, OfMetric, Overflow)
+                    write_chunks(State2#state.io, OfBucket, OfMetric, Overflow)
             end,
             State2
     end.
@@ -493,58 +484,26 @@ valid_ts(TS, Bucket, State) ->
 %% Return the latest point we'd ever want to save. This is more strict
 %% then the expiration we do on the data but it is strong enough for
 %% our guarantee.
-expiry(Bucket, State = #state{now=Now}) ->
-    case get_lifetime(Bucket, State) of
-        {infinity, State1} ->
-            {infinity, State1};
-        {LT, State1} ->
-            {Res, State2} = get_resolution(Bucket, State1),
-            Exp = (Now - LT) div Res,
-            {Exp, State2}
-    end.
+expiry(Bucket, State) when is_binary(Bucket) ->
+    {Info, State1} = get_bucket_info(Bucket, State),
+    expiry(Info, State1);
+expiry(#{ttl := infinity}, State) ->
+    {infinity, State};
+expiry(#{ttl := LT, resolution := Res}, State = #state{now=Now}) ->
+    Exp = (Now - LT) div Res,
+    {Exp, State}.
 
-get_resolution(Bucket, State = #state{resolutions = Ress}) ->
-    case btrie:find(Bucket, Ress) of
-        {ok, Resolution} ->
-            {Resolution, State};
+get_bucket_info(Bucket, State = #state{bucket_info = BktInfo}) ->
+    case btrie:find(Bucket, BktInfo) of
+        {ok, Info} ->
+            {Info, State};
         error ->
-            %% We have not seen this bucket yet lets inform the io
-            %% node about it's existence.
             metric_io:inform(State#state.io, Bucket),
-            Resolution = dalmatiner_opt:resolution(Bucket),
-            Ress1 = btrie:store(Bucket, Resolution, Ress),
-            {Resolution, State#state{resolutions = Ress1}}
-    end.
-
-get_hpts(Bucket, State = #state{hpts = HPTSs}) ->
-    case btrie:find(Bucket, HPTSs) of
-        {ok, Resolution} ->
-            {Resolution, State};
-        error ->
-            %% We have not seen this bucket yet lets inform the io
-            %% node about it's existence.
-            metric_io:inform(State#state.io, Bucket),
-            HPTS = dalmatiner_opt:hpts(Bucket),
-            HPTSs1 = btrie:store(Bucket, HPTS, HPTSs),
-            {HPTS, State#state{hpts = HPTSs1}}
-    end.
-
-get_lifetime(Bucket, State = #state{lifetimes = Lifetimes}) ->
-    case btrie:find(Bucket, Lifetimes) of
-        {ok, TTL} ->
-            {TTL, State};
-        error ->
-            Resolution = dalmatiner_opt:resolution(Bucket),
-            %% We need to scale TTL to nanoseconds since we
-            %% deal with that internally.
-            TTL = case dalmatiner_opt:lifetime(Bucket) of
-                      infinity ->
-                          infinity;
-                      T ->
-                          T * Resolution
-                  end,
-            Lifetimes1 = btrie:store(Bucket, TTL, Lifetimes),
-            {TTL, State#state{lifetimes = Lifetimes1}}
+            {ok, Info} = dalmatiner_bucket:info(Bucket),
+            #{resolution := Res, ttl := TTL} = Info,
+            Info1 = Info#{ttl := TTL * Res},
+            BktInfo1 = btrie:store(Bucket, Info1, BktInfo),
+            {Info1, State#state{bucket_info = BktInfo1}}
     end.
 
 update_env(State) ->
