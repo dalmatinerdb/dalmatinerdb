@@ -63,7 +63,7 @@
           %% the current time
           now :: pos_integer() ,
           %% Resolution cache
-          bucket_info :: btrie:new()
+          bucket_info = btrie:new()
          }).
 
 -define(MASTER, metric_vnode_master).
