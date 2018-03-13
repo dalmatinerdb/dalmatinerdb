@@ -185,7 +185,7 @@ handle_command({get, ReqID, Bucket, Metric, HPTS, {Time, Count}}, Sender,
     case mcache:get(C, Bucket, Metric) of
         %% we do have cached data!
         {ok, Data} ->
-            {#{htps := BktHPTS}, State1} = get_bucket_info(Bucket, State),
+            {#{hpts := BktHPTS}, State1} = get_bucket_info(Bucket, State),
             DataSize = case BktHPTS of
                            true ->
                                ?DATA_SIZE * 2;
