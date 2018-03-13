@@ -61,9 +61,9 @@
           %% PID of the io node
           io :: metric_io:io_handle(),
           %% the current time
-          now :: pos_integer() ,
+          now :: pos_integer()
           %% Resolution cache
-          bucket_info = btrie:new()
+          %bucket_info = btrie:new()
          }).
 
 -define(MASTER, metric_vnode_master).
@@ -351,13 +351,15 @@ handle_coverage(list, _KS, Sender, State = #state{io = IO}) ->
     {async, {fold, AsyncWork, FinishFun}, Sender, State};
 
 handle_coverage({update_ttl, Bucket}, _KeySpaces, _Sender,
-                State = #state{partition=P, node=N,
-                               bucket_info = BktInfo}) ->
-    BktInfo1 = btrie:erase(Bucket, BktInfo),
+                State = #state{partition=P, node=N
+                               %%,bucket_info = BktInfo
+                              }) ->
+    %BktInfo1 = btrie:erase(Bucket, BktInfo),
+    erase(Bucket),
     R = btrie:new(),
     R1 = btrie:store(Bucket, t, R),
     Reply = {ok, undefined, {P, N}, R1},
-    {reply, Reply, State#state{bucket_info = BktInfo1}};
+    {reply, Reply, State};%#state{bucket_info = BktInfo1}};
 
 handle_coverage(update_env, _KeySpaces, _Sender,
                 State = #state{partition=P, node=N, io = IO}) ->
@@ -366,15 +368,17 @@ handle_coverage(update_env, _KeySpaces, _Sender,
     {reply, Reply, update_env(State#state{io = IO1})};
 
 handle_coverage({delete, Bucket}, _KeySpaces, _Sender,
-                State = #state{partition=P, node=N, cache = C, io = IO,
-                               bucket_info = BktInfo}) ->
+                State = #state{partition=P, node=N, cache = C, io = IO
+                               %%,bucket_info = BktInfo
+                              }) ->
     mcache:remove_bucket(C, Bucket),
     _Repply = metric_io:delete(IO, Bucket),
     R = btrie:new(),
     R1 = btrie:store(Bucket, t, R),
     Reply = {ok, undefined, {P, N}, R1},
-    BktInfo1 = btrie:erase(Bucket, BktInfo),
-    {reply, Reply, State#state{bucket_info = BktInfo1}}.
+    %BktInfo1 = btrie:erase(Bucket, BktInfo),
+    erase(Bucket),
+    {reply, Reply, State}.%#state{bucket_info = BktInfo1}}.
 
 handle_info(vacuum, State = #state{io = IO, partition = P}) ->
     lager:info("[vaccum] Starting vaccum for partition ~p.", [P]),
@@ -493,11 +497,9 @@ expiry(#{ttl := LT, resolution := Res}, State = #state{now=Now}) ->
     Exp = (Now - LT) div Res,
     {Exp, State}.
 
-get_bucket_info(Bucket, State = #state{bucket_info = BktInfo}) ->
-    case btrie:find(Bucket, BktInfo) of
-        {ok, Info} ->
-            {Info, State};
-        error ->
+get_bucket_info(Bucket, State) ->
+    case get(Bucket) of
+        undefined ->
             metric_io:inform(State#state.io, Bucket),
             {ok, Info} = dalmatiner_bucket:info(Bucket),
             Info1 = case Info of
@@ -506,9 +508,28 @@ get_bucket_info(Bucket, State = #state{bucket_info = BktInfo}) ->
                         #{resolution := Res, ttl := TTL} ->
                             Info#{ttl := TTL * Res}
                     end,
-            BktInfo1 = btrie:store(Bucket, Info1, BktInfo),
-            {Info1, State#state{bucket_info = BktInfo1}}
+            put(Bucket, Info1),
+            {Info1, State};
+        Info ->
+            {Info, State}
     end.
+
+%%get_bucket_info(Bucket, State = #state{bucket_info = BktInfo}) ->
+%% case btrie:find(Bucket, BktInfo) of
+%%     {ok, Info} ->
+%%         {Info, State};
+%%     error ->
+%%         metric_io:inform(State#state.io, Bucket),
+%%         {ok, Info} = dalmatiner_bucket:info(Bucket),
+%%         Info1 = case Info of
+%%                     #{ttl := infinity} ->
+%%                         Info;
+%%                     #{resolution := Res, ttl := TTL} ->
+%%                         Info#{ttl := TTL * Res}
+%%                 end,
+%%         BktInfo1 = btrie:store(Bucket, Info1, BktInfo),
+%%         {Info1, State#state{bucket_info = BktInfo1}}
+%% end.
 
 update_env(State) ->
     State.
