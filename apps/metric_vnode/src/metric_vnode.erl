@@ -500,8 +500,12 @@ get_bucket_info(Bucket, State = #state{bucket_info = BktInfo}) ->
         error ->
             metric_io:inform(State#state.io, Bucket),
             {ok, Info} = dalmatiner_bucket:info(Bucket),
-            #{resolution := Res, ttl := TTL} = Info,
-            Info1 = Info#{ttl := TTL * Res},
+            Info1 = case Info of
+                        #{ttl := infinity} ->
+                            Info;
+                        #{resolution := Res, ttl := TTL} ->
+                            Info#{ttl := TTL * Res}
+                    end,
             BktInfo1 = btrie:store(Bucket, Info1, BktInfo),
             {Info1, State#state{bucket_info = BktInfo1}}
     end.
