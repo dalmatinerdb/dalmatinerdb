@@ -29,7 +29,7 @@ then
     echo "Creating new configuration from example file."
     cp ${DISTCONFFILE} ${CONFFILE}.example
     cp ${CONFFILE}.example ${CONFFILE}
-    /usr/bin/sed -i bak -e "s/127.0.0.1/${IP}/g" ${CONFFILE}
+    #/usr/bin/sed -i bak -e "s/127.0.0.1/${IP}/g" ${CONFFILE}
 else
     echo "Please make sure you update your config according to the update manual!"
 fi
