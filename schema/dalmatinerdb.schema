@@ -279,3 +279,10 @@
  [{datatype, float},
   {default, 0.01}]}.
 
+
+%% @doc How long data is kept by default, measured either in points
+%% or infinity for not deleting old data. This can be changed on a
+%% per bucket level using ddb-admin
+{mapping, "bkt_dict", "dalmatiner_db.bkt_dict",
+ [{datatype, [atom]},
+  {default, bkt_dict}]}.
