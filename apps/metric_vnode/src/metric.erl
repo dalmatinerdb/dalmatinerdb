@@ -3,6 +3,8 @@
 -export([
          put/4,
          mput/4,
+         mput_trie/4,
+         mput_list/4,
          get/6,
          get/7,
          delete/1,
@@ -24,6 +26,30 @@ mput(Nodes, Acc, W, N) ->
           (DocIdx, Data, ok) ->
                do_mput(orddict:fetch(DocIdx, Nodes), Data, W, N);
           (DocIdx, Data, R) ->
+               do_mput(orddict:fetch(DocIdx, Nodes), Data, W, N),
+               R
+       end, ok, Acc]).
+
+mput_trie(Nodes, Acc, W, N) ->
+    ddb_histogram:timed_update(
+      mput, btrie, fold,
+      [fun(<<DocIdx:160>>, Data, ok) ->
+               do_mput(orddict:fetch(DocIdx, Nodes), Data, W, N);
+          (<<DocIdx:160>>, Data, R) ->
+               do_mput(orddict:fetch(DocIdx, Nodes), Data, W, N),
+               R;
+          (_, _, R) ->
+               R
+       end, ok, Acc]).
+
+mput_list(Nodes, Acc, W, N) ->
+    ddb_histogram:timed_update(
+      mput, lists, foldl,
+      [fun({DocIdx, _Data}, R) when not is_integer(DocIdx) ->
+               R;
+          ({DocIdx, Data}, ok) ->
+               do_mput(orddict:fetch(DocIdx, Nodes), Data, W, N);
+          ({DocIdx, Data}, R) ->
                do_mput(orddict:fetch(DocIdx, Nodes), Data, W, N),
                R
        end, ok, Acc]).

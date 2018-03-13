@@ -1,4 +1,4 @@
--module(bkt_trie).
+-module(bkt_pdict).
 
 -include_lib("mmath/include/mmath.hrl").
 
@@ -9,7 +9,6 @@
 -record(bkt_dict, {
           bucket       :: binary(),
           ppf          :: pos_integer(),
-          dict         :: btrie:trie(),
           n            :: pos_integer(),
           w            :: pos_integer(),
           nodes        :: list() | undefined,
@@ -29,11 +28,9 @@ new(Bkt, N, W) ->
 
 new(Bkt, N, W, HPTS) ->
     PPF = dalmatiner_opt:ppf(Bkt),
-    Dict = btrie:new(),
     update_chash(#bkt_dict{
                     bucket = Bkt,
                     ppf = PPF,
-                    dict = Dict,
                     n = N,
                     w = W,
                     hpts = HPTS,
@@ -49,10 +46,11 @@ add(Metric, Time, Points, BD = #bkt_dict{ppf = PPF, data_size = DataSize}) ->
 
 -spec flush(bkt_dict()) ->
                  bkt_dict().
-flush(BD = #bkt_dict{dict = Dict, w = W, n = N}) ->
+flush(BD = #bkt_dict{w = W, n = N}) ->
     BD1 = #bkt_dict{nodes = Nodes} = update_chash(BD),
-    metric:mput_trie(Nodes, Dict, W, N),
-    BD1#bkt_dict{dict = btrie:new()}.
+    metric:mput_list(Nodes, get(), W, N),
+    erase(),
+    BD1.
 
 
 -spec update_chash(bkt_dict()) ->
@@ -80,46 +78,51 @@ insert_metric(_Metric, [], <<>>, BD) ->
 
 insert_metric(Metric, [{Time, Count} | Splits], PointsIn,
               BD = #bkt_dict{bucket = Bucket, ppf = PPF,
-                             dict = Dict, size = MaxCnt,
+                             size = MaxCnt,
                              data_size = DataSize,
                              ring_size = RingSize}) ->
     Size = (Count * DataSize),
     <<Points:Size/binary, Rest/binary>> = PointsIn,
     DocIdx = riak_core_util:chash_key({Bucket, {Metric, Time div PPF}}),
     Idx = responsible_index(DocIdx, RingSize),
+    append(Idx, {Bucket, Metric, Time, Points}),
     IdxBin = <<Idx:160>>,
-    Dict1 = btrie:append(IdxBin, {Bucket, Metric, Time, Points}, Dict),
     CntName = <<IdxBin/binary, "-count">>,
-    BktCnt = case btrie:find(CntName, Dict1) of
-                 error ->
+    BktCnt = case get(CntName) of
+                 undefined ->
                      1;
-                 {ok, N} ->
+                 N ->
                      N + 1
              end,
-    Dict2 = btrie:store(CntName, BktCnt, Dict1),
+    put(CntName, BktCnt),
 
-    BD1 = BD#bkt_dict{dict = Dict2},
-    BD2 = case BktCnt of
+    BD1 = case BktCnt of
               BktCnt when BktCnt > MaxCnt ->
-                  BD1#bkt_dict{size = BktCnt};
+                  BD#bkt_dict{size = BktCnt};
               _ ->
-                  BD1
+                  BD
           end,
-    insert_metric(Metric, Splits, Rest, BD2).
+    insert_metric(Metric, Splits, Rest, BD1).
 
 size(#bkt_dict{size = Size}) ->
     Size.
 
-to_list(#bkt_dict{dict = Dict}) ->
-    L = btrie:fold(fun (<<_Idx:160>>, Es, Acc) ->
-                           [Es | Acc];
-                       (_Idx, _Es, Acc) ->
-                           Acc
-                   end, [], Dict),
-    lists:flatten(L).
+to_list(#bkt_dict{}) ->
+    [V || {K, V} <- get(), is_integer(K)].
 
 
 data_size(true) ->
     ?DATA_SIZE * 2;
 data_size(false) ->
     ?DATA_SIZE.
+
+
+append(Key, Value) ->
+    L1 = case get(Key) of
+             undefined ->
+                 [Value];
+             L0 ->
+                 [Value | L0]
+         end,
+    put(Key, L1),
+    ok.
