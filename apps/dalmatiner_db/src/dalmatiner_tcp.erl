@@ -10,8 +10,7 @@
 -record(state,
         {n = 1 :: pos_integer(),
          w = 1 :: pos_integer(),
-         rr_min_time = 0 :: non_neg_integer(),
-         dict_mod = bkt_dict
+         rr_min_time = 0 :: non_neg_integer()
         }).
 
 -record(sstate,
@@ -21,8 +20,7 @@
           last = undefined :: non_neg_integer() | undefined,
           max_diff = 1 :: pos_integer(),
           dict, % :: bkt_dict:bkt_dict(),
-          hpts = false :: boolean(),
-          dict_mod = bkt_dict
+          hpts = false :: boolean()
         }).
 
 
@@ -37,16 +35,15 @@ start_link(Ref, Socket, Transport, Opts) ->
 init(Ref, Socket, Transport, _Opts = []) ->
     {ok, N} = application:get_env(dalmatiner_db, n),
     {ok, W} = application:get_env(dalmatiner_db, w),
-    DictMod = application:get_env(dalmatiner_db, bkt_dict, bkt_dict),
     RRTime = application:get_env(dalmatiner_db, read_repair_min_time, 0),
-    State = #state{n = N, w = W, rr_min_time = RRTime, dict_mod = DictMod},
+    State = #state{n = N, w = W, rr_min_time = RRTime},
     ok = Transport:setopts(Socket, [{packet, 4}]),
     ok = ranch:accept_ack(Ref),
     loop(Socket, Transport, State).
 
 -spec loop(port(), term(), state()) -> ok.
 
-loop(Socket, Transport, State = #state{dict_mod = DictMod}) ->
+loop(Socket, Transport, State) ->
     case Transport:recv(Socket, 0, 5000) of
         {ok, Data} ->
             {ot, TIDs, Data1} = dproto_tcp:decode_ot(Data),
@@ -135,12 +132,11 @@ loop(Socket, Transport, State = #state{dict_mod = DictMod}) ->
                                dalmatiner_db, max_bkt_batch_size, 500),
                     stream_loop(Socket, Transport,
                                 #sstate{max_diff = Delay,
-                                        dict_mod = DictMod,
                                         max_bkt_batch_size = BDSize,
-                                        dict = DictMod:new(Bucket,
-                                                            State#state.n,
-                                                            State#state.w,
-                                                            false)},
+                                        dict = btk_pdict:new(Bucket,
+                                                             State#state.n,
+                                                             State#state.w,
+                                                             false)},
                                 {incomplete, <<>>});
                 {stream_v2, Bucket, Delay, HPTS} ->
                     true = dalmatiner_opt:bucket_exists(Bucket),
@@ -156,11 +152,10 @@ loop(Socket, Transport, State = #state{dict_mod = DictMod}) ->
                                 #sstate{max_diff = Delay,
                                         hpts = HPTS,
                                         max_bkt_batch_size = BDSize,
-                                        dict_mod = DictMod,
-                                        dict = DictMod:new(Bucket,
-                                                            State#state.n,
-                                                            State#state.w,
-                                                            HPTS)},
+                                        dict = bkt_pdict:new(Bucket,
+                                                             State#state.n,
+                                                             State#state.w,
+                                                             HPTS)},
                                 {incomplete, <<>>})
             end;
         {error, timeout} ->
@@ -277,22 +272,20 @@ send_part(Socket, Transport, C, Points, HPTS) when is_integer(C),
                          ok.
 stream_loop(Socket, Transport,
             State = #sstate{
-                       dict_mod = DictMod,
                        dict = Dict},
             {flush, Rest}) ->
-    Dict1 = flush(DictMod, Dict),
+    Dict1 = flush(Dict),
     stream_loop(Socket, Transport, State#sstate{dict = Dict1},
                 dproto_tcp:decode_stream(Rest));
 
 stream_loop(Socket, Transport,
             State = #sstate{dict = Dict, last = undefined,
-                            dict_mod = DictMod,
                             max_bkt_batch_size = BDSize},
             {{stream, Metric, Time, Points}, Rest}) ->
-    Dict1 = DictMod:add(Metric, Time, Points, Dict),
-    Dict2 = case DictMod:size(Dict1) of
+    Dict1 = bkt_pdict:add(Metric, Time, Points, Dict),
+    Dict2 = case bkt_pdict:size(Dict1) of
                 X when X > BDSize ->
-                    flush(DictMod, Dict1);
+                    flush(Dict1);
                 _ ->
                     Dict1
             end,
@@ -301,38 +294,33 @@ stream_loop(Socket, Transport,
 
 stream_loop(Socket, Transport,
             State = #sstate{last = _L,
-                            dict_mod = DictMod,
                             max_diff = _Max, dict = Dict},
             {{stream, Metric, Time, Points}, Rest})
   when Time - _L > _Max ->
-    Dict1 = flush(DictMod, Dict),
-    Dict2 = DictMod:add(Metric, Time, Points, Dict1),
+    Dict1 = flush(Dict),
+    Dict2 = bkt_pdict:add(Metric, Time, Points, Dict1),
     stream_loop(Socket, Transport, State#sstate{dict = Dict2, last = undefined},
                 dproto_tcp:decode_stream(Rest));
 
 stream_loop(Socket, Transport, State = #sstate{
-                                          dict_mod = DictMod,
                                           dict = Dict},
             {{stream, Metric, Time, Points}, Acc}) ->
-    Dict1 = DictMod:add(Metric, Time, Points, Dict),
+    Dict1 = bkt_pdict:add(Metric, Time, Points, Dict),
     stream_loop(Socket, Transport, State#sstate{dict = Dict1},
                 dproto_tcp:decode_stream(Acc));
 
 stream_loop(Socket, Transport, State = #sstate{
-                                          dict_mod = DictMod,
                                           dict = Dict},
             {{batch, Time}, Acc}) ->
     %% When entering batch mode we make sure to drain the dict first and
     %% set last as undefined since we'll flush at the end too.
     %% TODO: figure out if this flushing makes sense or if we can make it
     %% conditional
-    Dict1 = flush(DictMod, Dict),
+    Dict1 = flush(Dict),
     batch_loop(Socket, Transport, State#sstate{dict = Dict1, last = undefined},
                Time, decode_batch(Acc, State));
 
-stream_loop(Socket, Transport, State = #sstate{
-                                          dict_mod = DictMod,
-                                          max_diff = D, recv_size = Size},
+stream_loop(Socket, Transport, State = #sstate{max_diff = D, recv_size = Size},
             {incomplete, Acc}) ->
     case Transport:recv(Socket, Size, min(D * 750, 5000)) of
         {ok, Data} ->
@@ -344,7 +332,7 @@ stream_loop(Socket, Transport, State = #sstate{
                         State#sstate{recv_size = max(0, Size - 512)},
                         {incomplete, Acc});
         {error, closed} ->
-            DictMod:flush(State#sstate.dict),
+            bkt_pdict:flush(State#sstate.dict),
             ok;
         E ->
             error(E, Transport, Socket, State)
@@ -359,34 +347,27 @@ decode_batch(Data, #sstate{hpts = true}) ->
 decode_batch(Data, #sstate{hpts = false}) ->
     dproto_tcp:decode_batch(Data).
 
-batch_loop(Socket, Transport, State = #sstate{
-                                         dict_mod = DictMod,
-                                         dict = Dict}, _Time,
+batch_loop(Socket, Transport, State = #sstate{dict = Dict}, _Time,
            {batch_end, Acc}) ->
     %io:format("Batch end: ~p\n", [Dict]),
-    Dict1 = flush(DictMod, Dict),
+    Dict1 = flush(Dict),
     stream_loop(Socket, Transport, State#sstate{dict = Dict1},
                 dproto_tcp:decode_stream(Acc));
 
-batch_loop(Socket, Transport, State  = #sstate{
-                                          dict_mod = DictMod,
-                                          dict = Dict}, Time,
+batch_loop(Socket, Transport, State  = #sstate{dict = Dict}, Time,
            {{batch, Metric, Point}, Acc}) ->
-    Dict1 = DictMod:add(Metric, Time, Point, Dict),
+    Dict1 = bkt_pdict:add(Metric, Time, Point, Dict),
     batch_loop(Socket, Transport, State#sstate{dict = Dict1}, Time,
                decode_batch(Acc, State));
 
-batch_loop(Socket, Transport, State  = #sstate{
-                                          dict_mod = DictMod,
-                                          dict = Dict}, Time,
+batch_loop(Socket, Transport, State  = #sstate{dict = Dict}, Time,
            {{batch_hpts, Metric, Point}, Acc}) ->
-    Dict1 = DictMod:add(Metric, Time, Point, Dict),
+    Dict1 = bkt_pdict:add(Metric, Time, Point, Dict),
     batch_loop(Socket, Transport, State#sstate{dict = Dict1}, Time,
                decode_batch(Acc, State));
 
 
-batch_loop(Socket, Transport, State = #sstate{dict_mod = DictMod},
-           Time, {incomplete, Acc}) ->
+batch_loop(Socket, Transport, State, Time, {incomplete, Acc}) ->
     case Transport:recv(Socket, 0, 1000) of
         {ok, Data} ->
             Acc1 = <<Acc/binary, Data/binary>>,
@@ -395,14 +376,14 @@ batch_loop(Socket, Transport, State = #sstate{dict_mod = DictMod},
         {error, timeout} ->
             batch_loop(Socket, Transport, State, Time, {incomplete, Acc});
         {error, closed} ->
-            DictMod:flush(State#sstate.dict),
+            bkt_pdict:flush(State#sstate.dict),
             ok;
         E ->
             error(E, Transport, Socket, State)
     end.
 
-flush(DictMod, Dict) ->
-    Dict1 = DictMod:flush(Dict),
+flush(Dict) ->
+    Dict1 = bkt_pdict:flush(Dict),
     drain(),
     Dict1.
 
@@ -416,10 +397,9 @@ drain() ->
     end.
 
 error(E, Transport, Socket, #sstate{
-                               dict_mod = DictMod,
                                dict = Dict}) ->
     lager:error("[tcp:stream] Error: ~p~n", [E]),
-    DictMod:flush(Dict),
+    bkt_pdict:flush(Dict),
     ok = Transport:close(Socket).
 get_events(_Bucket, _Filter, [], Socket, Transport, State) ->
     Transport:send(Socket, dproto_tcp:encode(events_end)),
