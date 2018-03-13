@@ -86,15 +86,13 @@ insert_metric(Metric, [{Time, Count} | Splits], PointsIn,
     DocIdx = riak_core_util:chash_key({Bucket, {Metric, Time div PPF}}),
     Idx = responsible_index(DocIdx, RingSize),
     append(Idx, {Bucket, Metric, Time, Points}),
-    IdxBin = <<Idx:160>>,
-    CntName = <<IdxBin/binary, "-count">>,
-    BktCnt = case get(CntName) of
+    BktCnt = case get({count, Idx}) of
                  undefined ->
                      1;
                  N ->
                      N + 1
              end,
-    put(CntName, BktCnt),
+    put({count, Idx}, BktCnt),
 
     BD1 = case BktCnt of
               BktCnt when BktCnt > MaxCnt ->
