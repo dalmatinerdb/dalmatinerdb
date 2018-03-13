@@ -133,7 +133,7 @@ loop(Socket, Transport, State) ->
                     stream_loop(Socket, Transport,
                                 #sstate{max_diff = Delay,
                                         max_bkt_batch_size = BDSize,
-                                        dict = btk_pdict:new(Bucket,
+                                        dict = bkt_pdict:new(Bucket,
                                                              State#state.n,
                                                              State#state.w,
                                                              false)},
