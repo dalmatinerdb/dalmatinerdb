@@ -431,7 +431,7 @@ do_put(Bucket, Metric, Time, Value, State = #state{partition=P, cache = C})
     Len = mmath_bin:length(Value),
     %% Technically, we could still write data that falls within a range that is
     %% to be deleted by the vacuum.  See the `timestamp()' function doc.
-    {Info = #{htps := BktHPTS}, State1} = get_bucket_info(Bucket, State),
+    {Info = #{hpts := BktHPTS}, State1} = get_bucket_info(Bucket, State),
     case valid_ts(Time + Len, Info, State1) of
         {false, Exp, State2} ->
             lager:warning("[~p:~p] Trying to write beyond TTL: ~p + ~p < ~p",
