@@ -14,6 +14,7 @@
 │  │  └─ epgsql─3.3.0
 │  └─ sqlmig─0.1.5
 ├─ edown─0.8.1
+├─ eep─1.0
 ├─ eper─0.94.0
 ├─ estore─0.1.10
 ├─ event_vnode─0.1.0
