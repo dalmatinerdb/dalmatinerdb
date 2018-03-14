@@ -49,9 +49,9 @@ add(Metric, Time, Points, BD = #bkt_dict{ppf = PPF, data_size = DataSize}) ->
 
 -spec flush(bkt_dict()) ->
                  bkt_dict().
-flush(BD = #bkt_dict{dict = Dict, w = W, n = N}) ->
+flush(BD = #bkt_dict{bucket = Bucket, dict = Dict, w = W, n = N}) ->
     BD1 = #bkt_dict{nodes = Nodes} = update_chash(BD),
-    metric:mput(Nodes, Dict, W, N),
+    metric:mput(Nodes, Bucket, Dict, W, N),
     BD1#bkt_dict{dict = dict:new()}.
 
 
@@ -87,7 +87,7 @@ insert_metric(Metric, [{Time, Count} | Splits], PointsIn,
     <<Points:Size/binary, Rest/binary>> = PointsIn,
     DocIdx = riak_core_util:chash_key({Bucket, {Metric, Time div PPF}}),
     Idx = responsible_index(DocIdx, RingSize),
-    Dict1 = dict:append(Idx, {Bucket, Metric, Time, Points}, Dict),
+    Dict1 = dict:append(Idx, {Metric, Time, Points}, Dict),
     CntName = <<Idx:160/integer, "-count">>,
     BktCnt = case dict:find(CntName, Dict1) of
                  error ->
