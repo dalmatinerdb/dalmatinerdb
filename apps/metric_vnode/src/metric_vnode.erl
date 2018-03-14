@@ -28,7 +28,7 @@
          handle_overload_info/2,
          handle_exit/3]).
 
--export([mput/3, put/5, get/5]).
+-export([mput/4, put/5, get/5]).
 
 -export([
          object_info/1,
@@ -45,7 +45,7 @@
 -ignore_xref([
               start_vnode/1,
               put/5,
-              mput/3,
+              mput/4,
               get/4,
               repair/4,
               handle_info/2,
@@ -110,9 +110,9 @@ put(Preflist, ReqID, Bucket, Metric, {Time, Value}) ->
                                    {raw, ReqID, self()},
                                    ?MASTER).
 
-mput(Preflist, ReqID, Data) ->
+mput(Preflist, ReqID, Bucket, Data) ->
     riak_core_vnode_master:command(Preflist,
-                                   {mput, Data},
+                                   {mput, Bucket, Data},
                                    {raw, ReqID, self()},
                                    ?MASTER).
 
@@ -167,13 +167,15 @@ handle_command({repair, Bucket, Metric, Time, Value}, _Sender, State)
             {noreply, State1}
     end;
 
-handle_command({mput, Data}, _Sender, State) ->
-    State1 = lists:foldl(fun({Bucket, Metric, Time, Value}, StateAcc)
+handle_command({mput, Bucket, Data}, _Sender, State) ->
+    {BucketInfo, State1} = get_bucket_info(Bucket, State),
+    State2 = lists:foldl(fun({Metric, Time, Value}, StateAcc)
                                when is_binary(Bucket), is_binary(Metric),
                                     is_integer(Time) ->
-                                 do_put(Bucket, Metric, Time, Value, StateAcc)
-                         end, State, Data),
-    {reply, ok, State1};
+                                 do_put(Bucket, BucketInfo, Metric,
+                                        Time, Value, StateAcc)
+                         end, State1, Data),
+    {reply, ok, State2};
 
 handle_command({put, Bucket, Metric, {Time, Value}}, _Sender, State)
   when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
@@ -289,10 +291,12 @@ handle_handoff_data(In, State) ->
     {{Bucket, {Metric, _T0}}, ValList} = binary_to_term(Data),
     true = is_binary(Bucket),
     true = is_binary(Metric),
-    State1 = lists:foldl(fun ({T, Bin}, StateAcc) ->
-                                 do_put(Bucket, Metric, T, Bin, StateAcc)
-                         end, State, ValList),
-    {reply, ok, State1}.
+    {BucketInfo, State1} = get_bucket_info(Bucket, State),
+    State2 = lists:foldl(fun ({T, Bin}, StateAcc) ->
+                                 do_put(Bucket, BucketInfo, Metric,
+                                        T, Bin, StateAcc)
+                         end, State1, ValList),
+    {reply, ok, State2}.
 
 encode_handoff_item(Key, Value) ->
     case riak_core_capability:get({ddb, handoff}) of
@@ -429,14 +433,18 @@ terminate(_Reason, #state{cache = C, io = IO}) ->
     empty_cache(C, IO),
     metric_io:close(IO),
     ok.
+do_put(Bucket, Metric, Time, Value, State) ->
+    {BucketInfo, State1} = get_bucket_info(Bucket, State),
+    do_put(Bucket, BucketInfo, Metric, Time, Value, State1).
 
-do_put(Bucket, Metric, Time, Value, State = #state{partition=P, cache = C})
+
+do_put(Bucket, Info = #{hpts := BktHPTS},
+       Metric, Time, Value, State = #state{partition=P, cache = C})
   when is_binary(Bucket), is_binary(Metric), is_integer(Time) ->
     Len = mmath_bin:length(Value),
     %% Technically, we could still write data that falls within a range that is
     %% to be deleted by the vacuum.  See the `timestamp()' function doc.
-    {Info = #{hpts := BktHPTS}, State1} = get_bucket_info(Bucket, State),
-    case valid_ts(Time + Len, Info, State1) of
+    case valid_ts(Time + Len, Info, State) of
         {false, Exp, State2} ->
             lager:warning("[~p:~p] Trying to write beyond TTL: ~p + ~p < ~p",
                           [P, Bucket, Time, Len, Exp]),
@@ -456,7 +464,6 @@ do_put(Bucket, Metric, Time, Value, State = #state{partition=P, cache = C})
             end,
             State2
     end.
-
 
 reply(Reply, {_, ReqID, _} = Sender, #state{node=N, partition=P}) ->
     riak_core_vnode:reply(Sender, {ok, ReqID, {P, N}, Reply}).
@@ -545,7 +552,7 @@ handle_overload_command({put, _Bucket, _Metric, {_Time, _Value}},
                         {raw, ReqID, _PID} = Sender, Idx) ->
     ddb_counter:inc({<<"drop">>, <<"write">>}),
     riak_core_vnode:reply(Sender, {fail, ReqID, Idx, overload});
-handle_overload_command({mput, _Data},
+handle_overload_command({mput, _Bucket, _Data},
                         {raw, ReqID, _PID} = Sender, Idx) ->
     ddb_counter:inc({<<"drop">>, <<"write">>}),
     riak_core_vnode:reply(Sender, {fail, ReqID, Idx, overload});

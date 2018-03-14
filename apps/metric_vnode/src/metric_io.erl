@@ -552,7 +552,7 @@ handle_call(_Request, _From, State) ->
 
 
 handle_cast({inform, Bucket}, State) ->
-    lager:info("io node binformed about: ~p", [Bucket]),
+    lager:info("io node informed about: ~p", [Bucket]),
     {_, State1} = get_or_create_set(Bucket, State),
     {noreply, State1};
 

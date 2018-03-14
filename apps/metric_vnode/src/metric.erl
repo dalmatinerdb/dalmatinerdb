@@ -2,9 +2,9 @@
 
 -export([
          put/4,
-         mput/4,
-         mput_trie/4,
-         mput_list/4,
+         mput/5,
+         mput_trie/5,
+         mput_list/5,
          get/6,
          get/7,
          delete/1,
@@ -18,39 +18,39 @@
 -ignore_xref([update_ttl/2, get/6, put/4, update_env/0]).
 
 
-mput(Nodes, Acc, W, N) ->
+mput(Nodes, Bucket, Acc, W, N) ->
     ddb_histogram:timed_update(
       mput, dict, fold,
       [fun(DocIdx, _Data, R) when not is_integer(DocIdx) ->
                R;
           (DocIdx, Data, ok) ->
-               do_mput(orddict:fetch(DocIdx, Nodes), Data, W, N);
+               do_mput(orddict:fetch(DocIdx, Nodes), Bucket, Data, W, N);
           (DocIdx, Data, R) ->
-               do_mput(orddict:fetch(DocIdx, Nodes), Data, W, N),
+               do_mput(orddict:fetch(DocIdx, Nodes), Bucket, Data, W, N),
                R
        end, ok, Acc]).
 
-mput_trie(Nodes, Acc, W, N) ->
+mput_trie(Nodes, Bucket, Acc, W, N) ->
     ddb_histogram:timed_update(
       mput, btrie, fold,
       [fun(<<DocIdx:160>>, Data, ok) ->
-               do_mput(orddict:fetch(DocIdx, Nodes), Data, W, N);
+               do_mput(orddict:fetch(DocIdx, Nodes), Bucket, Data, W, N);
           (<<DocIdx:160>>, Data, R) ->
-               do_mput(orddict:fetch(DocIdx, Nodes), Data, W, N),
+               do_mput(orddict:fetch(DocIdx, Nodes), Bucket, Data, W, N),
                R;
           (_, _, R) ->
                R
        end, ok, Acc]).
 
-mput_list(Nodes, Acc, W, N) ->
+mput_list(Nodes, Bucket, Acc, W, N) ->
     ddb_histogram:timed_update(
       mput, lists, foldl,
       [fun({DocIdx, _Data}, R) when not is_integer(DocIdx) ->
                R;
           ({DocIdx, Data}, ok) ->
-               do_mput(orddict:fetch(DocIdx, Nodes), Data, W, N);
+               do_mput(orddict:fetch(DocIdx, Nodes), Bucket, Data, W, N);
           ({DocIdx, Data}, R) ->
-               do_mput(orddict:fetch(DocIdx, Nodes), Data, W, N),
+               do_mput(orddict:fetch(DocIdx, Nodes), Bucket, Data, W, N),
                R
        end, ok, Acc]).
 
@@ -108,9 +108,9 @@ do_put(Bucket, Metric, PPF, Time, Value, N, W) ->
     metric_vnode:put(Preflist, ReqID, Bucket, Metric, {Time, Value}),
     do_wait(W, 0, N, ReqID).
 
-do_mput(Preflist, Data, W, N) ->
+do_mput(Preflist, Bucket, Data, W, N) ->
     ReqID = make_ref(),
-    metric_vnode:mput(Preflist, ReqID, Data),
+    metric_vnode:mput(Preflist, ReqID, Bucket, Data),
     do_wait(W, 0, N, ReqID).
 
 

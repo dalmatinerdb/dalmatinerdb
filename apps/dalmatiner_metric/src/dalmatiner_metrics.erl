@@ -119,7 +119,7 @@ handle_call(start, _From, State = #state{running = false}) ->
             dalmatiner_opt:set_ppf(Bucket, PPF),
             dalmatiner_opt:set_hpts(Bucket, false)
     end,
-    Dict = bkt_dict:new(?BUCKET, N, W),
+    Dict = bkt_pdict:new(?BUCKET, N, W),
     erlang:send_after(?INTERVAL, self(), tick),
     Reply = ok,
     T = os:system_time(millisecond),
@@ -172,7 +172,7 @@ handle_info(tick,
                            prefix = Prefix, dict = Dict0,
                            seen = Seen}) ->
     %% Initialize what we need
-    Dict = bkt_dict:update_chash(Dict0),
+    Dict = bkt_pdict:update_chash(Dict0),
     Time = timestamp(),
 
     %% Add our own counters
@@ -207,9 +207,9 @@ handle_info(tick,
 
 
     %% Keep a list with info
-    AsList = bkt_dict:to_list(DictR),
+    AsList = bkt_pdict:to_list(DictR),
     %% Send
-    DictFlushed = bkt_dict:flush(DictR),
+    DictFlushed = bkt_pdict:flush(DictR),
     erlang:send_after(?INTERVAL, self(), tick),
     {noreply, State#state{list = AsList,
                           time = T,
@@ -338,12 +338,12 @@ add_metric(Prefix, Name, Time, Value, Acc) ->
     add_to_dict([Prefix | Name], Time, Value, Acc).
 
 -spec add_to_dict([binary() | [binary()]], integer(), integer() | float(),
-                  bkt_dict:bkt_dict()) ->
-                         bkt_dict:bkt_dict().
+                  bkt_pdict:bkt_dict()) ->
+                         bkt_pdict:bkt_dict().
 add_to_dict(MetricL, Time, Value, Dict) ->
     Metric = dproto:metric_from_list(lists:flatten(MetricL)),
     Data = mmath_hpts:from_list([{Time, Value}]),
-    bkt_dict:add(Metric, Time, Data, Dict).
+    bkt_pdict:add(Metric, Time, Data, Dict).
 
 timestamp() ->
     os:system_time(seconds).
