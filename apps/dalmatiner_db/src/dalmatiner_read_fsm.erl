@@ -217,6 +217,9 @@ check_waiting(SD = #state{timeout = Timeout}) ->
             {next_state, wait_for_n, SD, Timeout}
     end.
 
+waiting({fail, _Idx, overload},
+        SD = #state{overloaded = O}) ->
+    check_waiting(SD#state{overloaded = O + 1});
 waiting({fail, _ReqID, _Idx, overload},
         SD = #state{overloaded = O}) ->
     check_waiting(SD#state{overloaded = O + 1});
