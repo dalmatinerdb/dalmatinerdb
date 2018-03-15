@@ -1,7 +1,7 @@
 #!/usr/sbin/dtrace -s
 /*
  * arg0 arg1 arg2 arg3 arg4  arg5 arg6   arg7 arg8
- * PID       ID   Time Size       Module Key  Opperation
+ * PID       ID   Size Chunks       Module Key  Opperation
  *
  * PID -> Erlang process ID. (String)
  * ID -> ID of the mesurement group, 801 for cowboy handler calls.
@@ -19,18 +19,18 @@
  */
 
 erlang$1:::user_trace*
-/ arg2 == 4411 /
+/ arg2 == 4501 /
 {
   /*
    * We cache the relevant strings
    */
-  @dist = llquantize(arg4, 10, 0, 6, 20);
-  @count = count()
+  @chunks = llquantize(arg4, 10, 0, 6, 20);
+  @size = sum(arg3)
 }
 
 
 tick-1s
 {
-  printa(@dist);
-  printa(@count);
+  printa(@chunks);
+  printa(@size);
 }

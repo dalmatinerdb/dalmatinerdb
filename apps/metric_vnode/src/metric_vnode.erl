@@ -3,6 +3,7 @@
 
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 -include_lib("mmath/include/mmath.hrl").
+-include_lib("metric_vnode/include/metric_vnode.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -460,7 +461,9 @@ do_put(Bucket, Info = #{hpts := BktHPTS},
                 ok ->
                     ok;
                 {overflow, {OfBucket, OfMetric}, Overflow} ->
-                    write_chunks(State2#state.io, OfBucket, OfMetric, Overflow)
+                    {Size, Chunks} = write_chunks(State2#state.io, OfBucket,
+                                                  OfMetric, Overflow),
+                    ?DT_CACHE_EVICT(Size, Chunks)
             end,
             State2
     end.
@@ -600,13 +603,15 @@ object_info({Bucket, {Metric, Time}}) ->
 
 %% We calculate the jitter (end) for a cache by reducing it to (at maximum)
 %% half the size.
+write_chunks(IO, Bucket, Metric,  Data) ->
+    write_chunks(IO, Bucket, Metric,  Data, 0, 0).
 
-write_chunks(_IO, _Bucket, _Metric, []) ->
-    ok;
+write_chunks(_IO, _Bucket, _Metric, [], C, S) ->
+    {C, S};
 
-write_chunks(IO, Bucket, Metric, [{T, V} | R]) ->
+write_chunks(IO, Bucket, Metric, [{T, V} | R], C, S) ->
     metric_io:write(IO, Bucket, Metric, T, V),
-    write_chunks(IO, Bucket, Metric, R).
+    write_chunks(IO, Bucket, Metric, R, C + 1, S + byte_size(V)).
 
 %% We're completely before the data
 get_overlap(Time, Count, DataSize, [{CT, CD} | R])
